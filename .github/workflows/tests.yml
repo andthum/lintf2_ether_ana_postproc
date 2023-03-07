@@ -31,10 +31,9 @@ jobs:
           - "macos-latest"
           - "windows-latest"
         python-version:
+          - "3.7"
           - "3.8"
           - "3.9"
-          - "3.10"
-          - "3.11"
       # Do not cancel in-progress jobs if any matrix job fails
       fail-fast: false
     runs-on: "${{ matrix.os }}"
