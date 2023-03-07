@@ -50,17 +50,17 @@ classifiers = [
     "Natural Language :: English",
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.6",
+    "Programming Language :: Python :: 3.7",
     "Programming Language :: Python :: 3.8",
     "Programming Language :: Python :: 3.9",
-    "Programming Language :: Python :: 3.10",
-    "Programming Language :: Python :: 3.11",
     "Topic :: Scientific/Engineering",
     "Topic :: Scientific/Engineering :: Chemistry",
     "Topic :: Scientific/Engineering :: Physics",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
     "Topic :: Utilities",
 ]
-requires-python = ">=3.8, <3.12"
+requires-python = ">=3.7, <3.10"
 dependencies = [
     "mdtools @ git+https://github.com/andthum/mdtools@main",
     "matplotlib >=3.3, <4.0",
