@@ -3,3 +3,10 @@
 analysis postprocessing utilities for my molecular dynamics simulations
 of LiTFSI-ether mixtures.
 """
+
+
+# Local imports
+from . import simulation
+
+
+__all__ = ["simulation"]
