@@ -70,8 +70,10 @@ extend-ignore =
     S404,
     S603,
     ### pep8-naming ###
+    # N802: function name should be lowercase
     # N806: variable in function should be lowercase
     # N813: camelcase imported as lowercase
+    N802,
     N806,
     N813,
 extend-select =
