@@ -15,6 +15,54 @@ from scipy import constants as const
 import lintf2_ether_ana_postproc as leap
 
 
+class SimPaths:
+    """
+    Class containing the top-level paths to the Gromacs MD simulations.
+
+    All attributes should be treated as read-only attributes.  Don't
+    change them after initialization.
+    """
+
+    def __init__(self, root=None):
+        """
+        Initialize a :class:`~lintf2_ether_ana_postproc.simulation.Path`
+        instance.
+
+        Parameters
+        ----------
+        root : str or bytes or os.PathLike or None, optional
+            Path of the root directory that contains all Gromacs MD
+            simulations.  If `root` is ``None``, it is set to
+            ``"${HOME}/ownCloud/WWU_Münster/Promotion/Simulationen/results/lintf2_peo"``
+
+        Raises
+        ------
+        FileNotFoundError
+            If the root directory or one of the required sub-directories
+            does not exist.
+        """  # noqa: E501
+        if root is None:
+            root = "${HOME}/ownCloud/WWU_Münster/Promotion/Simulationen/results/lintf2_peo"  # noqa: E501
+        root = os.path.abspath(os.path.expandvars(os.path.expanduser(root)))
+
+        self.PATHS = {"root": root}
+        """
+        Top-level directories containing the Gromacs MD simulations.
+
+        :type: dict
+        """
+
+        for path in ("bulk", "walls"):
+            self.PATHS[path] = os.path.normpath(os.path.join(root, path))
+        for path in ("q0", "q0.25", "q0.5", "q0.75", "q1"):
+            self.PATHS[path] = os.path.normpath(
+                os.path.join(self.PATHS["walls"], path)
+            )
+        for path in self.PATHS.values():
+            if not os.path.isdir(path):
+                raise ValueError("No such directory: '{}'".format(path))
+
+
 class Electrode:
     """
     Class containing the properties of a single graphene electrode used
