@@ -351,8 +351,8 @@ class Simulation:
 
         self.dens = None
         """
-        Mass and number densities of the cation, the anion and the
-        solvent as given by :attr:`self.res_names`.
+        Mass and number densities of all atom types and all electrolyte
+        components.
 
         Mass densities are given in u/A^3, number densities are given in
         1/A^3.
@@ -1336,8 +1336,8 @@ class Simulation:
 
     def get_dens(self):
         """
-        Get the mass and number densities of the cation, the anion and
-        the solvent as given by :attr:`self.res_names`.
+        Get the mass and number densities of all atom types and all
+        electrolyte components.
 
         Return the value of :attr:`self.n_dens`.  If :attr:`self.n_dens`
         is ``None``, calculate the densities from :attr:`self.universe`
@@ -1349,8 +1349,8 @@ class Simulation:
         Returns
         -------
         self.n_dens : dict
-            Mass and number densities of the cation, the anion and the
-            solvent as given by :attr:`self.res_names`.
+            Mass and number densities of all atom types and all
+            electrolyte components.
 
         Notes
         -----
@@ -1366,35 +1366,75 @@ class Simulation:
             self.get_res_names()
         if self.universe is None:
             self.get_universe()
+        if self.top_info is None:
+            self.get_top_info()
         if self.vol is None:
             self.get_vol()
 
         vol = self.vol["access"]
         self.dens = {}
-        n_tot, m_tot = 0, 0
+
+        # Densities of all atoms by their type.
+        self.dens["atm_type"] = {}
+        for at in self.top_info["sys"]["atm_type"].keys():
+            ag = self.universe.select_atoms("type {}".format(at))
+            n_atm = ag.n_atoms
+            m_atm = np.sum(ag.masses)
+            atm_dct = {"num": n_atm / vol, "mass": m_atm / vol}
+            self.dens["atm_type"][at] = atm_dct
+
+        # # Commented out, because not all my simulations share the same
+        # # atom names.
+        # # Densities of all atoms by their name.
+        # self.dens["atm_name"] = {}
+        # for an in self.top_info["sys"]["atm_name"].keys():
+        #     ag = self.universe.select_atoms("name {}".format(an))
+        #     n_atm = ag.n_atoms
+        #     m_atm = np.sum(ag.masses)
+        #     atm_dct = {"num": n_atm / vol, "mass": m_atm / vol}
+        #     self.dens["atm_name"][an] = atm_dct
+
+        # # Commented out, because not all my simulations share the same
+        # # residue names.
+        # # Densities of all residues.
+        # self.dens["res"] = {}
+        # for rn in self.top_info["res"].keys():
+        #     ag = self.universe.select_atoms("resname {}".format(rn))
+        #     n_res = ag.n_residues
+        #     m_res = np.sum(ag.residues.masses)
+        #     res_dct = {"num": n_res / vol, "mass": m_res / vol}
+        #     self.dens["res"][rn] = res_dct
+
+        # Densities of the electrolyte: cation, anion, solvent and total
+        self.dens["elctrlyt"] = {}
+        n_elctrlyt, m_elctrlyt = 0, 0
         for res_type, rn in self.res_names.items():
             ag = self.universe.select_atoms("resname {}".format(rn))
             n_res = ag.n_residues
-            n_tot += n_res
-            m_res = ag.residues[0].mass
-            m_tot += m_res * n_res
-            res_dct = {"num": n_res / vol, "mass": m_res * n_res / vol}
-            self.dens[res_type] = res_dct
-        self.dens["tot"] = {"num": n_tot / vol, "mass": m_tot / vol}
+            n_elctrlyt += n_res
+            m_res = np.sum(ag.residues.masses)
+            m_elctrlyt += m_res
+            res_dct = {"num": n_res / vol, "mass": m_res / vol}
+            self.dens["elctrlyt"][res_type] = res_dct
+        self.dens["elctrlyt"]["tot"] = {
+            "num": n_elctrlyt / vol,
+            "mass": m_elctrlyt / vol,
+        }
 
-        if self._bulk_sim is not None:
-            for res_type, dens_dct in self.dens.items():
-                for dens_type, density in dens_dct.items():
-                    if not np.isclose(
-                        density,
-                        self._bulk_sim.dens[res_type][dens_type],
-                        rtol=0,
-                        atol=1e-5,
-                    ):
-                        raise ValueError(
-                            "`self.dens` ({}) != `self._bulk_sim.dens`"
-                            " ({})".format(self.dens, self.dens)
-                        )
+        if self._BulkSim is not None:
+            for cmp, cmp_dens_dct in self.dens.items():
+                for cn, dens_dct in cmp_dens_dct.items():
+                    for dens_type, density in dens_dct.items():
+                        if cn in self._BulkSim.dens[cmp] and not np.isclose(
+                            density,
+                            self._BulkSim.dens[cmp][cn][dens_type],
+                            rtol=0,
+                            atol=1e-5,
+                        ):
+                            raise ValueError(
+                                "`self.dens` ({}) != `self._BulkSim.dens`"
+                                " ({})".format(self.dens, self.dens)
+                            )
 
         return self.dens
 
@@ -1576,8 +1616,8 @@ class Simulations:
 
         self.dens = None
         """
-        Dictionary containing the mass and number density of the cation,
-        the anion and the solvent for each
+        Dictionary containing the mass and number density of all atom
+        types and all electrolyte components for each
         :class:`~lintf2_ether_ana_postproc.simulation.Simulation`.
 
         Mass densities are given in kg/m^3, number densities are given
@@ -2011,8 +2051,8 @@ class Simulations:
 
     def get_dens(self):
         """
-        Get the mass and number densities of the cation, the anion and
-        the solvent for each
+        Get the mass and number densities of all atom types and all
+        electrolyte components for each
         :class:`~lintf2_ether_ana_postproc.simulation.Simulation`.
 
         Return the value of :attr:`self.dens`.  If :attr:`self.dens` is
@@ -2024,8 +2064,8 @@ class Simulations:
         Returns
         -------
         self.dens : dict
-            Dictionary containing the mass and number density of the
-            cation, the anion and the solvent for each
+            Dictionary containing the mass and number density of all
+            atom types and all electrolyte components for each
             :class:`~lintf2_ether_ana_postproc.simulation.Simulation`.
         """
         if self.dens is not None:
@@ -2035,22 +2075,31 @@ class Simulations:
             self.get_sims()
 
         dens = {
-            res_type: {dens_type: [] for dens_type in dens_dct.keys()}
-            for res_type, dens_dct in self.sims[0].dens.items()
+            cmp: {
+                cn: {dens_type: [] for dens_type in dens_dct.keys()}
+                for cn, dens_dct in cmp_dens_dct.items()
+            }
+            for cmp, cmp_dens_dct in self.sims[0].dens.items()
         }
+
         for sim in self.sims:
-            for res_type, dens_dct in sim.dens.items():
+            for cmp, cmp_dens_dct in sim.dens.items():
+                for cn, dens_dct in cmp_dens_dct.items():
+                    for dens_type, density in dens_dct.items():
+                        dens[cmp][cn][dens_type].append(density)
+        self.dens = {
+            cmp: {cn: {} for cn in cmp_dens_dct.keys()}
+            for cmp, cmp_dens_dct in dens.items()
+        }
+        for cmp, cmp_dens_dct in dens.items():
+            for cn, dens_dct in cmp_dens_dct.items():
                 for dens_type, density in dens_dct.items():
-                    dens[res_type][dens_type].append(density)
-        self.dens = {res_type: {} for res_type in dens.keys()}
-        for res_type, dens_dct in dens.items():
-            for dens_type, density in dens_dct.items():
-                dens_array = np.array(density)
-                if dens_type == "num":
-                    dens_array *= 1e3  # 1/A^3 -> 1/nm^3
-                elif dens_type == "mass":
-                    dens_array *= self.MDENS2SI  # u/A^3 -> kg/m^3
-                self.dens[res_type][dens_type] = dens_array
+                    dens_array = np.array(density)
+                    if dens_type == "num":
+                        dens_array *= 1e3  # 1/A^3 -> 1/nm^3
+                    elif dens_type == "mass":
+                        dens_array *= self.MDENS2SI  # u/A^3 -> kg/m^3
+                    self.dens[cmp][cn][dens_type] = dens_array
         return self.dens
 
 
