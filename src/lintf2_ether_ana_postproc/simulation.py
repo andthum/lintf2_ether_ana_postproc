@@ -15,17 +15,43 @@ from scipy import constants as const
 import lintf2_ether_ana_postproc as leap
 
 
-#: Lennard-Jones radius of graphene atoms in Angstrom.
-GRA_SIGMA_LJ = 3.55
+class Electrode:
+    """
+    Class containing the properties of a single graphene electrode used
+    in the simulations.
 
-#: Number of graphene layers.
-GRA_LAYERS_N = 3
+    All attributes should be treated as read-only attributes.  Don't
+    change them after initialization.
+    """
 
-#: Distance between two graphene layers in Angstrom.
-GRA_LAYER_DIST = 3.35
+    def __init__(self):
+        self.GRA_SIGMA_LJ = 3.55
+        """
+        Lennard-Jones radius of graphene atoms in Angstroms.
 
-#: Electrode thickness in Angstrom.
-ELCTRD_THK = (GRA_LAYERS_N - 1) * GRA_LAYER_DIST
+        :type: float
+        """
+
+        self.GRA_LAYERS_N = 3
+        """
+        Number of graphene layers.
+
+        :type: int
+        """
+
+        self.GRA_LAYER_DIST = 3.35
+        """
+        Distance between two graphene layers in Angstroms.
+
+        :type: float
+        """
+
+        self.ELCTRD_THK = (self.GRA_LAYERS_N - 1) * self.GRA_LAYER_DIST
+        """
+        Electrode thickness in Angstroms.
+
+        :type: float
+        """
 
 
 class Simulation:
@@ -282,6 +308,7 @@ class Simulation:
         if not os.path.isdir(path):
             raise FileNotFoundError("No such directory: '{}'".format(path))
         self.path = os.path.abspath(path)
+        self.elctrd = leap.simulation.Electrode()
         self.get_system()
         self.get_settings()
         self.get_is_bulk()
@@ -798,12 +825,13 @@ class Simulation:
             elctrd_bot = self.universe.select_atoms("resname B1")
             elctrd_bot_pos_z = elctrd_bot.positions[:, 2]
             if not np.allclose(
-                elctrd_bot_pos_z, ELCTRD_THK, rtol=0, atol=1e-6
+                elctrd_bot_pos_z, self.elctrd.ELCTRD_THK, rtol=0, atol=1e-6
             ):
                 raise ValueError(
-                    "`elctrd_bot_pos_z` ({}) != `ELCTRD_THK` ({})".format(
+                    "`elctrd_bot_pos_z` ({}) != `self.elctrd.ELCTRD_THK`"
+                    " ({})".format(
                         (np.min(elctrd_bot_pos_z), np.max(elctrd_bot_pos_z)),
-                        ELCTRD_THK,
+                        self.elctrd.ELCTRD_THK,
                     )
                 )
 
@@ -816,13 +844,16 @@ class Simulation:
             elctrd_top_pos_z = elctrd_top.positions[:, 2]
             box_z = self.universe.dimensions[2]
             if not np.allclose(
-                elctrd_top_pos_z, box_z - ELCTRD_THK, rtol=0, atol=1e-2
+                elctrd_top_pos_z,
+                box_z - self.elctrd.ELCTRD_THK,
+                rtol=0,
+                atol=1e-2,
             ):
                 raise ValueError(
-                    "`elctrd_top_pos_z` ({}) != `box_z - ELCTRD_THK`"
-                    " ({})".format(
+                    "`elctrd_top_pos_z` ({}) !="
+                    " `box_z - self.elctrd.ELCTRD_THK` ({})".format(
                         (np.min(elctrd_top_pos_z), np.max(elctrd_top_pos_z)),
-                        box_z - ELCTRD_THK,
+                        box_z - self.elctrd.ELCTRD_THK,
                     )
                 )
 
@@ -1150,7 +1181,7 @@ class Simulation:
         if self.is_bulk:
             vol_elctrd = 0.0
         else:
-            elctrd_thk = 2 * ELCTRD_THK + GRA_SIGMA_LJ
+            elctrd_thk = 2 * self.elctrd.ELCTRD_THK + self.elctrd.GRA_SIGMA_LJ
             vol_elctrd = elctrd_thk * np.prod(self.box[:2])
         vol_access = vol_tot - vol_elctrd
         if vol_access <= 0:
