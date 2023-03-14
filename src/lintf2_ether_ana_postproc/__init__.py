@@ -6,7 +6,7 @@ of LiTFSI-ether mixtures.
 
 
 # Local imports
-from . import simulation
+from . import plot, simulation
 
 
-__all__ = ["simulation"]
+__all__ = ["plot", "simulation"]
