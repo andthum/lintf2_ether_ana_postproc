@@ -151,6 +151,20 @@ class Simulation:
         :type: str
         """
 
+        self.path_ana = None
+        """
+        Path to the corresponding analysis directory.
+
+        :type: str
+        """
+
+        self.fname_ana_base = None
+        """
+        The base name of corresponding analysis files.
+
+        :type: str
+        """
+
         self.system = None
         """
         Name of the simulated system.
@@ -359,6 +373,8 @@ class Simulation:
         self.elctrd = leap.simulation.Electrode()
         self.get_system()
         self.get_settings()
+        self.get_path_ana()
+        self.get_fname_ana_base()
         self.get_is_bulk()
         self._get_bulk_sim()
         self.get_surfq()
@@ -438,6 +454,71 @@ class Simulation:
         # Remove preceding number and trailing underscore.
         self.settings = self.settings[3:-1]
         return self.settings
+
+    def get_path_ana(self):
+        """
+        Get the path to the corresponding analysis directory.
+
+        Return the value of :attr:`self.path_ana`.  If
+        :attr:`self.path_ana` is ``None``, infer the path to the
+        analysis from :attr:`self.path`, :attr:`self.system` and
+        :attr:`self.settings`.
+
+        Returns
+        -------
+        self.path_ana : str
+            Path to the corresponding analysis directory.
+
+        Raises
+        ------
+        FileNotFoundError :
+            If the corresponding analysis directory cannot be found.
+        """
+        if self.path_ana is not None:
+            return self.path_ana
+
+        if not os.path.isdir(self.path):
+            raise FileNotFoundError(
+                "No such directory: '{}'".format(self.path)
+            )
+        if self.system is None:
+            self.get_system()
+        if self.settings is None:
+            self.get_settings()
+
+        self.path_ana = "ana_" + self.settings + "_" + self.system
+        self.path_ana = os.path.join(self.path, self.path_ana)
+        if not os.path.isdir(self.path_ana):
+            raise FileNotFoundError(
+                "Could not find the corresponding analysis directory.  No such"
+                " directory: '{}'".format(self.path_ana)
+            )
+        return self.path_ana
+
+    def get_fname_ana_base(self):
+        """
+        Get the base name of corresponding analysis files.
+
+        Return the value of :attr:`self.fname_ana_base`.  If
+        :attr:`self.fname_ana_base` is ``None``, infer the base name of
+        analysis files from :attr:`self.system` and
+        :attr:`self.settings`.
+
+        Returns
+        -------
+        self.fname_ana_base : str
+            The base name of corresponding analysis files.
+        """
+        if self.fname_ana_base is not None:
+            return self.fname_ana_base
+
+        if self.system is None:
+            self.get_system()
+        if self.settings is None:
+            self.get_settings()
+
+        self.fname_ana_base = self.settings + "_" + self.system + "_"
+        return self.fname_ana_base
 
     def get_is_bulk(self):
         """
