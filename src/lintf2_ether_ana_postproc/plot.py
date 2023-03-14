@@ -4,6 +4,14 @@
 import lintf2_ether_ana_postproc as leap
 
 
+atom_type2display_name = {
+    "Li": r"Li",
+    "NBT": r"N_{TFSI}",
+    "OBT": r"O_{TFSI}",
+    "OE": r"O_{PEO}",
+}
+
+
 def plot_elctrd_left(ax, **kwargs):
     """
     Plot the position of the electrode layers of the left electrode as
