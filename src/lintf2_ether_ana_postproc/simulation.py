@@ -1453,6 +1453,32 @@ class Simulations:
         :type: list
         """
 
+        self.paths = None
+        """
+        List containing the path to each
+        :class:`~lintf2_ether_ana_postproc.simulation.Simulation`
+        directory.
+
+        :type: list
+        """
+
+        self.paths_ana = None
+        """
+        List containing the path to each corresponding analysis
+        directory.
+
+        :type: list
+        """
+
+        self.fnames_ana_base = None
+        """
+        List containing the base name of corresponding analysis files
+        for each
+        :class:`~lintf2_ether_ana_postproc.simulation.Simulation`.
+
+        :type: list
+        """
+
         self.res_names = None
         """
         Dictionary containing the residue names of the cation, the anion
@@ -1567,6 +1593,9 @@ class Simulations:
                 raise FileNotFoundError("No such directory: '{}'".format(path))
             self.paths.append(os.path.abspath(path))
         self.get_sims()
+        self.get_paths()
+        self.get_paths_ana()
+        self.get_fnames_ana_base()
         self.get_res_names()
         self.get_res_nums()
         self.get_surfqs()
@@ -1608,6 +1637,80 @@ class Simulations:
             )
 
         self.sims = [leap.simulation.Simulation(path) for path in self.paths]
+        return self.sims
+
+    def get_paths(self):
+        """
+        Get the path to each
+        :class:`~lintf2_ether_ana_postproc.simulation.Simulation`
+        directory.
+
+        Return the value of :attr:`self.paths`.  If :attr:`self.paths`
+        is ``None``, create from :attr:`self.sims`.
+
+        Returns
+        -------
+        self.paths : list
+            List containing the path to each
+            :class:`~lintf2_ether_ana_postproc.simulation.Simulation`
+            directory.
+        """
+        if self.paths is not None:
+            return self.paths
+
+        if self.sims is None:
+            self.get_sims()
+
+        self.paths = [sim.path for sim in self.sims]
+        return self.paths
+
+    def get_paths_ana(self):
+        """
+        Get the path to each corresponding analysis directory.
+
+        Return the value of :attr:`self.paths_ana`.  If
+        :attr:`self.paths_ana` is ``None``, create from
+        :attr:`self.sims`.
+
+        Returns
+        -------
+        self.paths_ana : list
+            List containing the path to each corresponding analysis
+            directory.
+        """
+        if self.paths_ana is not None:
+            return self.paths_ana
+
+        if self.sims is None:
+            self.get_sims()
+
+        self.paths_ana = [sim.path_ana for sim in self.sims]
+        return self.paths_ana
+
+    def get_fnames_ana_base(self):
+        """
+        Get the base name of corresponding analysis files for each
+        :class:`~lintf2_ether_ana_postproc.simulation.Simulation`.
+
+        Return the value of :attr:`self.fnames_ana_base`.  If
+        :attr:`self.fnames_ana_base` is ``None``, create it from
+        :attr:`self.sims`.
+
+        Returns
+        -------
+        self.fnames_ana_base : list
+            List containing the base name of corresponding analysis
+            files for each
+            :class:`~lintf2_ether_ana_postproc.simulation.Simulation`.
+        """
+        if self.fnames_ana_base is not None:
+            return self.fnames_ana_base
+
+        if self.sims is None:
+            self.get_sims()
+
+        self.fnames_ana_base = [sim.fname_ana_base for sim in self.sims]
+        return self.fnames_ana_base
 
     def get_res_names(self):
         """
