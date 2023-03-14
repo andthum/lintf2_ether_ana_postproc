@@ -23,11 +23,11 @@ def plot_elctrd_left(ax, **kwargs):
     kwargs.setdefault("color", "tab:gray")
     kwargs.setdefault("linestyle", "dashed")
 
-    elctrd = leap.simulation.Electrode()
+    Elctrd = leap.simulation.Electrode()
     elctrd_pos_z = 0
-    for _ in range(elctrd.GRA_LAYERS_N):
+    for _ in range(Elctrd.GRA_LAYERS_N):
         ax.axvline(x=elctrd_pos_z, **kwargs)
-        elctrd_pos_z += elctrd.GRA_LAYER_DIST / 10  # nm -> Angstrom
+        elctrd_pos_z += Elctrd.GRA_LAYER_DIST / 10  # nm -> Angstrom
 
 
 def plot_elctrd_right(ax, box_z, **kwargs):
@@ -51,11 +51,11 @@ def plot_elctrd_right(ax, box_z, **kwargs):
     kwargs.setdefault("color", "tab:gray")
     kwargs.setdefault("linestyle", "dashed")
 
-    elctrd = leap.simulation.Electrode()
+    Elctrd = leap.simulation.Electrode()
     elctrd_pos_z = box_z
-    for _ in range(elctrd.GRA_LAYERS_N):
+    for _ in range(Elctrd.GRA_LAYERS_N):
         ax.axvline(x=elctrd_pos_z, **kwargs)
-        elctrd_pos_z -= elctrd.GRA_LAYER_DIST / 10  # nm -> Angstrom
+        elctrd_pos_z -= Elctrd.GRA_LAYER_DIST / 10  # nm -> Angstrom
 
 
 def plot_elctrds(ax, box_z, **kwargs):

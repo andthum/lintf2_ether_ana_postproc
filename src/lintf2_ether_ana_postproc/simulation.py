@@ -195,7 +195,7 @@ class Simulation:
         :type: str
         """
 
-        self._bulk_sim = None
+        self._BulkSim = None
         """
         The corresponding bulk
         :class:`~lintf2_ether_ana_postproc.simulation.Simulation` (only
@@ -370,7 +370,7 @@ class Simulation:
         if not os.path.isdir(path):
             raise FileNotFoundError("No such directory: '{}'".format(path))
         self.path = os.path.abspath(path)
-        self.elctrd = leap.simulation.Electrode()
+        self.Elctrd = leap.simulation.Electrode()
         self.get_system()
         self.get_settings()
         self.get_path_ana()
@@ -612,13 +612,13 @@ class Simulation:
         :class:`~lintf2_ether_ana_postproc.simulation.Simulation` (only
         relevant for surface simulations).
 
-        Return the value of :attr:`self._bulk_sim`.  If
-        :attr:`self._bulk_sim` is ``None``, create the bulk
+        Return the value of :attr:`self._BulkSim`.  If
+        :attr:`self._BulkSim` is ``None``, create the bulk
         :class:`Simulation` from :attr:`self._bulk_sim_path`.
 
         Returns
         -------
-        self._bulk_sim :
+        self._BulkSim :
             :class:`lintf2_ether_ana_postproc.simulation.Simulation`
 
             The corresponding bulk
@@ -627,18 +627,18 @@ class Simulation:
             :class:`~lintf2_ether_ana_postproc.simulation.Simulation` is
             already a bulk simulation, this is ``None``.
         """
-        if self._bulk_sim is not None:
-            return self._bulk_sim
+        if self._BulkSim is not None:
+            return self._BulkSim
 
         if self._bulk_sim_path is None:
             self._get_bulk_sim_path()
 
         if self.is_bulk:
             # This simulation is already a bulk simulation.
-            self._bulk_sim = None
+            self._BulkSim = None
         else:
-            self._bulk_sim = leap.simulation.Simulation(self._bulk_sim_path)
-        return self._bulk_sim
+            self._BulkSim = leap.simulation.Simulation(self._bulk_sim_path)
+        return self._BulkSim
 
     def get_surfq(self):
         """
@@ -785,12 +785,12 @@ class Simulation:
             )
         self.temp = float(self.temp)
 
-        if self._bulk_sim is not None and not np.isclose(
-            self.temp, self._bulk_sim.temp, rtol=0
+        if self._BulkSim is not None and not np.isclose(
+            self.temp, self._BulkSim.temp, rtol=0
         ):
             raise ValueError(
-                "`self.temp` ({}) != `self._bulk_sim.temp`"
-                " ({})".format(self.temp, self._bulk_sim.temp)
+                "`self.temp` ({}) != `self._BulkSim.temp`"
+                " ({})".format(self.temp, self._BulkSim.temp)
             )
 
         return self.temp
@@ -898,12 +898,12 @@ class Simulation:
                 )
             )
         if (
-            self._bulk_sim is not None
-            and self.res_names != self._bulk_sim.res_names
+            self._BulkSim is not None
+            and self.res_names != self._BulkSim.res_names
         ):
             raise ValueError(
-                "`self.res_names` ({}) != `self._bulk_sim.res_names`"
-                " ({})".format(self.res_names, self._bulk_sim.res_names)
+                "`self.res_names` ({}) != `self._BulkSim.res_names`"
+                " ({})".format(self.res_names, self._BulkSim.res_names)
             )
 
         return self.res_names
@@ -954,13 +954,13 @@ class Simulation:
             elctrd_bot = self.universe.select_atoms("resname B1")
             elctrd_bot_pos_z = elctrd_bot.positions[:, 2]
             if not np.allclose(
-                elctrd_bot_pos_z, self.elctrd.ELCTRD_THK, rtol=0, atol=1e-6
+                elctrd_bot_pos_z, self.Elctrd.ELCTRD_THK, rtol=0, atol=1e-6
             ):
                 raise ValueError(
-                    "`elctrd_bot_pos_z` ({}) != `self.elctrd.ELCTRD_THK`"
+                    "`elctrd_bot_pos_z` ({}) != `self.Elctrd.ELCTRD_THK`"
                     " ({})".format(
                         (np.min(elctrd_bot_pos_z), np.max(elctrd_bot_pos_z)),
-                        self.elctrd.ELCTRD_THK,
+                        self.Elctrd.ELCTRD_THK,
                     )
                 )
 
@@ -974,15 +974,15 @@ class Simulation:
             box_z = self.universe.dimensions[2]
             if not np.allclose(
                 elctrd_top_pos_z,
-                box_z - self.elctrd.ELCTRD_THK,
+                box_z - self.Elctrd.ELCTRD_THK,
                 rtol=0,
                 atol=1e-2,
             ):
                 raise ValueError(
                     "`elctrd_top_pos_z` ({}) !="
-                    " `box_z - self.elctrd.ELCTRD_THK` ({})".format(
+                    " `box_z - self.Elctrd.ELCTRD_THK` ({})".format(
                         (np.min(elctrd_top_pos_z), np.max(elctrd_top_pos_z)),
-                        box_z - self.elctrd.ELCTRD_THK,
+                        box_z - self.Elctrd.ELCTRD_THK,
                     )
                 )
 
@@ -1065,14 +1065,14 @@ class Simulation:
                     self.res_names.values(), self.top_info["res"].keys()
                 )
             )
-        if self._bulk_sim is not None and any(
-            self.top_info["res"][rn] != self._bulk_sim.top_info["res"][rn]
+        if self._BulkSim is not None and any(
+            self.top_info["res"][rn] != self._BulkSim.top_info["res"][rn]
             for rn in self.res_names.values()
         ):
             raise ValueError(
-                "self.top_info['res'] ({}) != self._bulk_sim.top_info['res']"
+                "self.top_info['res'] ({}) != self._BulkSim.top_info['res']"
                 " ({})".format(
-                    self.top_info["res"], self._bulk_sim.top_info["res"]
+                    self.top_info["res"], self._BulkSim.top_info["res"]
                 )
             )
 
@@ -1122,12 +1122,12 @@ class Simulation:
                 " ({})".format(self.O_per_chain, O_per_chain_check)
             )
         if (
-            self._bulk_sim is not None
-            and self.O_per_chain != self._bulk_sim.O_per_chain
+            self._BulkSim is not None
+            and self.O_per_chain != self._BulkSim.O_per_chain
         ):
             raise ValueError(
-                "`self.O_per_chain` ({}) != `self._bulk_sim.O_per_chain`"
-                " ({})".format(self.O_per_chain, self._bulk_sim.O_per_chain)
+                "`self.O_per_chain` ({}) != `self._BulkSim.O_per_chain`"
+                " ({})".format(self.O_per_chain, self._BulkSim.O_per_chain)
             )
 
         return self.O_per_chain
@@ -1171,12 +1171,12 @@ class Simulation:
                 "`self.O_Li_ratio` ({}) != `self._O_Li_ratio_sys`"
                 " ({})".format(self.O_Li_ratio, self._O_Li_ratio_sys)
             )
-        if self._bulk_sim is not None and not np.isclose(
-            self.O_Li_ratio, self._bulk_sim.O_Li_ratio, rtol=0
+        if self._BulkSim is not None and not np.isclose(
+            self.O_Li_ratio, self._BulkSim.O_Li_ratio, rtol=0
         ):
             raise ValueError(
-                "`self.O_Li_ratio` ({}) != `self._bulk_sim.O_Li_ratio`"
-                " ({})".format(self.O_Li_ratio, self._bulk_sim.O_Li_ratio)
+                "`self.O_Li_ratio` ({}) != `self._BulkSim.O_Li_ratio`"
+                " ({})".format(self.O_Li_ratio, self._BulkSim.O_Li_ratio)
             )
 
         return self.O_Li_ratio
@@ -1228,13 +1228,13 @@ class Simulation:
                 "`self.O_Li_ratio` ({}) != `self._O_Li_ratio_sys`"
                 " ({})".format(self.O_Li_ratio, self._O_Li_ratio_sys)
             )
-        if self._bulk_sim is not None and not np.isclose(
-            self._O_Li_ratio_sys, self._bulk_sim._O_Li_ratio_sys, rtol=0
+        if self._BulkSim is not None and not np.isclose(
+            self._O_Li_ratio_sys, self._BulkSim._O_Li_ratio_sys, rtol=0
         ):
             raise ValueError(
                 "`self._O_Li_ratio_sys` ({}) !="
-                " `self._bulk_sim._O_Li_ratio_sys` ({})".format(
-                    self._O_Li_ratio_sys, self._bulk_sim._O_Li_ratio_sys
+                " `self._BulkSim._O_Li_ratio_sys` ({})".format(
+                    self._O_Li_ratio_sys, self._BulkSim._O_Li_ratio_sys
                 )
             )
 
@@ -1266,12 +1266,12 @@ class Simulation:
 
         self.Li_O_ratio = 1 / self.O_Li_ratio
 
-        if self._bulk_sim is not None and not np.isclose(
-            self.Li_O_ratio, self._bulk_sim.Li_O_ratio, rtol=0
+        if self._BulkSim is not None and not np.isclose(
+            self.Li_O_ratio, self._BulkSim.Li_O_ratio, rtol=0
         ):
             raise ValueError(
-                "`self.Li_O_ratio` ({}) != `self._bulk_sim.Li_O_ratio`"
-                " ({})".format(self.Li_O_ratio, self._bulk_sim.Li_O_ratio)
+                "`self.Li_O_ratio` ({}) != `self._BulkSim.Li_O_ratio`"
+                " ({})".format(self.Li_O_ratio, self._BulkSim.Li_O_ratio)
             )
 
         return self.Li_O_ratio
@@ -1310,7 +1310,7 @@ class Simulation:
         if self.is_bulk:
             vol_elctrd = 0.0
         else:
-            elctrd_thk = 2 * self.elctrd.ELCTRD_THK + self.elctrd.GRA_SIGMA_LJ
+            elctrd_thk = 2 * self.Elctrd.ELCTRD_THK + self.Elctrd.GRA_SIGMA_LJ
             vol_elctrd = elctrd_thk * np.prod(self.box[:2])
         vol_access = vol_tot - vol_elctrd
         if vol_access <= 0:
@@ -1322,14 +1322,12 @@ class Simulation:
             "elctrd": vol_elctrd,
         }
 
-        if self._bulk_sim is not None and not np.isclose(
-            self.vol["access"], self._bulk_sim.vol["access"], rtol=0, atol=5
+        if self._BulkSim is not None and not np.isclose(
+            self.vol["access"], self._BulkSim.vol["access"], rtol=0, atol=5
         ):
             raise ValueError(
-                "`self.vol['access']` ({}) != `self._bulk_sim.vol['access']`"
-                " ({})".format(
-                    self.vol["access"], self._bulk_sim.vol["access"]
-                )
+                "`self.vol['access']` ({}) != `self._BulkSim.vol['access']`"
+                " ({})".format(self.vol["access"], self._BulkSim.vol["access"])
             )
 
         return self.vol
