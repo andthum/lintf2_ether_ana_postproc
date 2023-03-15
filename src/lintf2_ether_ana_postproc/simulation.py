@@ -215,7 +215,7 @@ class Simulation:
         self._surfq_u = None
         """
         Surface charge of the electrodes (if present) in e/Angstrom^2 as
-        inferred from :attr:`self.universe`.
+        inferred from :attr:`self._Universe`.
 
         See Also
         --------
@@ -263,7 +263,7 @@ class Simulation:
         :type: str
         """
 
-        self.universe = None
+        self._Universe = None
         """
         MDAnalysis :class:`~MDAnalysis.core.universe.Universe` created
         from the output .gro file of the simulation.
@@ -376,12 +376,12 @@ class Simulation:
         self.get_path_ana()
         self.get_fname_ana_base()
         self.get_is_bulk()
-        self._get_bulk_sim()
+        self._get_BulkSim()
         self.get_surfq()
         self.get_temp()
         self.get_sim_files()
         self.get_res_names()
-        self.get_universe()
+        self._get_Universe()
         self.get_box()
         self.get_top_info()
         self.get_O_per_chain()
@@ -389,6 +389,11 @@ class Simulation:
         self.get_Li_O_ratio()
         self.get_vol()
         self.get_dens()
+
+        # Release memory.
+        del self._Universe, self._BulkSim
+        self._Universe = None
+        self._BulkSim = None
 
     def get_system(self):
         """
@@ -543,7 +548,7 @@ class Simulation:
             self.is_bulk = False
         return self.is_bulk
 
-    def _get_bulk_sim_path(self):
+    def _get_BulkSim_path(self):
         """
         Get the path to the corresponding bulk simulation (only relevant
         for surface simulations).
@@ -606,7 +611,7 @@ class Simulation:
         self._bulk_sim_path = bulk_sim_path
         return self._bulk_sim_path
 
-    def _get_bulk_sim(self):
+    def _get_BulkSim(self):
         """
         Get the corresponding bulk
         :class:`~lintf2_ether_ana_postproc.simulation.Simulation` (only
@@ -631,7 +636,7 @@ class Simulation:
             return self._BulkSim
 
         if self._bulk_sim_path is None:
-            self._get_bulk_sim_path()
+            self._get_BulkSim_path()
 
         if self.is_bulk:
             # This simulation is already a bulk simulation.
@@ -693,11 +698,11 @@ class Simulation:
     def _get_surfq_u(self):
         """
         Get the surface charge of the electrodes (if present) in
-        e/Angstrom^2 as inferred from :attr:`self.universe`.
+        e/Angstrom^2 as inferred from :attr:`self._Universe`.
 
         Return the value of :attr:`self._surfq_u`.  If
         :attr:`self._surfq_u` is ``None``, infer the surface charge from
-        :attr:`self.universe`.
+        :attr:`self._Universe`.
 
         Returns
         -------
@@ -721,8 +726,8 @@ class Simulation:
         if self.res_names is None:
             # `self.res_names` contains all non-electrode residue names.
             self.get_res_names()
-        if self.universe is None:
-            self.get_universe()
+        if self._Universe is None:
+            self._get_Universe()
         if self.box is None:
             self.get_box()
 
@@ -732,7 +737,7 @@ class Simulation:
 
         elctrds = "not resname "
         elctrds += " and not resname ".join(self.res_names.values())
-        elctrds = self.universe.select_atoms(elctrds)
+        elctrds = self._Universe.select_atoms(elctrds)
         if elctrds.n_atoms == 0:
             raise ValueError(
                 "This is a surface simulation but the system contains no"
@@ -908,30 +913,30 @@ class Simulation:
 
         return self.res_names
 
-    def get_universe(self):
+    def _get_Universe(self):
         """
         Get an MDAnalysis :class:`~MDAnalysis.core.universe.Universe`
         created from the output .gro file of the simulation.
 
-        Return the value of :attr:`self.universe`.  If
-        :attr:`self.universe` is ``None``, create an MDAnalysis
+        Return the value of :attr:`self._Universe`.  If
+        :attr:`self._Universe` is ``None``, create an MDAnalysis
         :class:`~MDAnalysis.core.universe.Universe` from the output .gro
         file of the simulation as given by :attr:`self.gro_file`.
 
         Returns
         -------
-        self.universe : MDAnalysis.core.universe.Universe
+        self._Universe : MDAnalysis.core.universe.Universe
             The created :class:`~MDAnalysis.core.universe.Universe`.
         """
-        if self.universe is not None:
-            return self.universe
+        if self._Universe is not None:
+            return self._Universe
 
         if self.is_bulk is None:
             self.get_is_bulk()
         if self.sim_files is None:
             self.get_sim_files()
 
-        self.universe = mda.Universe(
+        self._Universe = mda.Universe(
             self.sim_files["tpr"], self.sim_files["gro"]
         )
 
@@ -946,12 +951,12 @@ class Simulation:
                     " ({})".format(self._surfq_u, self.surfq)
                 )
 
-            if "B1" not in self.universe.residues.resnames:
+            if "B1" not in self._Universe.residues.resnames:
                 raise ValueError(
                     "The simulation is a surface simulation but it does not"
                     " contain the residue 'B1'"
                 )
-            elctrd_bot = self.universe.select_atoms("resname B1")
+            elctrd_bot = self._Universe.select_atoms("resname B1")
             elctrd_bot_pos_z = elctrd_bot.positions[:, 2]
             if not np.allclose(
                 elctrd_bot_pos_z, self.Elctrd.ELCTRD_THK, rtol=0, atol=1e-6
@@ -964,14 +969,14 @@ class Simulation:
                     )
                 )
 
-            if "T1" not in self.universe.residues.resnames:
+            if "T1" not in self._Universe.residues.resnames:
                 raise ValueError(
                     "The simulation is a surface simulation but it does not"
                     " contain the residue 'T1'"
                 )
-            elctrd_top = self.universe.select_atoms("resname T1")
+            elctrd_top = self._Universe.select_atoms("resname T1")
             elctrd_top_pos_z = elctrd_top.positions[:, 2]
-            box_z = self.universe.dimensions[2]
+            box_z = self._Universe.dimensions[2]
             if not np.allclose(
                 elctrd_top_pos_z,
                 box_z - self.Elctrd.ELCTRD_THK,
@@ -986,14 +991,14 @@ class Simulation:
                     )
                 )
 
-        return self.universe
+        return self._Universe
 
     def get_box(self):
         """
         Get the simulation box dimensions of the simulated system.
 
         Return the value of :attr:`self.box`.  If :attr:`self.box` is
-        ``None``, get the box dimensions from :attr:`self.universe`.
+        ``None``, get the box dimensions from :attr:`self._Universe`.
 
         Lengths are given in Angstroms, angles in degrees.
 
@@ -1007,10 +1012,10 @@ class Simulation:
         if self.box is not None:
             return self.box
 
-        if self.universe is None:
-            self.get_universe()
+        if self._Universe is None:
+            self._get_Universe()
 
-        self.box = self.universe.dimensions
+        self.box = self._Universe.dimensions
         return self.box
 
     def get_top_info(self):
@@ -1019,7 +1024,7 @@ class Simulation:
 
         Return the value of :attr:`self.top_info`.  If
         :attr:`self.top_info` is ``None``, create it by extracting the
-        relevant information from :attr:`self.universe`.
+        relevant information from :attr:`self._Universe`.
 
         Returns
         -------
@@ -1033,10 +1038,10 @@ class Simulation:
 
         if self.res_names is None:
             self.get_res_names()
-        if self.universe is None:
-            self.get_universe()
+        if self._Universe is None:
+            self._get_Universe()
 
-        ag = self.universe.atoms
+        ag = self._Universe.atoms
         sys_dct = {
             "atm_type": leap.simulation.num_atoms_per_type(ag, attr="types"),
             "atm_name": leap.simulation.num_atoms_per_type(ag, attr="names"),
@@ -1283,7 +1288,7 @@ class Simulation:
 
         Return the value of :attr:`self.vol`.  If :attr:`self.vol` is
         ``None``, it is calculated from the box information contained in
-        :attr:`self.universe`.  It is assumed that the box is
+        :attr:`self._Universe`.  It is assumed that the box is
         orthorhombic.
 
         The accessible volume is the total volume minus the volume of
@@ -1338,7 +1343,7 @@ class Simulation:
         electrolyte components.
 
         Return the value of :attr:`self.n_dens`.  If :attr:`self.n_dens`
-        is ``None``, calculate the densities from :attr:`self.universe`
+        is ``None``, calculate the densities from :attr:`self._Universe`
         and :attr:`self.vol`.
 
         Mass densities are given in u/A^3, number densities are given in
@@ -1362,8 +1367,8 @@ class Simulation:
 
         if self.res_names is None:
             self.get_res_names()
-        if self.universe is None:
-            self.get_universe()
+        if self._Universe is None:
+            self._get_Universe()
         if self.top_info is None:
             self.get_top_info()
         if self.vol is None:
@@ -1375,7 +1380,7 @@ class Simulation:
         # Densities of all atoms by their type.
         self.dens["atm_type"] = {}
         for at in self.top_info["sys"]["atm_type"].keys():
-            ag = self.universe.select_atoms("type {}".format(at))
+            ag = self._Universe.select_atoms("type {}".format(at))
             n_atm = ag.n_atoms
             m_atm = np.sum(ag.masses)
             atm_dct = {"num": n_atm / vol, "mass": m_atm / vol}
@@ -1386,7 +1391,7 @@ class Simulation:
         # # Densities of all atoms by their name.
         # self.dens["atm_name"] = {}
         # for an in self.top_info["sys"]["atm_name"].keys():
-        #     ag = self.universe.select_atoms("name {}".format(an))
+        #     ag = self._Universe.select_atoms("name {}".format(an))
         #     n_atm = ag.n_atoms
         #     m_atm = np.sum(ag.masses)
         #     atm_dct = {"num": n_atm / vol, "mass": m_atm / vol}
@@ -1397,7 +1402,7 @@ class Simulation:
         # # Densities of all residues.
         # self.dens["res"] = {}
         # for rn in self.top_info["res"].keys():
-        #     ag = self.universe.select_atoms("resname {}".format(rn))
+        #     ag = self._Universe.select_atoms("resname {}".format(rn))
         #     n_res = ag.n_residues
         #     m_res = np.sum(ag.residues.masses)
         #     res_dct = {"num": n_res / vol, "mass": m_res / vol}
@@ -1407,7 +1412,7 @@ class Simulation:
         self.dens["elctrlyt"] = {}
         n_elctrlyt, m_elctrlyt = 0, 0
         for res_type, rn in self.res_names.items():
-            ag = self.universe.select_atoms("resname {}".format(rn))
+            ag = self._Universe.select_atoms("resname {}".format(rn))
             n_res = ag.n_residues
             n_elctrlyt += n_res
             m_res = np.sum(ag.residues.masses)
