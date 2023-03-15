@@ -1468,7 +1468,7 @@ class Simulations:
     :type: float
     """
 
-    def __init__(self, *paths):
+    def __init__(self, *paths, sort_key=None):
         """
         Initialize an instance of the
         :class:`~lintf2_ether_ana_postproc.simulation.Simulations`
@@ -1482,19 +1482,34 @@ class Simulations:
             want to use.  See
             :class:`lintf2_ether_ana_postproc.simulation.Simulation` for
             details.
-
-            The simulations in this container class are sorted in the
-            order of the input paths.  Duplicate simulations are kept.
+        sort_key : callable, str or None, optional
+            Sort key for sorting the simulations with the built-in
+            function :func:`sorted`.  If `sort_key` is ``None``, the
+            simulations in this container class are sorted in the order
+            of the input paths.  If `sort_key` is a string, it must be
+            a common attribute of all
+            :class:`~lintf2_ether_ana_postproc.simulation.Simulation`
+            instances that can be used for sorting with :func:`sorted`.
+            Duplicate simulations are always kept.
         """
         # Instance attributes.
-        self.sims = None
-        """
-        List containing all stored
-        :class:`~lintf2_ether_ana_postproc.simulation.Simulation`
-        instances.
+        try:
+            self.sims
+            # Variable does already exist, because class instance is
+            # re-initialized by `self.sort_sims` -> Don't set
+            # `self.sims` to ``None`` to avoid unnecessary
+            # re-initialization of all stored Simulation instances.
+        except AttributeError:
+            # Variable does not exist -> Class instance is initialized
+            # for the first time.
+            self.sims = None
+            """
+            List containing all stored
+            :class:`~lintf2_ether_ana_postproc.simulation.Simulation`
+            instances.
 
-        :type: list
-        """
+            :type: list
+            """
 
         self.paths = None
         """
@@ -1635,8 +1650,7 @@ class Simulations:
             if not os.path.isdir(path):
                 raise FileNotFoundError("No such directory: '{}'".format(path))
             self.paths.append(os.path.abspath(path))
-        self.get_sims()
-        self.get_paths()
+        self.get_sims(sort_key)
         self.get_paths_ana()
         self.get_fnames_ana_base()
         self.get_res_names()
@@ -1651,7 +1665,7 @@ class Simulations:
         self.get_vols()
         self.get_dens()
 
-    def get_sims(self):
+    def get_sims(self, sort_key=None):
         """
         Get the stored
         :class:`~lintf2_ether_ana_postproc.simulation.Simulation`
@@ -1663,10 +1677,22 @@ class Simulations:
         instances from :attr:`self.paths` and store them in
         :attr:`self.sims`.
 
+        Parameters
+        ----------
+        sort_key : callable, str or None, optional
+            Sort key for sorting the simulations with the built-in
+            function :func:`sorted`.  If `sort_key` is ``None``, the
+            simulations are sorted in the order of :attr:`self.paths`.
+            If `sort_key` is a string, it must be a common attribute of
+            all
+            :class:`~lintf2_ether_ana_postproc.simulation.Simulation`
+            instances that can be used for sorting with :func:`sorted`.
+            Duplicate simulations are always kept.
+
         Returns
         -------
         self.sims : list
-            The list of stored
+            The list of stored (and sorted)
             :class:`~lintf2_ether_ana_postproc.simulation.Simulation`
             instances.
         """
@@ -1680,6 +1706,44 @@ class Simulations:
             )
 
         self.sims = [leap.simulation.Simulation(path) for path in self.paths]
+        if sort_key is not None:
+            self.sort_sims(sort_key)
+        return self.sims
+
+    def sort_sims(self, sort_key):
+        """
+        Sort the simulations contained in this container class.
+
+        This re-initialized the class instance to sort all instance
+        attributes accordingly.
+
+        Parameters
+        ----------
+        sort_key : callable or str, optional
+            Sort key for sorting the simulations with the built-in
+            function :func:`sorted`.  If `sort_key` is a string, it must
+            be a common attribute of all
+            :class:`~lintf2_ether_ana_postproc.simulation.Simulation`
+            instances that can be used for sorting with :func:`sorted`.
+            Duplicate simulations are always kept.
+        """
+        if self.sims is None:
+            self.get_sims()
+
+        if self.sims is None:
+            raise ValueError("No simulations to sort")
+        if isinstance(sort_key, str):
+            self.sims = sorted(
+                self.sims, key=lambda sim: getattr(sim, sort_key)
+            )
+        else:
+            self.sims = sorted(self.sims, key=sort_key)
+
+        # Sort all other attributes accordingly by re-initializing the
+        # class instance.
+        paths = [sim.path for sim in self.sims]
+        self.__init__(*paths)
+
         return self.sims
 
     def get_paths(self):
