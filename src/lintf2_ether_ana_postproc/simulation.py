@@ -15,17 +15,91 @@ from scipy import constants as const
 import lintf2_ether_ana_postproc as leap
 
 
-#: Lennard-Jones radius of graphene atoms in Angstrom.
-GRA_SIGMA_LJ = 3.55
+class SimPaths:
+    """
+    Class containing the top-level paths to the Gromacs MD simulations.
 
-#: Number of graphene layers.
-GRA_LAYERS_N = 3
+    All attributes should be treated as read-only attributes.  Don't
+    change them after initialization.
+    """
 
-#: Distance between two graphene layers in Angstrom.
-GRA_LAYER_DIST = 3.35
+    def __init__(self, root=None):
+        """
+        Initialize a :class:`~lintf2_ether_ana_postproc.simulation.Path`
+        instance.
 
-#: Electrode thickness in Angstrom.
-ELCTRD_THK = (GRA_LAYERS_N - 1) * GRA_LAYER_DIST
+        Parameters
+        ----------
+        root : str or bytes or os.PathLike or None, optional
+            Path of the root directory that contains all Gromacs MD
+            simulations.  If `root` is ``None``, it is set to
+            ``"${HOME}/ownCloud/WWU_Münster/Promotion/Simulationen/results/lintf2_peo"``
+
+        Raises
+        ------
+        FileNotFoundError
+            If the root directory or one of the required sub-directories
+            does not exist.
+        """  # noqa: E501
+        if root is None:
+            root = "${HOME}/ownCloud/WWU_Münster/Promotion/Simulationen/results/lintf2_peo"  # noqa: E501
+        root = os.path.abspath(os.path.expandvars(os.path.expanduser(root)))
+
+        self.PATHS = {"root": root}
+        """
+        Top-level directories containing the Gromacs MD simulations.
+
+        :type: dict
+        """
+
+        for path in ("bulk", "walls"):
+            self.PATHS[path] = os.path.normpath(os.path.join(root, path))
+        for path in ("q0", "q0.25", "q0.5", "q0.75", "q1"):
+            self.PATHS[path] = os.path.normpath(
+                os.path.join(self.PATHS["walls"], path)
+            )
+        for path in self.PATHS.values():
+            if not os.path.isdir(path):
+                raise ValueError("No such directory: '{}'".format(path))
+
+
+class Electrode:
+    """
+    Class containing the properties of a single graphene electrode used
+    in the simulations.
+
+    All attributes should be treated as read-only attributes.  Don't
+    change them after initialization.
+    """
+
+    def __init__(self):
+        self.GRA_SIGMA_LJ = 3.55
+        """
+        Lennard-Jones radius of graphene atoms in Angstroms.
+
+        :type: float
+        """
+
+        self.GRA_LAYERS_N = 3
+        """
+        Number of graphene layers.
+
+        :type: int
+        """
+
+        self.GRA_LAYER_DIST = 3.35
+        """
+        Distance between two graphene layers in Angstroms.
+
+        :type: float
+        """
+
+        self.ELCTRD_THK = (self.GRA_LAYERS_N - 1) * self.GRA_LAYER_DIST
+        """
+        Electrode thickness in Angstroms.
+
+        :type: float
+        """
 
 
 class Simulation:
@@ -77,6 +151,20 @@ class Simulation:
         :type: str
         """
 
+        self.path_ana = None
+        """
+        Path to the corresponding analysis directory.
+
+        :type: str
+        """
+
+        self.fname_ana_base = None
+        """
+        The base name of corresponding analysis files.
+
+        :type: str
+        """
+
         self.system = None
         """
         Name of the simulated system.
@@ -107,7 +195,7 @@ class Simulation:
         :type: str
         """
 
-        self._bulk_sim = None
+        self._BulkSim = None
         """
         The corresponding bulk
         :class:`~lintf2_ether_ana_postproc.simulation.Simulation` (only
@@ -127,7 +215,7 @@ class Simulation:
         self._surfq_u = None
         """
         Surface charge of the electrodes (if present) in e/Angstrom^2 as
-        inferred from :attr:`self.universe`.
+        inferred from :attr:`self._Universe`.
 
         See Also
         --------
@@ -175,7 +263,7 @@ class Simulation:
         :type: str
         """
 
-        self.universe = None
+        self._Universe = None
         """
         MDAnalysis :class:`~MDAnalysis.core.universe.Universe` created
         from the output .gro file of the simulation.
@@ -263,8 +351,8 @@ class Simulation:
 
         self.dens = None
         """
-        Mass and number densities of the cation, the anion and the
-        solvent as given by :attr:`self.res_names`.
+        Mass and number densities of all atom types and all electrolyte
+        components.
 
         Mass densities are given in u/A^3, number densities are given in
         1/A^3.
@@ -282,15 +370,18 @@ class Simulation:
         if not os.path.isdir(path):
             raise FileNotFoundError("No such directory: '{}'".format(path))
         self.path = os.path.abspath(path)
+        self.Elctrd = leap.simulation.Electrode()
         self.get_system()
         self.get_settings()
+        self.get_path_ana()
+        self.get_fname_ana_base()
         self.get_is_bulk()
-        self._get_bulk_sim()
+        self._get_BulkSim()
         self.get_surfq()
         self.get_temp()
         self.get_sim_files()
         self.get_res_names()
-        self.get_universe()
+        self._get_Universe()
         self.get_box()
         self.get_top_info()
         self.get_O_per_chain()
@@ -298,6 +389,11 @@ class Simulation:
         self.get_Li_O_ratio()
         self.get_vol()
         self.get_dens()
+
+        # Release memory.
+        del self._Universe, self._BulkSim
+        self._Universe = None
+        self._BulkSim = None
 
     def get_system(self):
         """
@@ -364,6 +460,71 @@ class Simulation:
         self.settings = self.settings[3:-1]
         return self.settings
 
+    def get_path_ana(self):
+        """
+        Get the path to the corresponding analysis directory.
+
+        Return the value of :attr:`self.path_ana`.  If
+        :attr:`self.path_ana` is ``None``, infer the path to the
+        analysis from :attr:`self.path`, :attr:`self.system` and
+        :attr:`self.settings`.
+
+        Returns
+        -------
+        self.path_ana : str
+            Path to the corresponding analysis directory.
+
+        Raises
+        ------
+        FileNotFoundError :
+            If the corresponding analysis directory cannot be found.
+        """
+        if self.path_ana is not None:
+            return self.path_ana
+
+        if not os.path.isdir(self.path):
+            raise FileNotFoundError(
+                "No such directory: '{}'".format(self.path)
+            )
+        if self.system is None:
+            self.get_system()
+        if self.settings is None:
+            self.get_settings()
+
+        self.path_ana = "ana_" + self.settings + "_" + self.system
+        self.path_ana = os.path.join(self.path, self.path_ana)
+        if not os.path.isdir(self.path_ana):
+            raise FileNotFoundError(
+                "Could not find the corresponding analysis directory.  No such"
+                " directory: '{}'".format(self.path_ana)
+            )
+        return self.path_ana
+
+    def get_fname_ana_base(self):
+        """
+        Get the base name of corresponding analysis files.
+
+        Return the value of :attr:`self.fname_ana_base`.  If
+        :attr:`self.fname_ana_base` is ``None``, infer the base name of
+        analysis files from :attr:`self.system` and
+        :attr:`self.settings`.
+
+        Returns
+        -------
+        self.fname_ana_base : str
+            The base name of corresponding analysis files.
+        """
+        if self.fname_ana_base is not None:
+            return self.fname_ana_base
+
+        if self.system is None:
+            self.get_system()
+        if self.settings is None:
+            self.get_settings()
+
+        self.fname_ana_base = self.settings + "_" + self.system + "_"
+        return self.fname_ana_base
+
     def get_is_bulk(self):
         """
         Get the value of :attr:`self.is_bulk`.  If :attr:`self.is_bulk`
@@ -387,7 +548,7 @@ class Simulation:
             self.is_bulk = False
         return self.is_bulk
 
-    def _get_bulk_sim_path(self):
+    def _get_BulkSim_path(self):
         """
         Get the path to the corresponding bulk simulation (only relevant
         for surface simulations).
@@ -450,19 +611,19 @@ class Simulation:
         self._bulk_sim_path = bulk_sim_path
         return self._bulk_sim_path
 
-    def _get_bulk_sim(self):
+    def _get_BulkSim(self):
         """
         Get the corresponding bulk
         :class:`~lintf2_ether_ana_postproc.simulation.Simulation` (only
         relevant for surface simulations).
 
-        Return the value of :attr:`self._bulk_sim`.  If
-        :attr:`self._bulk_sim` is ``None``, create the bulk
+        Return the value of :attr:`self._BulkSim`.  If
+        :attr:`self._BulkSim` is ``None``, create the bulk
         :class:`Simulation` from :attr:`self._bulk_sim_path`.
 
         Returns
         -------
-        self._bulk_sim :
+        self._BulkSim :
             :class:`lintf2_ether_ana_postproc.simulation.Simulation`
 
             The corresponding bulk
@@ -471,18 +632,18 @@ class Simulation:
             :class:`~lintf2_ether_ana_postproc.simulation.Simulation` is
             already a bulk simulation, this is ``None``.
         """
-        if self._bulk_sim is not None:
-            return self._bulk_sim
+        if self._BulkSim is not None:
+            return self._BulkSim
 
         if self._bulk_sim_path is None:
-            self._get_bulk_sim_path()
+            self._get_BulkSim_path()
 
         if self.is_bulk:
             # This simulation is already a bulk simulation.
-            self._bulk_sim = None
+            self._BulkSim = None
         else:
-            self._bulk_sim = leap.simulation.Simulation(self._bulk_sim_path)
-        return self._bulk_sim
+            self._BulkSim = leap.simulation.Simulation(self._bulk_sim_path)
+        return self._BulkSim
 
     def get_surfq(self):
         """
@@ -537,11 +698,11 @@ class Simulation:
     def _get_surfq_u(self):
         """
         Get the surface charge of the electrodes (if present) in
-        e/Angstrom^2 as inferred from :attr:`self.universe`.
+        e/Angstrom^2 as inferred from :attr:`self._Universe`.
 
         Return the value of :attr:`self._surfq_u`.  If
         :attr:`self._surfq_u` is ``None``, infer the surface charge from
-        :attr:`self.universe`.
+        :attr:`self._Universe`.
 
         Returns
         -------
@@ -565,8 +726,8 @@ class Simulation:
         if self.res_names is None:
             # `self.res_names` contains all non-electrode residue names.
             self.get_res_names()
-        if self.universe is None:
-            self.get_universe()
+        if self._Universe is None:
+            self._get_Universe()
         if self.box is None:
             self.get_box()
 
@@ -576,7 +737,7 @@ class Simulation:
 
         elctrds = "not resname "
         elctrds += " and not resname ".join(self.res_names.values())
-        elctrds = self.universe.select_atoms(elctrds)
+        elctrds = self._Universe.select_atoms(elctrds)
         if elctrds.n_atoms == 0:
             raise ValueError(
                 "This is a surface simulation but the system contains no"
@@ -629,12 +790,12 @@ class Simulation:
             )
         self.temp = float(self.temp)
 
-        if self._bulk_sim is not None and not np.isclose(
-            self.temp, self._bulk_sim.temp, rtol=0
+        if self._BulkSim is not None and not np.isclose(
+            self.temp, self._BulkSim.temp, rtol=0
         ):
             raise ValueError(
-                "`self.temp` ({}) != `self._bulk_sim.temp`"
-                " ({})".format(self.temp, self._bulk_sim.temp)
+                "`self.temp` ({}) != `self._BulkSim.temp`"
+                " ({})".format(self.temp, self._BulkSim.temp)
             )
 
         return self.temp
@@ -742,40 +903,40 @@ class Simulation:
                 )
             )
         if (
-            self._bulk_sim is not None
-            and self.res_names != self._bulk_sim.res_names
+            self._BulkSim is not None
+            and self.res_names != self._BulkSim.res_names
         ):
             raise ValueError(
-                "`self.res_names` ({}) != `self._bulk_sim.res_names`"
-                " ({})".format(self.res_names, self._bulk_sim.res_names)
+                "`self.res_names` ({}) != `self._BulkSim.res_names`"
+                " ({})".format(self.res_names, self._BulkSim.res_names)
             )
 
         return self.res_names
 
-    def get_universe(self):
+    def _get_Universe(self):
         """
         Get an MDAnalysis :class:`~MDAnalysis.core.universe.Universe`
         created from the output .gro file of the simulation.
 
-        Return the value of :attr:`self.universe`.  If
-        :attr:`self.universe` is ``None``, create an MDAnalysis
+        Return the value of :attr:`self._Universe`.  If
+        :attr:`self._Universe` is ``None``, create an MDAnalysis
         :class:`~MDAnalysis.core.universe.Universe` from the output .gro
         file of the simulation as given by :attr:`self.gro_file`.
 
         Returns
         -------
-        self.universe : MDAnalysis.core.universe.Universe
+        self._Universe : MDAnalysis.core.universe.Universe
             The created :class:`~MDAnalysis.core.universe.Universe`.
         """
-        if self.universe is not None:
-            return self.universe
+        if self._Universe is not None:
+            return self._Universe
 
         if self.is_bulk is None:
             self.get_is_bulk()
         if self.sim_files is None:
             self.get_sim_files()
 
-        self.universe = mda.Universe(
+        self._Universe = mda.Universe(
             self.sim_files["tpr"], self.sim_files["gro"]
         )
 
@@ -790,50 +951,54 @@ class Simulation:
                     " ({})".format(self._surfq_u, self.surfq)
                 )
 
-            if "B1" not in self.universe.residues.resnames:
+            if "B1" not in self._Universe.residues.resnames:
                 raise ValueError(
                     "The simulation is a surface simulation but it does not"
                     " contain the residue 'B1'"
                 )
-            elctrd_bot = self.universe.select_atoms("resname B1")
+            elctrd_bot = self._Universe.select_atoms("resname B1")
             elctrd_bot_pos_z = elctrd_bot.positions[:, 2]
             if not np.allclose(
-                elctrd_bot_pos_z, ELCTRD_THK, rtol=0, atol=1e-6
+                elctrd_bot_pos_z, self.Elctrd.ELCTRD_THK, rtol=0, atol=1e-6
             ):
                 raise ValueError(
-                    "`elctrd_bot_pos_z` ({}) != `ELCTRD_THK` ({})".format(
+                    "`elctrd_bot_pos_z` ({}) != `self.Elctrd.ELCTRD_THK`"
+                    " ({})".format(
                         (np.min(elctrd_bot_pos_z), np.max(elctrd_bot_pos_z)),
-                        ELCTRD_THK,
+                        self.Elctrd.ELCTRD_THK,
                     )
                 )
 
-            if "T1" not in self.universe.residues.resnames:
+            if "T1" not in self._Universe.residues.resnames:
                 raise ValueError(
                     "The simulation is a surface simulation but it does not"
                     " contain the residue 'T1'"
                 )
-            elctrd_top = self.universe.select_atoms("resname T1")
+            elctrd_top = self._Universe.select_atoms("resname T1")
             elctrd_top_pos_z = elctrd_top.positions[:, 2]
-            box_z = self.universe.dimensions[2]
+            box_z = self._Universe.dimensions[2]
             if not np.allclose(
-                elctrd_top_pos_z, box_z - ELCTRD_THK, rtol=0, atol=1e-2
+                elctrd_top_pos_z,
+                box_z - self.Elctrd.ELCTRD_THK,
+                rtol=0,
+                atol=1e-2,
             ):
                 raise ValueError(
-                    "`elctrd_top_pos_z` ({}) != `box_z - ELCTRD_THK`"
-                    " ({})".format(
+                    "`elctrd_top_pos_z` ({}) !="
+                    " `box_z - self.Elctrd.ELCTRD_THK` ({})".format(
                         (np.min(elctrd_top_pos_z), np.max(elctrd_top_pos_z)),
-                        box_z - ELCTRD_THK,
+                        box_z - self.Elctrd.ELCTRD_THK,
                     )
                 )
 
-        return self.universe
+        return self._Universe
 
     def get_box(self):
         """
         Get the simulation box dimensions of the simulated system.
 
         Return the value of :attr:`self.box`.  If :attr:`self.box` is
-        ``None``, get the box dimensions from :attr:`self.universe`.
+        ``None``, get the box dimensions from :attr:`self._Universe`.
 
         Lengths are given in Angstroms, angles in degrees.
 
@@ -847,10 +1012,10 @@ class Simulation:
         if self.box is not None:
             return self.box
 
-        if self.universe is None:
-            self.get_universe()
+        if self._Universe is None:
+            self._get_Universe()
 
-        self.box = self.universe.dimensions
+        self.box = self._Universe.dimensions
         return self.box
 
     def get_top_info(self):
@@ -859,7 +1024,7 @@ class Simulation:
 
         Return the value of :attr:`self.top_info`.  If
         :attr:`self.top_info` is ``None``, create it by extracting the
-        relevant information from :attr:`self.universe`.
+        relevant information from :attr:`self._Universe`.
 
         Returns
         -------
@@ -873,10 +1038,10 @@ class Simulation:
 
         if self.res_names is None:
             self.get_res_names()
-        if self.universe is None:
-            self.get_universe()
+        if self._Universe is None:
+            self._get_Universe()
 
-        ag = self.universe.atoms
+        ag = self._Universe.atoms
         sys_dct = {
             "atm_type": leap.simulation.num_atoms_per_type(ag, attr="types"),
             "atm_name": leap.simulation.num_atoms_per_type(ag, attr="names"),
@@ -905,14 +1070,14 @@ class Simulation:
                     self.res_names.values(), self.top_info["res"].keys()
                 )
             )
-        if self._bulk_sim is not None and any(
-            self.top_info["res"][rn] != self._bulk_sim.top_info["res"][rn]
+        if self._BulkSim is not None and any(
+            self.top_info["res"][rn] != self._BulkSim.top_info["res"][rn]
             for rn in self.res_names.values()
         ):
             raise ValueError(
-                "self.top_info['res'] ({}) != self._bulk_sim.top_info['res']"
+                "self.top_info['res'] ({}) != self._BulkSim.top_info['res']"
                 " ({})".format(
-                    self.top_info["res"], self._bulk_sim.top_info["res"]
+                    self.top_info["res"], self._BulkSim.top_info["res"]
                 )
             )
 
@@ -962,12 +1127,12 @@ class Simulation:
                 " ({})".format(self.O_per_chain, O_per_chain_check)
             )
         if (
-            self._bulk_sim is not None
-            and self.O_per_chain != self._bulk_sim.O_per_chain
+            self._BulkSim is not None
+            and self.O_per_chain != self._BulkSim.O_per_chain
         ):
             raise ValueError(
-                "`self.O_per_chain` ({}) != `self._bulk_sim.O_per_chain`"
-                " ({})".format(self.O_per_chain, self._bulk_sim.O_per_chain)
+                "`self.O_per_chain` ({}) != `self._BulkSim.O_per_chain`"
+                " ({})".format(self.O_per_chain, self._BulkSim.O_per_chain)
             )
 
         return self.O_per_chain
@@ -1011,12 +1176,12 @@ class Simulation:
                 "`self.O_Li_ratio` ({}) != `self._O_Li_ratio_sys`"
                 " ({})".format(self.O_Li_ratio, self._O_Li_ratio_sys)
             )
-        if self._bulk_sim is not None and not np.isclose(
-            self.O_Li_ratio, self._bulk_sim.O_Li_ratio, rtol=0
+        if self._BulkSim is not None and not np.isclose(
+            self.O_Li_ratio, self._BulkSim.O_Li_ratio, rtol=0
         ):
             raise ValueError(
-                "`self.O_Li_ratio` ({}) != `self._bulk_sim.O_Li_ratio`"
-                " ({})".format(self.O_Li_ratio, self._bulk_sim.O_Li_ratio)
+                "`self.O_Li_ratio` ({}) != `self._BulkSim.O_Li_ratio`"
+                " ({})".format(self.O_Li_ratio, self._BulkSim.O_Li_ratio)
             )
 
         return self.O_Li_ratio
@@ -1068,13 +1233,13 @@ class Simulation:
                 "`self.O_Li_ratio` ({}) != `self._O_Li_ratio_sys`"
                 " ({})".format(self.O_Li_ratio, self._O_Li_ratio_sys)
             )
-        if self._bulk_sim is not None and not np.isclose(
-            self._O_Li_ratio_sys, self._bulk_sim._O_Li_ratio_sys, rtol=0
+        if self._BulkSim is not None and not np.isclose(
+            self._O_Li_ratio_sys, self._BulkSim._O_Li_ratio_sys, rtol=0
         ):
             raise ValueError(
                 "`self._O_Li_ratio_sys` ({}) !="
-                " `self._bulk_sim._O_Li_ratio_sys` ({})".format(
-                    self._O_Li_ratio_sys, self._bulk_sim._O_Li_ratio_sys
+                " `self._BulkSim._O_Li_ratio_sys` ({})".format(
+                    self._O_Li_ratio_sys, self._BulkSim._O_Li_ratio_sys
                 )
             )
 
@@ -1106,12 +1271,12 @@ class Simulation:
 
         self.Li_O_ratio = 1 / self.O_Li_ratio
 
-        if self._bulk_sim is not None and not np.isclose(
-            self.Li_O_ratio, self._bulk_sim.Li_O_ratio, rtol=0
+        if self._BulkSim is not None and not np.isclose(
+            self.Li_O_ratio, self._BulkSim.Li_O_ratio, rtol=0
         ):
             raise ValueError(
-                "`self.Li_O_ratio` ({}) != `self._bulk_sim.Li_O_ratio`"
-                " ({})".format(self.Li_O_ratio, self._bulk_sim.Li_O_ratio)
+                "`self.Li_O_ratio` ({}) != `self._BulkSim.Li_O_ratio`"
+                " ({})".format(self.Li_O_ratio, self._BulkSim.Li_O_ratio)
             )
 
         return self.Li_O_ratio
@@ -1123,7 +1288,7 @@ class Simulation:
 
         Return the value of :attr:`self.vol`.  If :attr:`self.vol` is
         ``None``, it is calculated from the box information contained in
-        :attr:`self.universe`.  It is assumed that the box is
+        :attr:`self._Universe`.  It is assumed that the box is
         orthorhombic.
 
         The accessible volume is the total volume minus the volume of
@@ -1150,7 +1315,7 @@ class Simulation:
         if self.is_bulk:
             vol_elctrd = 0.0
         else:
-            elctrd_thk = 2 * ELCTRD_THK + GRA_SIGMA_LJ
+            elctrd_thk = 2 * self.Elctrd.ELCTRD_THK + self.Elctrd.GRA_SIGMA_LJ
             vol_elctrd = elctrd_thk * np.prod(self.box[:2])
         vol_access = vol_tot - vol_elctrd
         if vol_access <= 0:
@@ -1162,25 +1327,23 @@ class Simulation:
             "elctrd": vol_elctrd,
         }
 
-        if self._bulk_sim is not None and not np.isclose(
-            self.vol["access"], self._bulk_sim.vol["access"], rtol=0, atol=5
+        if self._BulkSim is not None and not np.isclose(
+            self.vol["access"], self._BulkSim.vol["access"], rtol=0, atol=5
         ):
             raise ValueError(
-                "`self.vol['access']` ({}) != `self._bulk_sim.vol['access']`"
-                " ({})".format(
-                    self.vol["access"], self._bulk_sim.vol["access"]
-                )
+                "`self.vol['access']` ({}) != `self._BulkSim.vol['access']`"
+                " ({})".format(self.vol["access"], self._BulkSim.vol["access"])
             )
 
         return self.vol
 
     def get_dens(self):
         """
-        Get the mass and number densities of the cation, the anion and
-        the solvent as given by :attr:`self.res_names`.
+        Get the mass and number densities of all atom types and all
+        electrolyte components.
 
         Return the value of :attr:`self.n_dens`.  If :attr:`self.n_dens`
-        is ``None``, calculate the densities from :attr:`self.universe`
+        is ``None``, calculate the densities from :attr:`self._Universe`
         and :attr:`self.vol`.
 
         Mass densities are given in u/A^3, number densities are given in
@@ -1189,8 +1352,8 @@ class Simulation:
         Returns
         -------
         self.n_dens : dict
-            Mass and number densities of the cation, the anion and the
-            solvent as given by :attr:`self.res_names`.
+            Mass and number densities of all atom types and all
+            electrolyte components.
 
         Notes
         -----
@@ -1204,37 +1367,77 @@ class Simulation:
 
         if self.res_names is None:
             self.get_res_names()
-        if self.universe is None:
-            self.get_universe()
+        if self._Universe is None:
+            self._get_Universe()
+        if self.top_info is None:
+            self.get_top_info()
         if self.vol is None:
             self.get_vol()
 
         vol = self.vol["access"]
         self.dens = {}
-        n_tot, m_tot = 0, 0
-        for res_type, rn in self.res_names.items():
-            ag = self.universe.select_atoms("resname {}".format(rn))
-            n_res = ag.n_residues
-            n_tot += n_res
-            m_res = ag.residues[0].mass
-            m_tot += m_res * n_res
-            res_dct = {"num": n_res / vol, "mass": m_res * n_res / vol}
-            self.dens[res_type] = res_dct
-        self.dens["tot"] = {"num": n_tot / vol, "mass": m_tot / vol}
 
-        if self._bulk_sim is not None:
-            for res_type, dens_dct in self.dens.items():
-                for dens_type, density in dens_dct.items():
-                    if not np.isclose(
-                        density,
-                        self._bulk_sim.dens[res_type][dens_type],
-                        rtol=0,
-                        atol=1e-5,
-                    ):
-                        raise ValueError(
-                            "`self.dens` ({}) != `self._bulk_sim.dens`"
-                            " ({})".format(self.dens, self.dens)
-                        )
+        # Densities of all atoms by their type.
+        self.dens["atm_type"] = {}
+        for at in self.top_info["sys"]["atm_type"].keys():
+            ag = self._Universe.select_atoms("type {}".format(at))
+            n_atm = ag.n_atoms
+            m_atm = np.sum(ag.masses)
+            atm_dct = {"num": n_atm / vol, "mass": m_atm / vol}
+            self.dens["atm_type"][at] = atm_dct
+
+        # # Commented out, because not all my simulations share the same
+        # # atom names.
+        # # Densities of all atoms by their name.
+        # self.dens["atm_name"] = {}
+        # for an in self.top_info["sys"]["atm_name"].keys():
+        #     ag = self._Universe.select_atoms("name {}".format(an))
+        #     n_atm = ag.n_atoms
+        #     m_atm = np.sum(ag.masses)
+        #     atm_dct = {"num": n_atm / vol, "mass": m_atm / vol}
+        #     self.dens["atm_name"][an] = atm_dct
+
+        # # Commented out, because not all my simulations share the same
+        # # residue names.
+        # # Densities of all residues.
+        # self.dens["res"] = {}
+        # for rn in self.top_info["res"].keys():
+        #     ag = self._Universe.select_atoms("resname {}".format(rn))
+        #     n_res = ag.n_residues
+        #     m_res = np.sum(ag.residues.masses)
+        #     res_dct = {"num": n_res / vol, "mass": m_res / vol}
+        #     self.dens["res"][rn] = res_dct
+
+        # Densities of the electrolyte: cation, anion, solvent and total
+        self.dens["elctrlyt"] = {}
+        n_elctrlyt, m_elctrlyt = 0, 0
+        for res_type, rn in self.res_names.items():
+            ag = self._Universe.select_atoms("resname {}".format(rn))
+            n_res = ag.n_residues
+            n_elctrlyt += n_res
+            m_res = np.sum(ag.residues.masses)
+            m_elctrlyt += m_res
+            res_dct = {"num": n_res / vol, "mass": m_res / vol}
+            self.dens["elctrlyt"][res_type] = res_dct
+        self.dens["elctrlyt"]["tot"] = {
+            "num": n_elctrlyt / vol,
+            "mass": m_elctrlyt / vol,
+        }
+
+        if self._BulkSim is not None:
+            for cmp, cmp_dens_dct in self.dens.items():
+                for cn, dens_dct in cmp_dens_dct.items():
+                    for dens_type, density in dens_dct.items():
+                        if cn in self._BulkSim.dens[cmp] and not np.isclose(
+                            density,
+                            self._BulkSim.dens[cmp][cn][dens_type],
+                            rtol=0,
+                            atol=1e-5,
+                        ):
+                            raise ValueError(
+                                "`self.dens` ({}) != `self._BulkSim.dens`"
+                                " ({})".format(self.dens, self.dens)
+                            )
 
         return self.dens
 
@@ -1265,7 +1468,7 @@ class Simulations:
     :type: float
     """
 
-    def __init__(self, *paths):
+    def __init__(self, *paths, sort_key=None):
         """
         Initialize an instance of the
         :class:`~lintf2_ether_ana_postproc.simulation.Simulations`
@@ -1279,16 +1482,57 @@ class Simulations:
             want to use.  See
             :class:`lintf2_ether_ana_postproc.simulation.Simulation` for
             details.
-
-            The simulations in this container class are sorted in the
-            order of the input paths.  Duplicate simulations are kept.
+        sort_key : callable, str or None, optional
+            Sort key for sorting the simulations with the built-in
+            function :func:`sorted`.  If `sort_key` is ``None``, the
+            simulations in this container class are sorted in the order
+            of the input paths.  If `sort_key` is a string, it must be
+            a common attribute of all
+            :class:`~lintf2_ether_ana_postproc.simulation.Simulation`
+            instances that can be used for sorting with :func:`sorted`.
+            Duplicate simulations are always kept.
         """
         # Instance attributes.
-        self.sims = None
+        try:
+            self.sims
+            # Variable does already exist, because class instance is
+            # re-initialized by `self.sort_sims` -> Don't set
+            # `self.sims` to ``None`` to avoid unnecessary
+            # re-initialization of all stored Simulation instances.
+        except AttributeError:
+            # Variable does not exist -> Class instance is initialized
+            # for the first time.
+            self.sims = None
+            """
+            List containing all stored
+            :class:`~lintf2_ether_ana_postproc.simulation.Simulation`
+            instances.
+
+            :type: list
+            """
+
+        self.paths = None
         """
-        List containing all stored
+        List containing the path to each
         :class:`~lintf2_ether_ana_postproc.simulation.Simulation`
-        instances.
+        directory.
+
+        :type: list
+        """
+
+        self.paths_ana = None
+        """
+        List containing the path to each corresponding analysis
+        directory.
+
+        :type: list
+        """
+
+        self.fnames_ana_base = None
+        """
+        List containing the base name of corresponding analysis files
+        for each
+        :class:`~lintf2_ether_ana_postproc.simulation.Simulation`.
 
         :type: list
         """
@@ -1390,8 +1634,8 @@ class Simulations:
 
         self.dens = None
         """
-        Dictionary containing the mass and number density of the cation,
-        the anion and the solvent for each
+        Dictionary containing the mass and number density of all atom
+        types and all electrolyte components for each
         :class:`~lintf2_ether_ana_postproc.simulation.Simulation`.
 
         Mass densities are given in kg/m^3, number densities are given
@@ -1406,7 +1650,9 @@ class Simulations:
             if not os.path.isdir(path):
                 raise FileNotFoundError("No such directory: '{}'".format(path))
             self.paths.append(os.path.abspath(path))
-        self.get_sims()
+        self.get_sims(sort_key)
+        self.get_paths_ana()
+        self.get_fnames_ana_base()
         self.get_res_names()
         self.get_res_nums()
         self.get_surfqs()
@@ -1419,7 +1665,7 @@ class Simulations:
         self.get_vols()
         self.get_dens()
 
-    def get_sims(self):
+    def get_sims(self, sort_key=None):
         """
         Get the stored
         :class:`~lintf2_ether_ana_postproc.simulation.Simulation`
@@ -1431,10 +1677,22 @@ class Simulations:
         instances from :attr:`self.paths` and store them in
         :attr:`self.sims`.
 
+        Parameters
+        ----------
+        sort_key : callable, str or None, optional
+            Sort key for sorting the simulations with the built-in
+            function :func:`sorted`.  If `sort_key` is ``None``, the
+            simulations are sorted in the order of :attr:`self.paths`.
+            If `sort_key` is a string, it must be a common attribute of
+            all
+            :class:`~lintf2_ether_ana_postproc.simulation.Simulation`
+            instances that can be used for sorting with :func:`sorted`.
+            Duplicate simulations are always kept.
+
         Returns
         -------
         self.sims : list
-            The list of stored
+            The list of stored (and sorted)
             :class:`~lintf2_ether_ana_postproc.simulation.Simulation`
             instances.
         """
@@ -1448,6 +1706,118 @@ class Simulations:
             )
 
         self.sims = [leap.simulation.Simulation(path) for path in self.paths]
+        if sort_key is not None:
+            self.sort_sims(sort_key)
+        return self.sims
+
+    def sort_sims(self, sort_key):
+        """
+        Sort the simulations contained in this container class.
+
+        This re-initialized the class instance to sort all instance
+        attributes accordingly.
+
+        Parameters
+        ----------
+        sort_key : callable or str, optional
+            Sort key for sorting the simulations with the built-in
+            function :func:`sorted`.  If `sort_key` is a string, it must
+            be a common attribute of all
+            :class:`~lintf2_ether_ana_postproc.simulation.Simulation`
+            instances that can be used for sorting with :func:`sorted`.
+            Duplicate simulations are always kept.
+        """
+        if self.sims is None:
+            self.get_sims()
+
+        if self.sims is None:
+            raise ValueError("No simulations to sort")
+        if isinstance(sort_key, str):
+            self.sims = sorted(
+                self.sims, key=lambda sim: getattr(sim, sort_key)
+            )
+        else:
+            self.sims = sorted(self.sims, key=sort_key)
+
+        # Sort all other attributes accordingly by re-initializing the
+        # class instance.
+        paths = [sim.path for sim in self.sims]
+        self.__init__(*paths)
+
+        return self.sims
+
+    def get_paths(self):
+        """
+        Get the path to each
+        :class:`~lintf2_ether_ana_postproc.simulation.Simulation`
+        directory.
+
+        Return the value of :attr:`self.paths`.  If :attr:`self.paths`
+        is ``None``, create from :attr:`self.sims`.
+
+        Returns
+        -------
+        self.paths : list
+            List containing the path to each
+            :class:`~lintf2_ether_ana_postproc.simulation.Simulation`
+            directory.
+        """
+        if self.paths is not None:
+            return self.paths
+
+        if self.sims is None:
+            self.get_sims()
+
+        self.paths = [sim.path for sim in self.sims]
+        return self.paths
+
+    def get_paths_ana(self):
+        """
+        Get the path to each corresponding analysis directory.
+
+        Return the value of :attr:`self.paths_ana`.  If
+        :attr:`self.paths_ana` is ``None``, create from
+        :attr:`self.sims`.
+
+        Returns
+        -------
+        self.paths_ana : list
+            List containing the path to each corresponding analysis
+            directory.
+        """
+        if self.paths_ana is not None:
+            return self.paths_ana
+
+        if self.sims is None:
+            self.get_sims()
+
+        self.paths_ana = [sim.path_ana for sim in self.sims]
+        return self.paths_ana
+
+    def get_fnames_ana_base(self):
+        """
+        Get the base name of corresponding analysis files for each
+        :class:`~lintf2_ether_ana_postproc.simulation.Simulation`.
+
+        Return the value of :attr:`self.fnames_ana_base`.  If
+        :attr:`self.fnames_ana_base` is ``None``, create it from
+        :attr:`self.sims`.
+
+        Returns
+        -------
+        self.fnames_ana_base : list
+            List containing the base name of corresponding analysis
+            files for each
+            :class:`~lintf2_ether_ana_postproc.simulation.Simulation`.
+        """
+        if self.fnames_ana_base is not None:
+            return self.fnames_ana_base
+
+        if self.sims is None:
+            self.get_sims()
+
+        self.fnames_ana_base = [sim.fname_ana_base for sim in self.sims]
+        return self.fnames_ana_base
 
     def get_res_names(self):
         """
@@ -1748,8 +2118,8 @@ class Simulations:
 
     def get_dens(self):
         """
-        Get the mass and number densities of the cation, the anion and
-        the solvent for each
+        Get the mass and number densities of all atom types and all
+        electrolyte components for each
         :class:`~lintf2_ether_ana_postproc.simulation.Simulation`.
 
         Return the value of :attr:`self.dens`.  If :attr:`self.dens` is
@@ -1761,8 +2131,8 @@ class Simulations:
         Returns
         -------
         self.dens : dict
-            Dictionary containing the mass and number density of the
-            cation, the anion and the solvent for each
+            Dictionary containing the mass and number density of all
+            atom types and all electrolyte components for each
             :class:`~lintf2_ether_ana_postproc.simulation.Simulation`.
         """
         if self.dens is not None:
@@ -1772,22 +2142,31 @@ class Simulations:
             self.get_sims()
 
         dens = {
-            res_type: {dens_type: [] for dens_type in dens_dct.keys()}
-            for res_type, dens_dct in self.sims[0].dens.items()
+            cmp: {
+                cn: {dens_type: [] for dens_type in dens_dct.keys()}
+                for cn, dens_dct in cmp_dens_dct.items()
+            }
+            for cmp, cmp_dens_dct in self.sims[0].dens.items()
         }
+
         for sim in self.sims:
-            for res_type, dens_dct in sim.dens.items():
+            for cmp, cmp_dens_dct in sim.dens.items():
+                for cn, dens_dct in cmp_dens_dct.items():
+                    for dens_type, density in dens_dct.items():
+                        dens[cmp][cn][dens_type].append(density)
+        self.dens = {
+            cmp: {cn: {} for cn in cmp_dens_dct.keys()}
+            for cmp, cmp_dens_dct in dens.items()
+        }
+        for cmp, cmp_dens_dct in dens.items():
+            for cn, dens_dct in cmp_dens_dct.items():
                 for dens_type, density in dens_dct.items():
-                    dens[res_type][dens_type].append(density)
-        self.dens = {res_type: {} for res_type in dens.keys()}
-        for res_type, dens_dct in dens.items():
-            for dens_type, density in dens_dct.items():
-                dens_array = np.array(density)
-                if dens_type == "num":
-                    dens_array *= 1e3  # 1/A^3 -> 1/nm^3
-                elif dens_type == "mass":
-                    dens_array *= self.MDENS2SI  # u/A^3 -> kg/m^3
-                self.dens[res_type][dens_type] = dens_array
+                    dens_array = np.array(density)
+                    if dens_type == "num":
+                        dens_array *= 1e3  # 1/A^3 -> 1/nm^3
+                    elif dens_type == "mass":
+                        dens_array *= self.MDENS2SI  # u/A^3 -> kg/m^3
+                    self.dens[cmp][cn][dens_type] = dens_array
         return self.dens
 
 
