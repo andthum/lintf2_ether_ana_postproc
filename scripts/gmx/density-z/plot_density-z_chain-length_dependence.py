@@ -207,7 +207,7 @@ with PdfPages(outfile) as pdf:
                     r"%.2f$" % Sims.surfqs[0]
                     + r" $e$/nm$^2$"
                     + "\n"
-                    + r"$n_{OE}$"
+                    + r"$n_{EO}$"
                 )
                 if plt_sec == "left":
                     if args.q == "q0":
