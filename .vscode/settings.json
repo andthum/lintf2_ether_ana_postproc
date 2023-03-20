@@ -37,6 +37,7 @@
         "lintf",
         "loadtxt",
         "markdownlint",
+        "mathrm",
         "matplotlib",
         "mdlstyle",
         "mdtools",
