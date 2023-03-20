@@ -33,6 +33,7 @@
         "infiles",
         "isort",
         "linestyle",
+        "linewidth",
         "lintf",
         "loadtxt",
         "markdownlint",
