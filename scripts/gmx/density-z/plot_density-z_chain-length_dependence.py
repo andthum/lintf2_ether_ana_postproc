@@ -33,9 +33,10 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
+common_ymax = True
 settings = "pr_nvt423_nh"  # Simulation settings.
 analysis = "density-z"  # Analysis name.
-suffix = "_number"  # Analysis name specification.
+analysis_suffix = "_number"  # Analysis name specification.
 tool = "gmx"  # Analysis software.
 outfile = (  # Output file name.
     settings
@@ -43,9 +44,12 @@ outfile = (  # Output file name.
     + args.q
     + "_sc80_"
     + analysis
-    + suffix
-    + ".pdf"
+    + analysis_suffix
 )
+if common_ymax:
+    outfile += "_common_ymax.pdf"
+else:
+    outfile += ".pdf"
 
 cols = (  # Columns to read from the input file(s).
     # 0,  # bin edges [nm]
@@ -75,7 +79,7 @@ Sims = leap.simulation.Simulations(*paths, sort_key="O_per_chain")
 
 print("Assembling input file name(s)...")
 infiles = []
-file_suffix = analysis + suffix + ".xvg"
+file_suffix = analysis + analysis_suffix + ".xvg.gz"
 for i, path in enumerate(Sims.paths_ana):
     fname = Sims.fnames_ana_base[i] + file_suffix
     fpath = os.path.join(path, tool, analysis, fname)
@@ -89,33 +93,47 @@ print("Reading data and creating plot(s)...")
 Elctrd = leap.simulation.Electrode()
 elctrd_thk = Elctrd.ELCTRD_THK / 10  # A -> nm
 
-xmax = 5
+plot_sections = ("left", "right", "full")
+# xmin = -elctrd_thk
+xmin = 0
+xmax = 4
 if args.q == "q0":
-    ymax = tuple(None for _ in compounds)
-    # ymax = (6.5, 4, 3, 3)
+    ymax = tuple((6.25, 4, 3, 3) for _ in plot_sections)
 elif args.q == "q0.25":
-    ymax = tuple(None for _ in compounds)
+    ymax = ((4, 7, 10.5, 2.8), (12.5, 2, 1.8, 4.8))
+    ymax += (tuple(np.max(ymax, axis=0)),)
 elif args.q == "q0.5":
-    ymax = tuple(None for _ in compounds)
+    ymax = ((4.2, 11.5, 20, 4), (25, 3.1, 2, 6))
+    ymax += (tuple(np.max(ymax, axis=0)),)
 elif args.q == "q0.75":
-    ymax = tuple(None for _ in compounds)
+    ymax = ((4, 23, 36, 4.6), (23, 4.6, 3.1, 7))
+    ymax += (tuple(np.max(ymax, axis=0)),)
 elif args.q == "q1":
-    ymax = tuple(None for _ in compounds)
+    ymax = ((4.6, 46, 62.5, 4.6), (82.5, 4.6, 4.6, 6.25))
+    ymax += (tuple(np.max(ymax, axis=0)),)
 else:
     raise ValueError("Unknown surface charge -q: '{}'".format(args.q))
+if common_ymax:
+    # ymax = tuple(
+    #     tuple(None for _cmp in compounds)
+    #     for _plt_sec in plot_sections
+    # )
+    ymax = tuple(
+        tuple(6.25 for _cmp in compounds) for _plt_sec in plot_sections
+    )
 
 cmap = plt.get_cmap()
 mdt.fh.backup(outfile)
 with PdfPages(outfile) as pdf:
     for y_normed in (True, False):
-        for plot_section in ("left", "right", "full"):
+        for ps_ix, plt_sec in enumerate(plot_sections):
             for cmp_ix, cmp in enumerate(compounds):
                 fig, ax = plt.subplots(clear=True)
                 ax.set_prop_cycle(
                     color=[cmap(i / (n_infiles - 1)) for i in range(n_infiles)]
                 )
 
-                if plot_section in ("left", "right"):
+                if plt_sec in ("left", "right"):
                     # Also, for the plot of the right electrode, the
                     # electrode position will be shifted to zero.
                     leap.plot.plot_elctrd_left(ax)
@@ -127,9 +145,9 @@ with PdfPages(outfile) as pdf:
                         usecols=(0, cols[cmp_ix]),
                         unpack=True,
                     )
-                    if plot_section == "left":
+                    if plt_sec == "left":
                         x -= elctrd_thk
-                    elif plot_section == "right":
+                    elif plt_sec == "right":
                         x += elctrd_thk
                         x -= Sim.box[2] / 10  # A -> nm
                         x *= -1  # Ensure positive x-axis.
@@ -137,12 +155,26 @@ with PdfPages(outfile) as pdf:
                         bulk_dens = Sim.dens["atm_type"][cmp]["num"]
                         bulk_dens *= 1e3  # 1/A^3 -> 1/nm^3
                         y /= bulk_dens
-                    if Sim.O_per_chain == 6:
+                    if args.q == "q0" and Sim.O_per_chain == 6 and cmp == "Li":
+                        color = "tab:red"
+                        ax.plot([], [])  # Increment color cycle.
+                    elif (
+                        args.q == "q1"
+                        and Sim.O_per_chain == 2
+                        and cmp in ("NBT", "OBT")
+                    ):
                         color = "tab:red"
                         ax.plot([], [])  # Increment color cycle.
                     else:
                         color = None
-                    ax.plot(x, y, label=str(Sim.O_per_chain), color=color)
+                    ax.plot(
+                        x,
+                        y,
+                        label=str(Sim.O_per_chain),
+                        color=color,
+                        linewidth=1.5,
+                        alpha=2 / 3,
+                    )
 
                 ylabel = (
                     r"Density $\rho_{"
@@ -155,35 +187,48 @@ with PdfPages(outfile) as pdf:
                         + leap.plot.atom_type2display_name[cmp]
                         + r"}^{bulk}$"
                     )
-                    ylim = (0, ymax[cmp_ix])
+                    ylim = (0, ymax[ps_ix][cmp_ix])
                 else:
                     ylabel += r"$ / nm$^{-3}$"
                     ylim = (0, None)
-                if plot_section == "left":
+                if plt_sec == "left":
                     xlabel = r"Distance to Electrode / nm"
-                    xlim = (-elctrd_thk, xmax)
-                elif plot_section == "right":
+                    xlim = (xmin, xmax)
+                elif plt_sec == "right":
                     xlabel = r"Distance to Electrode / nm"
                     # Reverse x-axis.
-                    xlim = (xmax, -elctrd_thk)
+                    xlim = (xmax, xmin)
                 else:
                     xlabel = r"z / nm"
                     xlim = (0, np.max(Sims.boxes_z))
                 ax.set(xlabel=xlabel, ylabel=ylabel, xlim=xlim, ylim=ylim)
 
-                if plot_section == "left":
+                legend_title = (
+                    r"%.2f$" % Sims.surfqs[0]
+                    + r" $e$/nm$^2$"
+                    + "\n"
+                    + r"$n_{OE}$"
+                )
+                if plt_sec == "left":
+                    if args.q == "q0":
+                        legend_title = r"$\sigma_s = " + legend_title
+                    else:
+                        legend_title = r"$\sigma_s = +" + legend_title
                     legend_loc = "upper right"
-                elif plot_section == "right":
+                elif plt_sec == "right":
+                    if args.q == "q0":
+                        legend_title = r"$\sigma_s = " + legend_title
+                    else:
+                        legend_title = r"$\sigma_s = -" + legend_title
                     legend_loc = "upper left"
                 else:
+                    if args.q == "q0":
+                        legend_title = r"$\sigma_s = " + legend_title
+                    else:
+                        legend_title = r"$\sigma_s = \pm" + legend_title
                     legend_loc = "upper center"
                 legend = ax.legend(
-                    title=(
-                        r"$\sigma_s = %.2f$" % Sims.surfqs[0]
-                        + r" $e$/nm$^2$"
-                        + "\n"
-                        + r"$n_{OE}$"
-                    ),
+                    title=legend_title,
                     ncol=1 + n_infiles // (6 + 1),
                     loc=legend_loc,
                     **mdtplt.LEGEND_KWARGS_XSMALL,
