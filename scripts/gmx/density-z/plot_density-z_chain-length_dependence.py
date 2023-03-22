@@ -245,7 +245,7 @@ with PdfPages(outfile) as pdf:
                     legend_loc = "upper center"
                 legend = ax.legend(
                     title=legend_title,
-                    ncol=1 + n_infiles // (6 + 1),
+                    ncol=1 + n_infiles // (4 + 1),
                     loc=legend_loc,
                     **mdtplt.LEGEND_KWARGS_XSMALL,
                 )
