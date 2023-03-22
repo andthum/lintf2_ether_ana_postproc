@@ -32,7 +32,7 @@ parser.add_argument(
     help="Surface charge in e/nm^2.",
 )
 parser.add_argument(
-    "--common-ymax",
+    "--common-ylim",
     required=False,
     default=False,
     action="store_true",
@@ -52,8 +52,8 @@ outfile = (  # Output file name.
     + analysis
     + analysis_suffix
 )
-if args.common_ymax:
-    outfile += "_common_ymax.pdf"
+if args.common_ylim:
+    outfile += "_common_ylim.pdf"
 else:
     outfile += ".pdf"
 
@@ -120,7 +120,7 @@ elif args.surfq == "q1":
     ymax += (tuple(np.max(ymax, axis=0)),)
 else:
     raise ValueError("Unknown surface charge --surfq: '{}'".format(args.surfq))
-if args.common_ymax:
+if args.common_ylim:
     # ymax = tuple(
     #     tuple(None for _cmp in compounds)
     #     for _plt_sec in plot_sections
