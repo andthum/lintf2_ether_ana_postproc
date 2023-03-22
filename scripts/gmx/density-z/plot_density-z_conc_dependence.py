@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 
-"""Plot density profiles for different chain lengths."""
+"""Plot density profiles for different salt concentrations."""
 
 
 # Standard libraries
@@ -22,13 +22,20 @@ import lintf2_ether_ana_postproc as leap
 
 # Input parameters.
 parser = argparse.ArgumentParser(
-    description="Plot density profiles for different chain lengths."
+    description="Plot density profiles for different salt concentrations."
+)
+parser.add_argument(
+    "--sol",
+    type=str,
+    required=True,
+    choices=("g1", "g4", "peo63"),
+    help="Solvent name.",
 )
 parser.add_argument(
     "--surfq",
     type=str,
     required=True,
-    choices=("q0", "q0.25", "q0.5", "q0.75", "q1"),
+    choices=("q0", "q1"),
     help="Surface charge in e/nm^2.",
 )
 parser.add_argument(
@@ -46,7 +53,9 @@ analysis_suffix = "_number"  # Analysis name specification.
 tool = "gmx"  # Analysis software.
 outfile = (  # Output file name.
     settings
-    + "_lintf2_peoN_20-1_gra_"
+    + "_lintf2_"
+    + args.sol
+    + "_r_gra_"
     + args.surfq
     + "_sc80_"
     + analysis
@@ -74,13 +83,15 @@ if len(compounds) != len(cols):
 
 print("Creating Simulation instances...")
 SimPaths = leap.simulation.SimPaths()
-pattern_system = "lintf2_[gp]*[0-9]*_20-1_gra_" + args.surfq + "_sc80"
+pattern_system = (
+    "lintf2_" + args.sol + "_[0-9]*-[0-9]*_gra_" + args.surfq + "_sc80"
+)
 pattern_settings = "[0-9][0-9]_" + settings + "_" + pattern_system
 pattern = os.path.join(
     SimPaths.PATHS[args.surfq], pattern_system, pattern_settings
 )
 paths = glob.glob(pattern)
-Sims = leap.simulation.Simulations(*paths, sort_key="O_per_chain")
+Sims = leap.simulation.Simulations(*paths, sort_key="Li_O_ratio")
 
 
 print("Assembling input file name(s)...")
@@ -104,22 +115,38 @@ plot_sections = ("left", "right", "full")
 # xmin = -elctrd_thk
 xmin = 0
 xmax = 4
-if args.surfq == "q0":
-    ymax = tuple((6.25, 4, 3.2, 3.2) for _ in plot_sections)
-elif args.surfq == "q0.25":
-    ymax = ((4, 7, 10.5, 2.8), (12.5, 2.1, 2.1, 4.8))
-    ymax += (tuple(np.max(ymax, axis=0)),)
-elif args.surfq == "q0.5":
-    ymax = ((4.2, 11.5, 20, 4), (25, 3.1, 2.1, 6))
-    ymax += (tuple(np.max(ymax, axis=0)),)
-elif args.surfq == "q0.75":
-    ymax = ((4, 23, 36, 4.6), (23, 4.6, 3.1, 7))
-    ymax += (tuple(np.max(ymax, axis=0)),)
-elif args.surfq == "q1":
-    ymax = ((4.6, 46, 62.5, 4.6), (82.5, 4.6, 4.6, 6.25))
-    ymax += (tuple(np.max(ymax, axis=0)),)
+if args.sol == "g1":
+    if args.surfq == "q0":
+        ymax = tuple((6.5, 4.8, 3.1, 3.8) for _ in plot_sections)
+    elif args.surfq == "q1":
+        ymax = ((5.6, 180, 230, 4), (280, 6.2, 6.2, 8.5))
+        ymax += (tuple(np.max(ymax, axis=0)),)
+    else:
+        raise ValueError(
+            "Unknown surface charge --surfq: '{}'".format(args.surfq)
+        )
+elif args.sol == "g4":
+    if args.surfq == "q0":
+        ymax = tuple((5, 4.3, 4.3, 3) for _ in plot_sections)
+    elif args.surfq == "q1":
+        ymax = ((3.8, 130, 165, 5), (120, 8.75, 8.75, 7.5))
+        ymax += (tuple(np.max(ymax, axis=0)),)
+    else:
+        raise ValueError(
+            "Unknown surface charge --surfq: '{}'".format(args.surfq)
+        )
+elif args.sol == "peo63":
+    if args.surfq == "q0":
+        ymax = tuple((5.4, 4.3, 3.3, 3.3) for _ in plot_sections)
+    elif args.surfq == "q1":
+        ymax = ((4.5, 115, 140, 4.5), (90, 4.5, 4.5, 6.25))
+        ymax += (tuple(np.max(ymax, axis=0)),)
+    else:
+        raise ValueError(
+            "Unknown surface charge --surfq: '{}'".format(args.surfq)
+        )
 else:
-    raise ValueError("Unknown surface charge --surfq: '{}'".format(args.surfq))
+    raise ValueError("Unknown solvent --sol: '{}'".format(args.sol))
 if args.common_ymax:
     # ymax = tuple(
     #     tuple(None for _cmp in compounds)
@@ -164,28 +191,17 @@ with PdfPages(outfile) as pdf:
                         bulk_dens *= 1e3  # 1/A^3 -> 1/nm^3
                         y /= bulk_dens
 
-                    if (
-                        args.surfq == "q0"
-                        and Sim.O_per_chain == 6
-                        and cmp == "Li"
+                    if args.surfq == "q1" and np.isclose(
+                        Sim.Li_O_ratio, 1 / 80, rtol=0
                     ):
-                        color = "tab:red"
-                        ax.plot([], [])  # Increment color cycle.
-                    elif (
-                        args.surfq == "q1"
-                        and Sim.O_per_chain == 2
-                        and cmp in ("NBT", "OBT")
-                        and plt_sec == "right"
-                    ):
-                        color = "tab:red"
-                        ax.plot([], [])  # Increment color cycle.
+                        linestyle = "dotted"
                     else:
-                        color = None
+                        linestyle = "solid"
                     ax.plot(
                         x,
                         y,
-                        label=r"$%d$" % Sim.O_per_chain,
-                        color=color,
+                        label="$%.4f$" % Sim.Li_O_ratio,
+                        linestyle=linestyle,
                         linewidth=linewidth,
                         alpha=2 / 3,
                     )
@@ -221,9 +237,9 @@ with PdfPages(outfile) as pdf:
                     r"%.2f$" % Sims.surfqs[0]
                     + r" $e$/nm$^2$"
                     + "\n"
-                    + r"$r = %.2f$" % Sims.Li_O_ratios[0]
+                    + r"$n_{EO} = %d$" % Sims.O_per_chain[0]
                     + "\n"
-                    + r"$n_{EO}$"
+                    + r"$r$"
                 )
                 if plt_sec == "left":
                     if args.surfq == "q0":

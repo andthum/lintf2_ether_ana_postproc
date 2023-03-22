@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 
 
-"""Plot density profiles for different chain lengths."""
+"""Plot density profiles for different surface charges."""
 
 
 # Standard libraries
@@ -22,14 +22,14 @@ import lintf2_ether_ana_postproc as leap
 
 # Input parameters.
 parser = argparse.ArgumentParser(
-    description="Plot density profiles for different chain lengths."
+    description="Plot density profiles for different surface charges."
 )
 parser.add_argument(
-    "--surfq",
+    "--sol",
     type=str,
     required=True,
-    choices=("q0", "q0.25", "q0.5", "q0.75", "q1"),
-    help="Surface charge in e/nm^2.",
+    choices=("g1", "g4", "peo63"),
+    help="Solvent name.",
 )
 parser.add_argument(
     "--common-ymax",
@@ -46,9 +46,9 @@ analysis_suffix = "_number"  # Analysis name specification.
 tool = "gmx"  # Analysis software.
 outfile = (  # Output file name.
     settings
-    + "_lintf2_peoN_20-1_gra_"
-    + args.surfq
-    + "_sc80_"
+    + "_lintf2_"
+    + args.sol
+    + "_20-1_gra_qX_sc80_"
     + analysis
     + analysis_suffix
 )
@@ -74,13 +74,13 @@ if len(compounds) != len(cols):
 
 print("Creating Simulation instances...")
 SimPaths = leap.simulation.SimPaths()
-pattern_system = "lintf2_[gp]*[0-9]*_20-1_gra_" + args.surfq + "_sc80"
+pattern_system = "lintf2_" + args.sol + "_20-1_gra_q[0-9]*_sc80"
 pattern_settings = "[0-9][0-9]_" + settings + "_" + pattern_system
 pattern = os.path.join(
-    SimPaths.PATHS[args.surfq], pattern_system, pattern_settings
+    SimPaths.PATHS["walls"], "q[0-9]*", pattern_system, pattern_settings
 )
 paths = glob.glob(pattern)
-Sims = leap.simulation.Simulations(*paths, sort_key="O_per_chain")
+Sims = leap.simulation.Simulations(*paths, sort_key="surfq")
 
 
 print("Assembling input file name(s)...")
@@ -104,22 +104,17 @@ plot_sections = ("left", "right", "full")
 # xmin = -elctrd_thk
 xmin = 0
 xmax = 4
-if args.surfq == "q0":
-    ymax = tuple((6.25, 4, 3.2, 3.2) for _ in plot_sections)
-elif args.surfq == "q0.25":
-    ymax = ((4, 7, 10.5, 2.8), (12.5, 2.1, 2.1, 4.8))
+if args.sol == "g1":
+    ymax = ((6.25, 46, 62.5, 4.6), (82.5, 4.6, 4.6, 6.25))
     ymax += (tuple(np.max(ymax, axis=0)),)
-elif args.surfq == "q0.5":
-    ymax = ((4.2, 11.5, 20, 4), (25, 3.1, 2.1, 6))
+elif args.sol == "g4":
+    ymax = ((3.6, 34, 46, 4.6), (32, 4.6, 3.1, 5.8))
     ymax += (tuple(np.max(ymax, axis=0)),)
-elif args.surfq == "q0.75":
-    ymax = ((4, 23, 36, 4.6), (23, 4.6, 3.1, 7))
-    ymax += (tuple(np.max(ymax, axis=0)),)
-elif args.surfq == "q1":
-    ymax = ((4.6, 46, 62.5, 4.6), (82.5, 4.6, 4.6, 6.25))
+elif args.sol == "peo63":
+    ymax = ((4.1, 30, 40, 4.6), (23, 3.1, 3.1, 7))
     ymax += (tuple(np.max(ymax, axis=0)),)
 else:
-    raise ValueError("Unknown surface charge --surfq: '{}'".format(args.surfq))
+    raise ValueError("Unknown solvent --sol: '{}'".format(args.sol))
 if args.common_ymax:
     # ymax = tuple(
     #     tuple(None for _cmp in compounds)
@@ -145,6 +140,13 @@ with PdfPages(outfile) as pdf:
                     # Also, for the plot of the right electrode, the
                     # electrode position will be shifted to zero.
                     leap.plot.plot_elctrd_left(ax, linewidth=linewidth)
+                else:
+                    leap.plot.plot_elctrds(
+                        ax,
+                        offset_left=elctrd_thk,
+                        offset_right=box_z_max - elctrd_thk,
+                        linewidth=linewidth,
+                    )
 
                 for sim_ix, Sim in enumerate(Sims.sims):
                     x, y = np.loadtxt(
@@ -164,30 +166,15 @@ with PdfPages(outfile) as pdf:
                         bulk_dens *= 1e3  # 1/A^3 -> 1/nm^3
                         y /= bulk_dens
 
-                    if (
-                        args.surfq == "q0"
-                        and Sim.O_per_chain == 6
-                        and cmp == "Li"
-                    ):
-                        color = "tab:red"
-                        ax.plot([], [])  # Increment color cycle.
-                    elif (
-                        args.surfq == "q1"
-                        and Sim.O_per_chain == 2
-                        and cmp in ("NBT", "OBT")
-                        and plt_sec == "right"
-                    ):
-                        color = "tab:red"
-                        ax.plot([], [])  # Increment color cycle.
+                    label = r"%.2f$" % Sims.surfqs[sim_ix]
+                    if plt_sec == "left":
+                        label = r"$+" + label
+                    elif plt_sec == "right":
+                        label = r"$-" + label
                     else:
-                        color = None
+                        label = r"$\pm" + label
                     ax.plot(
-                        x,
-                        y,
-                        label=r"$%d$" % Sim.O_per_chain,
-                        color=color,
-                        linewidth=linewidth,
-                        alpha=2 / 3,
+                        x, y, label=label, linewidth=linewidth, alpha=2 / 3
                     )
 
                 ylabel = (
@@ -218,30 +205,17 @@ with PdfPages(outfile) as pdf:
                 ax.set(xlabel=xlabel, ylabel=ylabel, xlim=xlim, ylim=ylim)
 
                 legend_title = (
-                    r"%.2f$" % Sims.surfqs[0]
-                    + r" $e$/nm$^2$"
+                    r"$n_{EO} = %d$" % Sims.O_per_chain[0]
                     + "\n"
                     + r"$r = %.2f$" % Sims.Li_O_ratios[0]
                     + "\n"
-                    + r"$n_{EO}$"
+                    + r"$\sigma_s$ / $e$/nm$^2$"
                 )
                 if plt_sec == "left":
-                    if args.surfq == "q0":
-                        legend_title = r"$\sigma_s = " + legend_title
-                    else:
-                        legend_title = r"$\sigma_s = +" + legend_title
                     legend_loc = "upper right"
                 elif plt_sec == "right":
-                    if args.surfq == "q0":
-                        legend_title = r"$\sigma_s = " + legend_title
-                    else:
-                        legend_title = r"$\sigma_s = -" + legend_title
                     legend_loc = "upper left"
                 else:
-                    if args.surfq == "q0":
-                        legend_title = r"$\sigma_s = " + legend_title
-                    else:
-                        legend_title = r"$\sigma_s = \pm" + legend_title
                     legend_loc = "upper center"
                 legend = ax.legend(
                     title=legend_title,

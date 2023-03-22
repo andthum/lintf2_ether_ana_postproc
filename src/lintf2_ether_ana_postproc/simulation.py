@@ -129,9 +129,9 @@ class Simulation:
             character).
 
             The name of the system must follow the pattern
-            "lintf2_solvent_OE-Li-ratio(_charge-scaling)" (e.g.
+            "lintf2_solvent_EO-Li-ratio(_charge-scaling)" (e.g.
             lintf2_g1_20-1_sc80) or
-            "lintf2_solvent_OE-Li-ratio_electrode_surface-charge(_charge-scaling)"
+            "lintf2_solvent_EO-Li-ratio_electrode_surface-charge(_charge-scaling)"
             (e.g. lintf2_peo15_20-1_gra_q0.5_sc80), where
             "_charge-scaling" can be omitted.
 
@@ -875,8 +875,8 @@ class Simulation:
         ):
             raise ValueError(
                 "The system name ({}) must follow the pattern"
-                " 'lintf2_solvent_OE-Li-ratio_charge-scaling' or"
-                " 'lintf2_solvent_OE-Li-ratio_electrode_surface-charge"
+                " 'lintf2_solvent_EO-Li-ratio_charge-scaling' or"
+                " 'lintf2_solvent_EO-Li-ratio_electrode_surface-charge"
                 "_charge-scaling' (`_charge-scaling' can be"
                 " omitted)".format(self.system)
             )
@@ -1142,7 +1142,7 @@ class Simulation:
         Get the ratio of ether oxygen atoms to lithium ions.
 
         Return the value of :attr:`self.O_Li_ratio`.  If
-        :attr:`self.O_Li_ratio` is ``None``, calculate the OE-Li ratio
+        :attr:`self.O_Li_ratio` is ``None``, calculate the EO-Li ratio
         from :attr:`self.top_info` and :attr:`self.res_names`.
 
         Returns
@@ -1217,8 +1217,8 @@ class Simulation:
         if self.system.count("_") not in _counts:
             raise ValueError(
                 "The system name ({}) must follow the pattern"
-                " 'lintf2_solvent_OE-Li-ratio_charge-scaling' or"
-                " 'lintf2_solvent_OE-Li-ratio_electrode_surface-charge"
+                " 'lintf2_solvent_EO-Li-ratio_charge-scaling' or"
+                " 'lintf2_solvent_EO-Li-ratio_electrode_surface-charge"
                 "_charge-scaling' (`_charge-scaling' can be"
                 " omitted)".format(self.system)
             )
@@ -1250,7 +1250,7 @@ class Simulation:
         Get the ratio of lithium ions to ether oxygen atoms.
 
         Return the value of :attr:`self.Li_O_ratio`.  If
-        :attr:`self.Li_O_ratio` is ``None``, calculate the Li-OE ratio
+        :attr:`self.Li_O_ratio` is ``None``, calculate the Li-EO ratio
         from :attr:`self.O_Li_ratio`.
 
         Returns
