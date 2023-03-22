@@ -120,7 +120,7 @@ if args.sol == "g1":
     if args.surfq == "q0":
         ymax = tuple((6.5, 4.8, 3.1, 3.8) for _ in plot_sections)
     elif args.surfq == "q1":
-        ymax = ((5.6, 180, 230, 4), (280, 6.2, 6.2, 8.5))
+        ymax = ((5.6, 180, 230, 4), (280, 6.25, 6.25, 8.5))
         ymax += (tuple(np.max(ymax, axis=0)),)
     else:
         raise ValueError(
@@ -128,7 +128,7 @@ if args.sol == "g1":
         )
 elif args.sol == "g4":
     if args.surfq == "q0":
-        ymax = tuple((5, 4.3, 4.3, 3) for _ in plot_sections)
+        ymax = tuple((5, 4.6, 4.6, 3.1) for _ in plot_sections)
     elif args.surfq == "q1":
         ymax = ((3.8, 130, 165, 5), (120, 8.75, 8.75, 7.5))
         ymax += (tuple(np.max(ymax, axis=0)),)
@@ -138,9 +138,9 @@ elif args.sol == "g4":
         )
 elif args.sol == "peo63":
     if args.surfq == "q0":
-        ymax = tuple((5.4, 4.3, 3.3, 3.3) for _ in plot_sections)
+        ymax = tuple((5.4, 4.6, 3.3, 3.3) for _ in plot_sections)
     elif args.surfq == "q1":
-        ymax = ((4.5, 115, 140, 4.5), (90, 4.5, 4.5, 6.25))
+        ymax = ((4.6, 115, 140, 4.6), (90, 4.6, 4.6, 6.25))
         ymax += (tuple(np.max(ymax, axis=0)),)
     else:
         raise ValueError(
