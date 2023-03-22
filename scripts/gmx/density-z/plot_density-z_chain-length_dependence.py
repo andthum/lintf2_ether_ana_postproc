@@ -106,12 +106,12 @@ plot_sections = ("left", "right", "full")
 xmin = 0
 xmax = 4
 if args.surfq == "q0":
-    ymax = tuple((6.25, 4, 3.2, 3.2) for _ in plot_sections)
+    ymax = tuple((6.25, 4, 2.5, 3.1) for _ in plot_sections)
 elif args.surfq == "q0.25":
-    ymax = ((4, 7, 10.5, 2.8), (12.5, 2.1, 2.1, 4.8))
+    ymax = ((4, 7, 10.5, 2.8), (12.5, 2, 2, 4.8))
     ymax += (tuple(np.max(ymax, axis=0)),)
 elif args.surfq == "q0.5":
-    ymax = ((4.2, 11.5, 20, 4), (25, 3.1, 2.1, 6))
+    ymax = ((4.2, 11.5, 20, 4), (25, 3.1, 2, 5.8))
     ymax += (tuple(np.max(ymax, axis=0)),)
 elif args.surfq == "q0.75":
     ymax = ((4, 23, 36, 4.6), (23, 4.6, 3.1, 7))
