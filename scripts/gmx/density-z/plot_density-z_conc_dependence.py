@@ -15,6 +15,7 @@ import mdtools as mdt
 import mdtools.plot as mdtplt  # Load MDTools plot style  # noqa: F401
 import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.ticker import FormatStrFormatter, MaxNLocator, MultipleLocator
 
 # First-party libraries
 import lintf2_ether_ana_postproc as leap
@@ -39,7 +40,7 @@ parser.add_argument(
     help="Surface charge in e/nm^2.",
 )
 parser.add_argument(
-    "--common-ymax",
+    "--common-ylim",
     required=False,
     default=False,
     action="store_true",
@@ -61,8 +62,8 @@ outfile = (  # Output file name.
     + analysis
     + analysis_suffix
 )
-if args.common_ymax:
-    outfile += "_common_ymax.pdf"
+if args.common_ylim:
+    outfile += "_common_ylim.pdf"
 else:
     outfile += ".pdf"
 
@@ -119,7 +120,7 @@ if args.sol == "g1":
     if args.surfq == "q0":
         ymax = tuple((6.5, 4.8, 3.1, 3.8) for _ in plot_sections)
     elif args.surfq == "q1":
-        ymax = ((5.6, 180, 230, 4), (280, 6.2, 6.2, 8.5))
+        ymax = ((5.6, 180, 230, 4), (280, 6.25, 6.25, 8.5))
         ymax += (tuple(np.max(ymax, axis=0)),)
     else:
         raise ValueError(
@@ -127,7 +128,7 @@ if args.sol == "g1":
         )
 elif args.sol == "g4":
     if args.surfq == "q0":
-        ymax = tuple((5, 4.3, 4.3, 3) for _ in plot_sections)
+        ymax = tuple((5, 4.6, 4.6, 3.1) for _ in plot_sections)
     elif args.surfq == "q1":
         ymax = ((3.8, 130, 165, 5), (120, 8.75, 8.75, 7.5))
         ymax += (tuple(np.max(ymax, axis=0)),)
@@ -137,9 +138,9 @@ elif args.sol == "g4":
         )
 elif args.sol == "peo63":
     if args.surfq == "q0":
-        ymax = tuple((5.4, 4.3, 3.3, 3.3) for _ in plot_sections)
+        ymax = tuple((5.4, 4.6, 3.3, 3.3) for _ in plot_sections)
     elif args.surfq == "q1":
-        ymax = ((4.5, 115, 140, 4.5), (90, 4.5, 4.5, 6.25))
+        ymax = ((4.6, 115, 140, 4.6), (90, 4.6, 4.6, 6.25))
         ymax += (tuple(np.max(ymax, axis=0)),)
     else:
         raise ValueError(
@@ -147,7 +148,7 @@ elif args.sol == "peo63":
         )
 else:
     raise ValueError("Unknown solvent --sol: '{}'".format(args.sol))
-if args.common_ymax:
+if args.common_ylim:
     # ymax = tuple(
     #     tuple(None for _cmp in compounds)
     #     for _plt_sec in plot_sections
@@ -233,6 +234,21 @@ with PdfPages(outfile) as pdf:
                     xlim = (0, box_z_max)
                 ax.set(xlabel=xlabel, ylabel=ylabel, xlim=xlim, ylim=ylim)
 
+                # Equalize x- and y-ticks so that plots can be stacked
+                # together.
+                xlim_diff = np.diff(ax.get_xlim())
+                if xlim_diff > 2.5 and xlim_diff < 5:
+                    ax.xaxis.set_major_locator(MultipleLocator(1))
+                    ax.xaxis.set_minor_locator(MultipleLocator(0.2))
+                if not args.common_ylim:
+                    ylim_diff = np.diff(ax.get_ylim())
+                    if all(np.abs(ax.get_ylim()) < 10) and ylim_diff > 2:
+                        ax.yaxis.set_major_formatter(
+                            FormatStrFormatter("%.1f")
+                        )
+                    elif ylim_diff > 10 and ylim_diff < 20:
+                        ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+
                 legend_title = (
                     r"%.2f$" % Sims.surfqs[0]
                     + r" $e$/nm$^2$"
@@ -261,7 +277,7 @@ with PdfPages(outfile) as pdf:
                     legend_loc = "upper center"
                 legend = ax.legend(
                     title=legend_title,
-                    ncol=1 + n_infiles // (6 + 1),
+                    ncol=1 + n_infiles // (4 + 1),
                     loc=legend_loc,
                     **mdtplt.LEGEND_KWARGS_XSMALL,
                 )

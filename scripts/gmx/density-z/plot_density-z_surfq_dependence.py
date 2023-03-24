@@ -15,6 +15,7 @@ import mdtools as mdt
 import mdtools.plot as mdtplt  # Load MDTools plot style  # noqa: F401
 import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.ticker import FormatStrFormatter, MaxNLocator, MultipleLocator
 
 # First-party libraries
 import lintf2_ether_ana_postproc as leap
@@ -32,7 +33,7 @@ parser.add_argument(
     help="Solvent name.",
 )
 parser.add_argument(
-    "--common-ymax",
+    "--common-ylim",
     required=False,
     default=False,
     action="store_true",
@@ -52,8 +53,8 @@ outfile = (  # Output file name.
     + analysis
     + analysis_suffix
 )
-if args.common_ymax:
-    outfile += "_common_ymax.pdf"
+if args.common_ylim:
+    outfile += "_common_ylim.pdf"
 else:
     outfile += ".pdf"
 
@@ -115,7 +116,7 @@ elif args.sol == "peo63":
     ymax += (tuple(np.max(ymax, axis=0)),)
 else:
     raise ValueError("Unknown solvent --sol: '{}'".format(args.sol))
-if args.common_ymax:
+if args.common_ylim:
     # ymax = tuple(
     #     tuple(None for _cmp in compounds)
     #     for _plt_sec in plot_sections
@@ -204,6 +205,21 @@ with PdfPages(outfile) as pdf:
                     xlim = (0, box_z_max)
                 ax.set(xlabel=xlabel, ylabel=ylabel, xlim=xlim, ylim=ylim)
 
+                # Equalize x- and y-ticks so that plots can be stacked
+                # together.
+                xlim_diff = np.diff(ax.get_xlim())
+                if xlim_diff > 2.5 and xlim_diff < 5:
+                    ax.xaxis.set_major_locator(MultipleLocator(1))
+                    ax.xaxis.set_minor_locator(MultipleLocator(0.2))
+                if not args.common_ylim:
+                    ylim_diff = np.diff(ax.get_ylim())
+                    if all(np.abs(ax.get_ylim()) < 10) and ylim_diff > 2:
+                        ax.yaxis.set_major_formatter(
+                            FormatStrFormatter("%.1f")
+                        )
+                    elif ylim_diff > 10 and ylim_diff < 20:
+                        ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+
                 legend_title = (
                     r"$n_{EO} = %d$" % Sims.O_per_chain[0]
                     + "\n"
@@ -219,7 +235,7 @@ with PdfPages(outfile) as pdf:
                     legend_loc = "upper center"
                 legend = ax.legend(
                     title=legend_title,
-                    ncol=1 + n_infiles // (6 + 1),
+                    ncol=1 + n_infiles // (4 + 1),
                     loc=legend_loc,
                     **mdtplt.LEGEND_KWARGS_XSMALL,
                 )

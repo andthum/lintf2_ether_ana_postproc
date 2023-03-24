@@ -69,6 +69,9 @@ extend-ignore =
     # S603: subprocess call - check for execution of untrusted input
     S404,
     S603,
+    ### mccabe ###
+    # C901: ... is too complex
+    C901,
     ### pep8-naming ###
     # N802: function name should be lowercase
     # N806: variable in function should be lowercase
