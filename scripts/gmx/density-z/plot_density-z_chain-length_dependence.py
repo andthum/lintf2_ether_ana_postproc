@@ -130,7 +130,6 @@ if args.common_ylim:
         tuple(6.5 for _cmp in compounds) for _plt_sec in plot_sections
     )
 
-linewidth = 1.5
 cmap = plt.get_cmap()
 mdt.fh.backup(outfile)
 with PdfPages(outfile) as pdf:
@@ -145,7 +144,7 @@ with PdfPages(outfile) as pdf:
                 if plt_sec in ("left", "right"):
                     # Also, for the plot of the right electrode, the
                     # electrode position will be shifted to zero.
-                    leap.plot.plot_elctrd_left(ax, linewidth=linewidth)
+                    leap.plot.plot_elctrd_left(ax)
 
                 for sim_ix, Sim in enumerate(Sims.sims):
                     x, y = np.loadtxt(
@@ -187,8 +186,7 @@ with PdfPages(outfile) as pdf:
                         y,
                         label=r"$%d$" % Sim.O_per_chain,
                         color=color,
-                        linewidth=linewidth,
-                        alpha=2 / 3,
+                        alpha=0.75,
                     )
 
                 ylabel = (

@@ -125,7 +125,6 @@ if args.common_ylim:
         tuple(6.5 for _cmp in compounds) for _plt_sec in plot_sections
     )
 
-linewidth = 1.5
 cmap = plt.get_cmap()
 mdt.fh.backup(outfile)
 with PdfPages(outfile) as pdf:
@@ -140,13 +139,12 @@ with PdfPages(outfile) as pdf:
                 if plt_sec in ("left", "right"):
                     # Also, for the plot of the right electrode, the
                     # electrode position will be shifted to zero.
-                    leap.plot.plot_elctrd_left(ax, linewidth=linewidth)
+                    leap.plot.plot_elctrd_left(ax)
                 else:
                     leap.plot.plot_elctrds(
                         ax,
                         offset_left=elctrd_thk,
                         offset_right=box_z_max - elctrd_thk,
-                        linewidth=linewidth,
                     )
 
                 for sim_ix, Sim in enumerate(Sims.sims):
@@ -174,9 +172,7 @@ with PdfPages(outfile) as pdf:
                         label = r"$-" + label
                     else:
                         label = r"$\pm" + label
-                    ax.plot(
-                        x, y, label=label, linewidth=linewidth, alpha=2 / 3
-                    )
+                    ax.plot(x, y, label=label, alpha=0.75)
 
                 ylabel = (
                     r"Density $\rho_{"
