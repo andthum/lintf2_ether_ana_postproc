@@ -271,9 +271,7 @@ with PdfPages(outfile) as pdf:
                 else:
                     legend_title = r"$\sigma_s = \pm" + legend_title
                 legend_loc = "center"
-            if None in (ymax[ps_ix][cmp_ix], ymin[ps_ix][cmp_ix]):
-                legend_loc = "upper " + legend_loc
-            elif abs(ymax[ps_ix][cmp_ix]) > abs(ymin[ps_ix][cmp_ix]):
+            if abs(ax.get_ylim()[1]) > abs(ax.get_ylim()[0]):
                 legend_loc = "upper " + legend_loc
             else:
                 legend_loc = "lower " + legend_loc
