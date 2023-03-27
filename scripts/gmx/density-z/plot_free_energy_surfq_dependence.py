@@ -183,8 +183,12 @@ with PdfPages(outfile) as pdf:
                     x, y, bulk_region=(bulk_begin, bulk_end)
                 )
                 if plt_sec == "left":
+                    y = y[: len(y) // 2]
+                    x = x[: len(x) // 2]
                     x -= elctrd_thk
                 elif plt_sec == "right":
+                    y = y[len(y) // 2 :]
+                    x = x[len(x) // 2 :]
                     x += elctrd_thk
                     x -= Sim.box[2] / 10  # A -> nm
                     x *= -1  # Ensure positive x-axis.
