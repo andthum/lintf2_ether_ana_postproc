@@ -42,6 +42,46 @@ def generate_equidistant_bins(start=0, stop=None, bin_width_desired=10):
         edge += bin_width_actual
 
 
+def find_nearest(a, vals, tol=0.01):
+    """
+    Get the indices of the values of an array that are closest to the
+    given values.
+
+    Parameters
+    ----------
+    a : array_like
+        The input array.  The search is performed over the flattened
+        array.
+    vals : array_like
+        The values for which to get the indices.  If a value is not
+        contained in `a`, the index of the next closest value is
+        returned.  If a value is contained multiple times in `a`, only
+        the index of the first occurrence is returned.
+    tol : float, optional
+        Tolerance how much values in `vals` and the actually found
+        values in `a` can differ.
+
+    Returns
+    -------
+    ix : numpy.ndarray
+        Indices of the values in `a` that are closest to `vals`.
+
+    See Also
+    --------
+    :func:`mdtools.numpy_helper_functions.find_nearest` :
+        Find the values in an array which are closest to a given value
+        along an axis
+    """
+    ix = np.zeros_like(vals, dtype=int)
+    for i, val in enumerate(vals):
+        val_at_ix, ix[i] = mdt.nph.find_nearest(a, val, return_index=True)
+        if not np.isclose(val_at_ix, val, rtol=0, atol=tol):
+            raise ValueError(
+                "`val_at_ix` ({}) != `val` ({})".format(val_at_ix, val)
+            )
+    return ix
+
+
 def dens2free_energy(x, dens, bulk_region=None):
     r"""
     Calculate free energy profiles from density profiles.
