@@ -672,17 +672,7 @@ class Simulation:
             self.surfq = None
             return self.surfq
 
-        system = self.system.split("_")
-        for s in system:
-            if s.startswith("q"):
-                self.surfq = s[1:]
-                break
-        if self.surfq is None:
-            raise ValueError(
-                "Could not infer the surface charge from `self.system`"
-                " ({})".format(self.system)
-            )
-        self.surfq = float(self.surfq)
+        self.surfq = leap.simulation.get_surfq(self.system)
         self.surfq /= 100  # e/nm^2 -> e/Angstrom^2
 
         if self._surfq_u is not None and not np.isclose(
@@ -2168,6 +2158,41 @@ class Simulations:
                         dens_array *= self.MDENS2SI  # u/A^3 -> kg/m^3
                     self.dens[cmp][cn][dens_type] = dens_array
         return self.dens
+
+
+def get_surfq(system):
+    """
+    Extract the surface charge of the electrodes in a surface simulation
+    from the system name.
+
+    Parameters
+    ----------
+    system : str
+        Name of the simulated system.  The surface charge of the
+        electrodes must be contained in the system name as "*_qX_*",
+        where X can be any integer or floating point number.
+
+    Returns
+    -------
+    surfq : float
+        The surface charge of the electrodes inferred from the system
+        name.
+
+    Raises
+    ------
+    ValueError :
+        If `system` does not contain the pattern "*_qX_*".
+    """
+    for s in system.split("_"):
+        if s.startswith("q"):
+            surfq = s[1:]
+            break
+    if surfq is None:
+        raise ValueError(
+            "Could not infer the surface charge from `system`"
+            " ({})".format(system)
+        )
+    return float(surfq)
 
 
 def num_res_per_name(ag):
