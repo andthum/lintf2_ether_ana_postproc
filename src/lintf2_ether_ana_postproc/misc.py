@@ -4,6 +4,7 @@
 # Third-party libraries
 import mdtools as mdt
 import numpy as np
+from scipy.signal import find_peaks
 
 
 def generate_equidistant_bins(start=0, stop=None, bin_width_desired=10):
@@ -110,3 +111,77 @@ def dens2free_energy(x, dens, bulk_region=None):
         free_en_bulk = np.mean(free_en[bulk_start_ix : bulk_stop_ix + 1])
         free_en -= free_en_bulk
     return free_en
+
+
+def interp_outliers(x, y, inplace=False, **kwargs):
+    r"""
+    Find outliers and replace them with linearly interpolated values.
+
+    First, find outliers in `y` using :func:`scipy.signal.find_peaks`.
+    Second, replace these outliers by linearly interpolating their
+    neighboring `y` values using :func:`numpy.interp`.
+
+    Parameters
+    ----------
+    x, y : array_like
+        1-dimensional input arrays containing the x- and y-coordinates
+        of the data points.  `x` must be monotonically increasing.  `x`
+        and `y` must not contain NaN values.
+    inplace : bool, optional
+        If ``True``, change `y` in place (therefore, `y` must be a
+        :class:`numpy.ndarray`).
+    kwargs : dict, optional
+        Keyword arguments to parse to :func:`scipy.signal.find_peaks`.
+        See there for possible options.  By default, `threshold` is set
+        to ``4 * numpy.std(y)``, `width` is set to ``(None, 2)`` and
+        `rel_height` is set to ``0.2``.
+
+    Returns
+    -------
+    y_interp : numpy.ndarray
+        y-coordinates where outliers are replaced by interpolated
+        values.
+
+    Notes
+    -----
+    The default `kwargs` should be fine for detecting outliers in
+    normally distributed `y` data.  With the default value of
+    `threshold` of :math:`4 \sigma`, 0.006334 % of the `y` data would
+    be detected as outliers.  See the table at
+    https://de.wikipedia.org/wiki/Normalverteilung#Streuintervalle
+    for the expected percentage of values of a normally distributed
+    variable that lie within the interval
+    :math:`[\mu - z \sigma, \mu + z \sigma]`.  However, note that
+    :math:`\sigma` is susceptible to outliers and will increase when you
+    have too much or too large outliers.  Thus, the :math:`4 \sigma`
+    criterion is not suitable for all data.
+    """
+    x = np.asarray(x)
+    y = np.array(y, copy=not inplace)
+    if y.shape != x.shape:
+        raise ValueError(
+            "`y` ({}) must have the same shape as `x`"
+            " ({})".format(y.shape, x.shape)
+        )
+    if np.any(np.isnan(y)):
+        # `scipy.signal.find_peaks` cannot handle NaN values.
+        raise ValueError("`y` must not contain NaN values")
+    if np.any(np.isnan(x)):
+        # `numpy.interp` cannot handle NaN values.
+        raise ValueError("`x` must not contain NaN values")
+    if np.any(np.diff(x) <= 0):
+        # `x` must be monotonically increasing for `numpy.interp`.
+        raise ValueError("`x` must be monotonically increasing")
+
+    kwargs.setdefault("width", (None, 2))
+    kwargs.setdefault("rel_height", 0.2)
+    if kwargs.get("threshold") is None:
+        kwargs["threshold"] = 4 * np.std(y)
+
+    for factor in (-1, 1):  # -1 for finding minima, 1 for maxima.
+        outliers, _properties = find_peaks(factor * y, **kwargs)
+        valid = np.ones_like(y, dtype=bool)
+        valid[outliers] = False
+        y[outliers] = np.interp(x[outliers], x[valid], y[valid])
+
+    return y
