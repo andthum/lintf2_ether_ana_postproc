@@ -35,7 +35,7 @@ import lintf2_ether_ana_postproc as leap
 
 # Input parameters.
 parser = argparse.ArgumentParser(
-    description="Plot free energy profiles for different surface charges."
+    description="Plot free-energy profiles for different surface charges."
 )
 parser.add_argument(
     "--sol",
@@ -82,7 +82,7 @@ if len(compounds) != len(cols):
 bulk_start = 4
 
 
-print("Creating Simulation instances...")
+print("Creating Simulation instance(s)...")
 SimPaths = leap.simulation.SimPaths()
 pattern_system = "lintf2_" + args.sol + "_20-1_gra_q[0-9]*_sc80"
 pattern_settings = "[0-9][0-9]_" + settings + "_" + pattern_system

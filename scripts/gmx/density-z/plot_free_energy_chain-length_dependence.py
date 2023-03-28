@@ -82,7 +82,7 @@ if len(compounds) != len(cols):
 bulk_start = 4
 
 
-print("Creating Simulation instances...")
+print("Creating Simulation instance(s)...")
 SimPaths = leap.simulation.SimPaths()
 pattern_system = "lintf2_[gp]*[0-9]*_20-1_gra_" + args.surfq + "_sc80"
 pattern_settings = "[0-9][0-9]_" + settings + "_" + pattern_system
