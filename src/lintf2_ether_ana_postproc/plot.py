@@ -17,7 +17,7 @@ ATOM_TYPE2DISPLAY_NAME = {
 }
 
 
-def plot_elctrd_left(ax, offset=0, **kwargs):
+def elctrd_left(ax, offset=0, **kwargs):
     """
     Plot the position of the electrode layers of the left electrode as
     vertical lines into an :class:`matplotlib.axes.Axes`.
@@ -46,7 +46,7 @@ def plot_elctrd_left(ax, offset=0, **kwargs):
         elctrd_pos_z -= Elctrd.GRA_LAYER_DIST / 10  # nm -> Angstrom
 
 
-def plot_elctrd_right(ax, offset=0, **kwargs):
+def elctrd_right(ax, offset=0, **kwargs):
     """
     Plot the position of the electrode layers of the right electrode as
     vertical lines into an :class:`matplotlib.axes.Axes`.
@@ -75,7 +75,7 @@ def plot_elctrd_right(ax, offset=0, **kwargs):
         elctrd_pos_z += Elctrd.GRA_LAYER_DIST / 10  # nm -> Angstrom
 
 
-def plot_elctrds(ax, offset_right, offset_left=0, **kwargs):
+def elctrds(ax, offset_right, offset_left=0, **kwargs):
     """
     Plot the position of the electrode layers of the left and right
     electrode as vertical lines into an :class:`matplotlib.axes.Axes`.
@@ -97,8 +97,8 @@ def plot_elctrds(ax, offset_right, offset_left=0, **kwargs):
     """
     kwargs.setdefault("color", "tab:gray")
     kwargs.setdefault("linestyle", "dashed")
-    leap.plot.plot_elctrd_left(ax, offset_left, **kwargs)
-    leap.plot.plot_elctrd_right(ax, offset_right, **kwargs)
+    leap.plot.elctrd_left(ax, offset_left, **kwargs)
+    leap.plot.elctrd_right(ax, offset_right, **kwargs)
 
 
 def peak_proms(ax, x, y, peaks, properties, peak_type=None, **kwargs):

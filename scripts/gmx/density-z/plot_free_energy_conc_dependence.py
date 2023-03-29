@@ -197,7 +197,7 @@ with PdfPages(outfile) as pdf:
             if plt_sec in ("left", "right"):
                 # Also, for the plot of the right electrode, the
                 # electrode position will be shifted to zero.
-                leap.plot.plot_elctrd_left(ax)
+                leap.plot.elctrd_left(ax)
 
             for sim_ix, Sim in enumerate(Sims.sims):
                 x, y = np.loadtxt(

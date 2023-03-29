@@ -159,9 +159,9 @@ with PdfPages(outfile) as pdf:
             if plt_sec in ("left", "right"):
                 # Also, for the plot of the right electrode, the
                 # electrode position will be shifted to zero.
-                leap.plot.plot_elctrd_left(ax)
+                leap.plot.elctrd_left(ax)
             else:
-                leap.plot.plot_elctrds(
+                leap.plot.elctrds(
                     ax,
                     offset_left=elctrd_thk,
                     offset_right=box_z_max - elctrd_thk,
