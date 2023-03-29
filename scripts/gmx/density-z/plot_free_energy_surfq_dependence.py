@@ -197,7 +197,7 @@ with PdfPages(outfile) as pdf:
                     label = r"$-" + label
                 else:
                     label = r"$\pm" + label
-                ax.plot(x, y, label=label, alpha=0.75)
+                ax.plot(x, y, label=label, alpha=leap.plot.ALPHA)
 
             if plt_sec == "left":
                 xlabel = r"Distance to Electrode / nm"

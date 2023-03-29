@@ -186,7 +186,7 @@ with PdfPages(outfile) as pdf:
                         y,
                         label=r"$%d$" % Sim.O_per_chain,
                         color=color,
-                        alpha=0.75,
+                        alpha=leap.plot.ALPHA,
                     )
 
                 ylabel = (

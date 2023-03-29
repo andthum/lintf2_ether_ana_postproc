@@ -233,7 +233,7 @@ with PdfPages(outfile) as pdf:
                     y,
                     label="$%.4f$" % Sim.Li_O_ratio,
                     linestyle=linestyle,
-                    alpha=0.75,
+                    alpha=leap.plot.ALPHA,
                 )
 
             if plt_sec == "left":
