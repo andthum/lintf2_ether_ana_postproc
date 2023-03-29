@@ -248,7 +248,7 @@ with PdfPages(outfile) as pdf:
                 xlabel=xlabel,
                 ylabel=(
                     r"Free Energy $F_{"
-                    + leap.plot.atom_type2display_name[cmp]
+                    + leap.plot.ATOM_TYPE2DISPLAY_NAME[cmp]
                     + r"}$ / $k_B T$"
                 ),
                 xlim=xlim,

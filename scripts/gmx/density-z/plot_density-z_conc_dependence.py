@@ -210,13 +210,13 @@ with PdfPages(outfile) as pdf:
 
                 ylabel = (
                     r"Density $\rho_{"
-                    + leap.plot.atom_type2display_name[cmp]
+                    + leap.plot.ATOM_TYPE2DISPLAY_NAME[cmp]
                     + r"}"
                 )
                 if y_normed:
                     ylabel += (
                         r" / \rho_{"
-                        + leap.plot.atom_type2display_name[cmp]
+                        + leap.plot.ATOM_TYPE2DISPLAY_NAME[cmp]
                         + r"}^{bulk}$"
                     )
                     ylim = (0, ymax[ps_ix][cmp_ix])

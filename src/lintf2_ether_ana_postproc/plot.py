@@ -9,7 +9,7 @@ import lintf2_ether_ana_postproc as leap
 
 
 ALPHA = 0.75  # Default transparency for transparent objects.
-atom_type2display_name = {
+ATOM_TYPE2DISPLAY_NAME = {
     "Li": r"Li",
     "NBT": r"N_{TFSI}",
     "OBT": r"O_{TFSI}",
