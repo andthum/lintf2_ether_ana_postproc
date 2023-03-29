@@ -206,3 +206,58 @@ def peak_widths(ax, x, y, peaks, properties, peak_type=None, **kwargs):
     right_ips = np.interp(properties["right_ips"], ndx, x)
 
     ax.hlines(y=heights, xmin=left_ips, xmax=right_ips, **kwargs)
+
+
+def peak_proms_widths(
+    ax,
+    x,
+    y,
+    peaks,
+    properties,
+    peak_type=None,
+    kwargs_proms=None,
+    kwargs_widths=None,
+):
+    """
+    Plot the peak prominences and widths as calculated by
+    :func:`scipy.signal.find_peaks` into an
+    :class:`matplotlib.axes.Axes`.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        The :class:`~matplotlib.axes.Axes` into which to plot the peak
+        prominences and widths.
+    x, y : array_like
+        1-dimensional arrays containing the x and y data.
+    peaks : array_like
+        Indices of the peaks as returned by
+        :func:`scipy.signal.find_peaks`.
+    properties : dict
+        Dictionary containing the properties of peaks as returned by
+        :func:`scipy.signal.find_peaks`.  The dictionary must contain
+        the keys "prominences", "width_heights", "left_ips" and
+        "right_ips".
+    peak_type : (None, "min", "max"), optional
+        Specify whether the peaks are minima or maxima.  If ``None``,
+        the peak type will be guessed by comparing the peak values to
+        their neighboring values.
+    kwargs_proms : dict or None, optional
+        Keyword arguments to parse to
+        :func:`lintf2_ether_ana_postproc.plot.peak_proms`.  See there
+        for possible options.
+    kwargs_widths : dict or None, optional
+        Keyword arguments to parse to
+        :func:`lintf2_ether_ana_postproc.plot.peak_widths`.  See there
+        for possible options.
+    """
+    if kwargs_proms is None:
+        kwargs_proms = {}
+    if kwargs_widths is None:
+        kwargs_widths = {}
+    leap.plot.peak_proms(
+        ax, x, y, peaks, properties, peak_type, **kwargs_proms
+    )
+    leap.plot.peak_widths(
+        ax, x, y, peaks, properties, peak_type, **kwargs_widths
+    )
