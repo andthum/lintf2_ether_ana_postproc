@@ -225,3 +225,55 @@ def interp_outliers(x, y, inplace=False, **kwargs):
         y[outliers] = np.interp(x[outliers], x[valid], y[valid])
 
     return y
+
+
+def peaks_are_max(y, peaks):
+    """
+    Check if all given peaks are maxima or minima.
+
+    Parameters
+    ----------
+    y : array_like
+        1-dimensional array of y coordinates.
+    peaks : array_like
+        1-dimensional array of peak indices as returned by
+        :func:`scipy.signal.find_peaks`.
+
+    Returns
+    -------
+    peaks_are_max : bool
+        ``True`` if the y values of all peaks are lower or equal to
+        their neighboring y values.  ``False`` if the y values of all
+        peaks are higher or equal to their neighboring y values.
+
+    Raises
+    ------
+    ValueError :
+        If the given peaks are a mix of maxima and minima or if the
+        given peaks have no neighboring values.
+    """
+    y = np.asarray(y)
+    peaks = np.asarray(peaks)
+
+    try:
+        y[peaks]
+    except IndexError:
+        raise IndexError("`peaks` is not a suitable index array for `y`")
+
+    ix_left = peaks - 1
+    ix_right = peaks + 1
+    valid_ix = (ix_left > 0) & (ix_right < len(y))
+    if not np.any(valid_ix):
+        raise ValueError("The given peaks have no neighboring values")
+
+    left_is_lower = np.all(y[ix_left[valid_ix]] <= y[peaks[valid_ix]])
+    right_is_lower = np.all(y[ix_right[valid_ix]] <= y[peaks[valid_ix]])
+    if left_is_lower and right_is_lower:
+        return True
+
+    left_is_higher = np.all(y[ix_left[valid_ix]] >= y[peaks[valid_ix]])
+    right_is_higher = np.all(y[ix_right[valid_ix]] >= y[peaks[valid_ix]])
+    if left_is_higher and right_is_higher:
+        return False
+
+    raise ValueError("The given peaks are a mix of maxima and minima")
