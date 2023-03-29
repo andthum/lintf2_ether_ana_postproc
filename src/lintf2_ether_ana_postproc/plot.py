@@ -1,9 +1,14 @@
 """Module containing functions for plotting."""
 
+
+# Third-party libraries
+import numpy as np
+
 # First-party libraries
 import lintf2_ether_ana_postproc as leap
 
 
+ALPHA = 0.75  # Default transparency for transparent objects.
 atom_type2display_name = {
     "Li": r"Li",
     "NBT": r"N_{TFSI}",
@@ -94,3 +99,54 @@ def plot_elctrds(ax, offset_right, offset_left=0, **kwargs):
     kwargs.setdefault("linestyle", "dashed")
     leap.plot.plot_elctrd_left(ax, offset_left, **kwargs)
     leap.plot.plot_elctrd_right(ax, offset_right, **kwargs)
+
+
+def peak_proms(ax, x, y, peaks, properties, peak_type=None, **kwargs):
+    """
+    Plot the peak prominences as calculated by
+    :func:`scipy.signal.find_peaks` into an
+    :class:`matplotlib.axes.Axes`.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        The :class:`~matplotlib.axes.Axes` into which to plot the peak
+        prominences.
+    x, y : array_like
+        1-dimensional arrays containing the x and y data.
+    peaks : array_like
+        Indices of the peaks as returned by
+        :func:`scipy.signal.find_peaks`.
+    properties : dict
+        Dictionary containing the properties of peaks as returned by
+        :func:`scipy.signal.find_peaks`.  The dictionary must contain
+        the key "prominences".
+    peak_type : (None, "min", "max"), optional
+        Specify whether the peaks are minima or maxima.  If ``None``,
+        the peak type will be guessed by comparing the peak values to
+        their neighboring values.
+    kwargs : dict, optional
+        Keyword arguments to parse to
+        :func:`matplotlib.axes.Axes.vlines`.  See there for possible
+        options.  By default, `alpha` is set to 0.75 and `color` is set
+        to "limegreen" for maxima and `darkgreen` for minima.
+    """
+    x = np.asarray(x)
+    y = np.asarray(y)
+    peaks = np.asarray(peaks)
+
+    if peak_type is None:
+        if leap.misc.peaks_are_max(y, peaks):
+            peak_type = "max"
+        else:
+            peak_type = "min"
+    if peak_type.lower() == "max":
+        ymin = y[peaks] - properties["prominences"]
+        kwargs.setdefault("color", "limegreen")
+    elif peak_type.lower() == "min":
+        ymin = y[peaks] + properties["prominences"]
+        kwargs.setdefault("color", "darkgreen")
+    else:
+        raise ValueError("Unknown `peak_type`: {}".format(peak_type))
+    kwargs.setdefault("alpha", ALPHA)
+    ax.vlines(x=x[peaks], ymin=ymin, ymax=y[peaks], **kwargs)
