@@ -150,3 +150,59 @@ def peak_proms(ax, x, y, peaks, properties, peak_type=None, **kwargs):
         raise ValueError("Unknown `peak_type`: {}".format(peak_type))
     kwargs.setdefault("alpha", ALPHA)
     ax.vlines(x=x[peaks], ymin=ymin, ymax=y[peaks], **kwargs)
+
+
+def peak_widths(ax, x, y, peaks, properties, peak_type=None, **kwargs):
+    """
+    Plot the peak widths as calculated by
+    :func:`scipy.signal.find_peaks` into an
+    :class:`matplotlib.axes.Axes`.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        The :class:`~matplotlib.axes.Axes` into which to plot the peak
+        widths.
+    x, y : array_like
+        1-dimensional arrays containing the x and y data.
+    peaks : array_like
+        Indices of the peaks as returned by
+        :func:`scipy.signal.find_peaks`.
+    properties : dict
+        Dictionary containing the properties of peaks as returned by
+        :func:`scipy.signal.find_peaks`.  The dictionary must contain
+        the keys "width_heights", "left_ips" and "right_ips".
+    peak_type : (None, "min", "max"), optional
+        Specify whether the peaks are minima or maxima.  If ``None``,
+        the peak type will be guessed by comparing the peak values to
+        their neighboring values.
+    kwargs : dict, optional
+        Keyword arguments to parse to
+        :func:`matplotlib.axes.Axes.hlines`.  See there for possible
+        options.  By default, `alpha` is set to 0.75 and `color` is set
+        to "red" for maxima and `darkred` for minima.
+    """
+    x = np.asarray(x)
+    y = np.asarray(y)
+    peaks = np.asarray(peaks)
+
+    if peak_type is None:
+        if leap.misc.peaks_are_max(y, peaks):
+            peak_type = "max"
+        else:
+            peak_type = "min"
+    if peak_type.lower() == "max":
+        heights = properties["width_heights"]
+        kwargs.setdefault("color", "red")
+    elif peak_type.lower() == "min":
+        heights = -properties["width_heights"]
+        kwargs.setdefault("color", "darkred")
+    else:
+        raise ValueError("Unknown `peak_type`: {}".format(peak_type))
+    kwargs.setdefault("alpha", ALPHA)
+
+    ndx = np.arange(len(x), dtype=np.uint32)
+    left_ips = np.interp(properties["left_ips"], ndx, x)
+    right_ips = np.interp(properties["right_ips"], ndx, x)
+
+    ax.hlines(y=heights, xmin=left_ips, xmax=right_ips, **kwargs)
