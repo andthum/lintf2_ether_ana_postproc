@@ -1565,6 +1565,13 @@ class Simulations:
             :type: list
             """
 
+        self.n_sims = None
+        """
+        Number of simulations stored in this container class.
+
+        :type: int
+        """
+
         self.paths = None
         """
         List containing the path to each
@@ -1715,6 +1722,7 @@ class Simulations:
                 raise FileNotFoundError("No such directory: '{}'".format(path))
             self.paths.append(os.path.abspath(path))
         self.get_sims(sort_key)
+        self.get_n_sims()
         self.get_paths_ana()
         self.get_fnames_ana_base()
         self.get_res_names()
@@ -1810,6 +1818,28 @@ class Simulations:
         self.__init__(*paths)
 
         return self.sims
+
+    def get_n_sims(self):
+        """
+        Get the number of simulations stored in this container class.
+
+        Return the value of :attr:`self.n_sims`.  If :attr:`self.n_sims`
+        is ``None``, infer the number of simulations from
+        :attr:`self.sims`.
+
+        Returns
+        -------
+        self.n_sims : int
+            The number of simulations stored in this container class.
+        """
+        if self.n_sims is not None:
+            return self.n_sims
+
+        if self.sims is None:
+            self.get_sims()
+
+        self.n_sims = len(self.sims)
+        return self.n_sims
 
     def get_paths(self):
         """
