@@ -101,6 +101,18 @@ class Electrode:
         :type: float
         """
 
+        self.BULK_START = 40.0
+        """
+        Distance to the electrodes in Angstroms at which the bulk region
+        starts.
+
+        This is just a subjective value I defined from visual inspection
+        of the density profiles.  There is no underlying calculation or
+        objective criterion behind it.
+
+        :type: float
+        """
+
 
 class Simulation:
     """
