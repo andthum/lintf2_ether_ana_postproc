@@ -111,9 +111,8 @@ elctrd_thk = Elctrd.ELCTRD_THK / 10  # A -> nm
 box_z_max = np.max(Sims.boxes_z)
 
 plot_sections = ("left", "right", "full")
-# xmin = -elctrd_thk
 xmin = 0
-xmax = bulk_start
+xmax = Elctrd.BULK_START / 10  # A -> nm
 if args.surfq == "q0":
     ymin = tuple((-2, -1.5, -1, -1.1) for _ in plot_sections)
     ymax = tuple((2.6, 2.3, 1.2, 0.9) for _ in plot_sections)

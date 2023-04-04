@@ -102,9 +102,8 @@ elctrd_thk = Elctrd.ELCTRD_THK / 10  # A -> nm
 box_z_max = np.max(Sims.boxes_z)
 
 plot_sections = ("left", "right", "full")
-# xmin = -elctrd_thk
 xmin = 0
-xmax = 4
+xmax = Elctrd.BULK_START / 10  # A -> nm
 if args.sol == "g1":
     ymax = ((6.25, 46, 62.5, 4.6), (82.5, 4.6, 4.6, 6.25))
     ymax += (tuple(np.max(ymax, axis=0)),)
