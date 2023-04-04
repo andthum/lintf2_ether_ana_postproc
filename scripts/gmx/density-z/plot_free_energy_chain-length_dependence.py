@@ -78,8 +78,6 @@ if len(compounds) != len(cols):
         "`len(compounds)` ({}) != `len(cols)`"
         " ({})".format(len(compounds), len(cols))
     )
-# Distance to the electrodes in nm at which the bulk region starts.
-bulk_start = 4
 
 
 print("Creating Simulation instance(s)...")
@@ -178,11 +176,8 @@ with PdfPages(outfile) as pdf:
                     usecols=(0, cols[cmp_ix]),
                     unpack=True,
                 )
-                bulk_begin = elctrd_thk + bulk_start
-                bulk_end = Sim.box[2] / 10  # A -> nm
-                bulk_end -= elctrd_thk + bulk_start
                 y = leap.misc.dens2free_energy(
-                    x, y, bulk_region=(bulk_begin, bulk_end)
+                    x, y, bulk_region=Sim.bulk_region / 10  # A -> nm
                 )
                 if plt_sec == "left":
                     y = y[: len(y) // 2]
