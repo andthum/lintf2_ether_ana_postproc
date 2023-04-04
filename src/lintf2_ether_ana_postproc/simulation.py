@@ -1698,6 +1698,16 @@ class Simulations:
         :type: dict
         """
 
+        self.bulk_regions = None
+        """
+        Array of shape ``(n_sims, 2)`` containing the begin and end of
+        the bulk region of the simulation box along the z direction in
+        nanometers for each
+        :class:`~lintf2_ether_ana_postproc.simulation.Simulation`.
+
+        :type: numpy.ndarray
+        """
+
         self.paths = []
         for path in paths:
             path = os.path.expandvars(os.path.expanduser(path))
@@ -1718,6 +1728,7 @@ class Simulations:
         self.get_boxes_z()
         self.get_vols()
         self.get_dens()
+        self.get_bulk_regions()
 
     def get_sims(self, sort_key=None):
         """
@@ -2222,6 +2233,34 @@ class Simulations:
                         dens_array *= self.MDENS2SI  # u/A^3 -> kg/m^3
                     self.dens[cmp][cn][dens_type] = dens_array
         return self.dens
+
+    def get_bulk_regions(self):
+        """
+        Get the begin and end of the bulk region of the simulation box
+        along the z direction in nanometers for each
+        :class:`~lintf2_ether_ana_postproc.simulation.Simulation`.
+
+        Return the value of :attr:`self.bulk_regions`.  If
+        :attr:`self.bulk_regions` is ``None``, create it from
+        :attr:`self.sims`.
+
+        Returns
+        -------
+        self.bulk_regions : numpy.ndarray
+            Array of shape ``(n_sims, 2)`` containing the begin and end
+            of the bulk region of the simulation box along the z
+            direction in nanometers for each
+            :class:`~lintf2_ether_ana_postproc.simulation.Simulation`.
+        """
+        if self.bulk_regions is not None:
+            return self.bulk_regions
+
+        if self.sims is None:
+            self.get_sims()
+
+        self.bulk_regions = np.array([sim.bulk_region for sim in self.sims])
+        self.bulk_regions /= 10  # Angstrom -> nm
+        return self.bulk_regions
 
 
 def get_surfq(system):
