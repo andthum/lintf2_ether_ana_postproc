@@ -378,6 +378,21 @@ class Simulation:
         :type: dict
         """
 
+        self.bulk_region = None
+        """
+        Begin and end of the bulk region of the simulation box along the
+        z direction in Angstrom.
+
+        For bulk simulations, this is the entire simulation box from
+        zero to :math:`l_z`.  For surface simulations, this is the
+        region from
+        :attr:`Electrode.ELCTRD_THK` + :attr:`Electrode.BULK_START` to
+        :attr:`self.box[2]` - :attr:`Electrode.ELCTRD_THK` -
+        :attr:`Electrode.BULK_START`.
+
+        :type: numpy.ndarray of two floats
+        """
+
         path = os.path.expandvars(os.path.expanduser(path))
         if not os.path.isdir(path):
             raise FileNotFoundError("No such directory: '{}'".format(path))
@@ -401,6 +416,7 @@ class Simulation:
         self.get_Li_O_ratio()
         self.get_vol()
         self.get_dens()
+        self.get_bulk_region()
 
         # Release memory.
         del self._Universe, self._BulkSim
@@ -1442,6 +1458,42 @@ class Simulation:
                             )
 
         return self.dens
+
+    def get_bulk_region(self):
+        """
+        Get the begin and end of the bulk region of the simulation box
+        along the z direction in Angstrom.
+
+        Return the value of :attr:`self.bulk_region`.  If
+        :attr:`self.bulk_region` is ``None``, calculate the bulk region
+        from :attr:`self.box`, :attr:`Electrode.ELCTRD_THK` and
+        :attr:`Electrode.BULK_START`.
+
+        For bulk simulations, the bulk region spans the entire
+        simulation box.
+
+        Returns
+        -------
+        self.bulk_region : numpy.ndarray of two floats
+            The begin and end of the bulk region of the simulation box
+            along the z direction in Angstrom.
+        """
+        if self.bulk_region is not None:
+            return self.bulk_region
+
+        if self.is_bulk is None:
+            self.get_is_bulk()
+        if self.box is None:
+            self.get_box()
+
+        bulk_begin = 0
+        bulk_end = self.box[2]
+        if not self.is_bulk:
+            Elctrd = leap.simulation.Electrode()
+            bulk_begin += Elctrd.ELCTRD_THK + Elctrd.BULK_START
+            bulk_end -= Elctrd.ELCTRD_THK + Elctrd.BULK_START
+        self.bulk_region = np.array([bulk_begin, bulk_end])
+        return self.bulk_region
 
 
 class Simulations:
