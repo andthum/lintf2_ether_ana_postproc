@@ -9,8 +9,6 @@ compounds of a single simulation.
 
 # Standard libraries
 import argparse
-import glob
-import os
 import warnings
 from copy import deepcopy
 
@@ -95,38 +93,20 @@ wlen = 9  # Length of the filter window.
 
 
 print("Creating Simulation instance(s)...")
-SimPaths = leap.simulation.SimPaths()
 if "_gra_" in args.system:
     surfq = leap.simulation.get_surfq(args.system)
     top_path = "q%g" % surfq
 else:
     surfq = None
     top_path = "bulk"
-pattern_settings = "[0-9][0-9]_" + args.settings + "_" + args.system
-pattern = os.path.join(SimPaths.PATHS[top_path], args.system, pattern_settings)
-paths = glob.glob(pattern)
-if len(paths) < 1:
-    raise ValueError(
-        "Could not find a directory that matches the pattern"
-        " '{}'".format(pattern)
-    )
-elif len(paths) > 1:
-    raise ValueError(
-        "Found more than one directory that matches the pattern"
-        " '{}'".format(pattern)
-    )
-Sim = leap.simulation.Simulation(paths[0])
-
-
-print("Assembling input file name(s)...")
-file_suffix = analysis + analysis_suffix + ".xvg.gz"
-fname = Sim.fname_ana_base + file_suffix
-infile = os.path.join(Sim.path_ana, tool, analysis, fname)
-if not os.path.isfile(infile):
-    raise FileNotFoundError("No such file: '{}'".format(infile))
+set_pat = "[0-9][0-9]_" + args.settings + "_" + args.system
+Sim = leap.simulation.get_sim(args.system, set_pat, top_path)
 
 
 print("Reading data...")
+file_suffix = analysis + analysis_suffix + ".xvg.gz"
+infile = leap.simulation.get_ana_file(Sim, analysis, tool, file_suffix)
+
 data = np.loadtxt(infile, comments=["#", "@"], usecols=cols, unpack=True)
 xdata, ydata = data[0], data[1:]
 n_samples_half = len(xdata) // 2
