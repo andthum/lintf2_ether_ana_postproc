@@ -2434,3 +2434,41 @@ def get_sims(sys_pat, set_pat, path_key, exclude_pat=None, **kwargs):
         )
         raise ValueError(err_msg + err_msg_suffix)
     return leap.simulation.Simulations(*paths, **kwargs)
+
+
+def get_ana_files(Sims, ana_name, ana_tool, file_suffix):
+    """
+    Get the paths to the given analysis files for each
+    :class:`~lintf2_ether_ana_postproc.simulation.Simulation` in a given
+    :class:`~lintf2_ether_ana_postproc.simulation.Simulations` instance.
+
+    Parameters
+    ----------
+    Sims : lintf2_ether_ana_postproc.simulation.Simulations
+        The :class:`~lintf2_ether_ana_postproc.simulation.Simulations`
+        instance.
+    ana_name : str
+        The analysis name.
+    ana_tool : {"gmx", "mdtools"}
+        The software/tool used to generate the analysis file.
+    file_suffix : str
+        The suffix of the analysis file without the simulation settings
+        and the system name, i.e. everything after
+        :attr:`lintf2_ether_ana_postproc.simulation.Simulations.fnames_ana_base`.
+
+    Returns
+    -------
+    ana_files : list
+        List of paths to the analysis files.
+    """
+    if ana_tool not in ("gmx", "mdtools"):
+        raise ValueError("Unknown `ana_tool`: '{}'".format(ana_tool))
+
+    ana_files = []
+    for sim_ix, path in enumerate(Sims.paths_ana):
+        fname = Sims.fnames_ana_base[sim_ix] + file_suffix
+        fpath = os.path.join(path, ana_tool, ana_name, fname)
+        if not os.path.isfile(fpath):
+            raise FileNotFoundError("No such file: '{}'".format(fpath))
+        ana_files.append(fpath)
+    return ana_files
