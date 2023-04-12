@@ -18,7 +18,6 @@ the free energy in the bulk region is effectively set to zero).
 
 # Standard libraries
 import argparse
-import glob
 import os
 
 # Third-party libraries
@@ -81,29 +80,17 @@ if len(compounds) != len(cols):
 
 
 print("Creating Simulation instance(s)...")
-SimPaths = leap.simulation.SimPaths()
-pattern_system = "lintf2_" + args.sol + "_20-1_gra_q[0-9]*_sc80"
-pattern_settings = "[0-9][0-9]_" + settings + "_" + pattern_system
-pattern = os.path.join(
-    SimPaths.PATHS["walls"], "q[0-9]*", pattern_system, pattern_settings
-)
-paths = glob.glob(pattern)
-Sims = leap.simulation.Simulations(*paths, sort_key="surfq")
-
-
-print("Assembling input file name(s)...")
-infiles = []
-file_suffix = analysis + analysis_suffix + ".xvg.gz"
-for i, path in enumerate(Sims.paths_ana):
-    fname = Sims.fnames_ana_base[i] + file_suffix
-    fpath = os.path.join(path, tool, analysis, fname)
-    if not os.path.isfile(fpath):
-        raise FileNotFoundError("No such file: '{}'".format(fpath))
-    infiles.append(fpath)
-n_infiles = len(infiles)
+sys_pat = "lintf2_" + args.sol + "_20-1_gra_q[0-9]*_sc80"
+set_pat = "[0-9][0-9]_" + settings + "_" + sys_pat
+sys_pat = os.path.join("q[0-9]*", sys_pat)
+Sims = leap.simulation.get_sims(sys_pat, set_pat, "walls", sort_key="surfq")
 
 
 print("Reading data and creating plot(s)...")
+file_suffix = analysis + analysis_suffix + ".xvg.gz"
+infiles = leap.simulation.get_ana_files(Sims, analysis, tool, file_suffix)
+n_infiles = len(infiles)
+
 Elctrd = leap.simulation.Electrode()
 elctrd_thk = Elctrd.ELCTRD_THK / 10  # A -> nm
 box_z_max = np.max(Sims.boxes_z)
