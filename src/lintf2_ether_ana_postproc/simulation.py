@@ -2378,6 +2378,73 @@ def num_atoms_per_type(ag, attr="types"):
     return dict(zip(unique_atom_types, n_atoms_per_type))
 
 
+def get_sim(sys_pat, set_pat, path_key, exclude_pat=None):
+    """
+    Create a :class:`~lintf2_ether_ana_postproc.simulation.Simulation`
+    instance from glob patterns.
+
+    Parameters
+    ----------
+    sys_pat : str
+        System name pattern.
+    set_pat : str
+        Simulations settings name pattern.
+    path_key : str
+        Path key to fetch the top-level path that contains the desired
+        simulation from
+        :attr:`~lintf2_ether_ana_postproc.simulation.SimPaths.PATHS`.
+        See there for possible keys.
+    exclude_pat : str or None, optional
+        System name pattern to exclude.  Any simulation whose system
+        system name matches this glob pattern will be excluded from the
+        created
+        :class:`~lintf2_ether_ana_postproc.simulation.Simulations`
+        instance.
+
+    Returns
+    -------
+    Sim : lintf2_ether_ana_postproc.simulation.Simulations
+        A :class:`~lintf2_ether_ana_postproc.simulation.Simulation`
+        instance.
+
+    See Also
+    --------
+    :func:`lintf2_ether_ana_postproc.simulation.get_sims` :
+        Create a
+        :class:`~lintf2_ether_ana_postproc.simulation.Simulations`
+        instance from glob patterns.
+    """
+    SimPaths = leap.simulation.SimPaths()
+    pattern = os.path.join(SimPaths.PATHS[path_key], sys_pat, set_pat)
+    paths = glob.glob(pattern)
+
+    if exclude_pat is not None:
+        pattern_exclude = os.path.join(
+            SimPaths.PATHS[path_key], exclude_pat, set_pat
+        )
+        paths_exclude = glob.glob(pattern_exclude)
+        paths = list(set(paths) - set(paths_exclude))
+        err_msg_suffix = " and excluding the pattern '{}'".format(
+            pattern_exclude
+        )
+    else:
+        err_msg_suffix = ""
+
+    if len(paths) == 0:
+        err_msg = (
+            "Could not find any file/directory matching the pattern"
+            " '{}'".format(pattern)
+        )
+        raise ValueError(err_msg + err_msg_suffix)
+    elif len(paths) > 1:
+        err_msg = (
+            "Found more than one file/directory matching the pattern"
+            " '{}'".format(pattern)
+        )
+        raise ValueError(err_msg + err_msg_suffix)
+    return leap.simulation.Simulation(paths[0])
+
+
 def get_sims(sys_pat, set_pat, path_key, exclude_pat=None, **kwargs):
     """
     Create a :class:`~lintf2_ether_ana_postproc.simulation.Simulations`
@@ -2410,6 +2477,13 @@ def get_sims(sys_pat, set_pat, path_key, exclude_pat=None, **kwargs):
     Sims : lintf2_ether_ana_postproc.simulation.Simulations
         A :class:`~lintf2_ether_ana_postproc.simulation.Simulations`
         instance.
+
+    See Also
+    --------
+    :func:`lintf2_ether_ana_postproc.simulation.get_sim` :
+        Create a
+        :class:`~lintf2_ether_ana_postproc.simulation.Simulation`
+        instance from glob patterns.
     """
     SimPaths = leap.simulation.SimPaths()
     pattern = os.path.join(SimPaths.PATHS[path_key], sys_pat, set_pat)
