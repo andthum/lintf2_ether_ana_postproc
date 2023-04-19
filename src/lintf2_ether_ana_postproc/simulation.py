@@ -2510,6 +2510,48 @@ def get_sims(sys_pat, set_pat, path_key, exclude_pat=None, **kwargs):
     return leap.simulation.Simulations(*paths, **kwargs)
 
 
+def get_ana_file(Sim, ana_name, ana_tool, file_suffix):
+    """
+    Get the path to the given analysis file for a given
+    :class:`~lintf2_ether_ana_postproc.simulation.Simulation` instance.
+
+    Parameters
+    ----------
+    Sim : lintf2_ether_ana_postproc.simulation.Simulation
+        The :class:`~lintf2_ether_ana_postproc.simulation.Simulation`
+        instance.
+    ana_name : str
+        The analysis name.
+    ana_tool : {"gmx", "mdtools"}
+        The software/tool used to generate the analysis file.
+    file_suffix : str
+        The suffix of the analysis file without the simulation settings
+        and the system name, i.e. everything after
+        :attr:`lintf2_ether_ana_postproc.simulation.Simulation.fname_ana_base`.
+
+    Returns
+    -------
+    ana_file : str
+        Path to the analysis files.
+
+    See Also
+    --------
+    :func:`lintf2_ether_ana_postproc.get_ana_files` :
+        Get the paths to the given analysis files for each
+        :class:`~lintf2_ether_ana_postproc.simulation.Simulation` in a
+        given :class:`~lintf2_ether_ana_postproc.simulation.Simulations`
+        instance.
+    """
+    if ana_tool not in ("gmx", "mdtools"):
+        raise ValueError("Unknown `ana_tool`: '{}'".format(ana_tool))
+
+    fname = Sim.fname_ana_base + file_suffix
+    ana_file = os.path.join(Sim.path_ana, ana_tool, ana_name, fname)
+    if not os.path.isfile(ana_file):
+        raise FileNotFoundError("No such file: '{}'".format(ana_file))
+    return ana_file
+
+
 def get_ana_files(Sims, ana_name, ana_tool, file_suffix):
     """
     Get the paths to the given analysis files for each
@@ -2534,6 +2576,13 @@ def get_ana_files(Sims, ana_name, ana_tool, file_suffix):
     -------
     ana_files : list
         List of paths to the analysis files.
+
+    See Also
+    --------
+    :func:`lintf2_ether_ana_postproc.get_ana_file` :
+        Get the path to the given analysis file for a given
+        :class:`~lintf2_ether_ana_postproc.simulation.Simulation`
+        instance.
     """
     if ana_tool not in ("gmx", "mdtools"):
         raise ValueError("Unknown `ana_tool`: '{}'".format(ana_tool))
