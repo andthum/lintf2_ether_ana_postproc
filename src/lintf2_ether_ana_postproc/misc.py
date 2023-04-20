@@ -14,7 +14,7 @@ from scipy.stats import norm
 import lintf2_ether_ana_postproc as leap
 
 
-def generate_equidistant_bins(start=0, stop=None, bin_width_desired=10):
+def gen_equidist_bins(start, stop, bw_desired):
     """
     Generate equidistant bins.
 
@@ -22,31 +22,37 @@ def generate_equidistant_bins(start=0, stop=None, bin_width_desired=10):
     ----------
     start, stop : float
         First and last bin edge.
-    bin_width_desired : float
+    bw_desired : float
         Desired bin width.
-    """
-    if stop >= start:
-        raise ValueError(
-            "`stop` ({}) must be less than `start` ({})".format(stop, start)
-        )
-    if bin_width_desired <= 0:
-        raise ValueError(
-            "`bin_width_desired` ({}) must be greater than"
-            " zero".format(bin_width_desired)
-        )
 
-    dist = start - stop
-    n_bins = round(dist / bin_width_desired)
-    bin_width_actual = dist / n_bins
-    print("Binning distance:  {:>11.6f}".format(dist))
-    print("Desired bin width: {:>11.6f}".format(bin_width_desired))
-    print("Actual bin width:  {:>11.6f}".format(bin_width_actual))
-    print("Number of bins:    {:>4d}".format(n_bins))
-    print("Equidistant Bins:")
-    edge = start
-    while edge <= stop:
-        print("{:>16.9e}".format(edge))
-        edge += bin_width_actual
+    Returns
+    -------
+    bin_edges : numpy.ndarray
+        Bin edges including `start` and `stop`.
+    bw_actual : float
+        The actual bin width.
+
+    See Also
+    --------
+    :func:`numpy.linspace` :
+        Return evenly spaced numbers over a specified interval
+
+    Notes
+    -----
+    `start` and `stop` is kept fixed while `bw_desired` is adjusted such
+    that ``round((stop - start) / bw_desired)`` bins are created.  The
+    number of bin edges is the number of bins plus one.
+    """
+    if stop <= start:
+        raise ValueError(
+            "`stop` ({}) must be greater than `start` ({})".format(stop, start)
+        )
+    if bw_desired <= 0:
+        raise ValueError(
+            "`bw_desired` ({}) must be greater than zero".format(bw_desired)
+        )
+    n_bins = round((stop - start) / bw_desired)
+    return np.linspace(start, stop, n_bins + 1, retstep=True)
 
 
 def find_nearest(a, vals, tol=0.01):
