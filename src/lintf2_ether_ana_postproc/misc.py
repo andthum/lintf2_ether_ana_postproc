@@ -291,7 +291,7 @@ def symmetrize_data(x, y, x2shift=None, reassemble=False, tol=1e-4):
     return x, y
 
 
-def dens2free_energy(x, dens, bulk_region=None):
+def dens2free_energy(x, dens, bulk_region=None, tol=0.005):
     r"""
     Calculate free-energy profiles from density profiles.
 
@@ -305,6 +305,13 @@ def dens2free_energy(x, dens, bulk_region=None):
         Start and end of the bulk region in units of `x`.  If provided,
         the free-energy profile will be shifted such that the free
         energy in the bulk region is zero.
+    tol : float, optional
+        Tolerance value for finding the indices of `x` that correspond
+        to the values provided by `bulk_region`.  Is ignored, if
+        `bulk_region` is ``None``.  This function uses
+        :func:`lintf2_ether_ana_postproc.misc.find_nearest` to find the
+        indices of the bulk region.  Good values for `tol` are 0.005 if
+        `x` is given in nanometers or 0.05 if `x` is given in Angstroms.
 
     Returns
     -------
@@ -341,7 +348,7 @@ def dens2free_energy(x, dens, bulk_region=None):
                 "`bulk_region` ({}) must be None or a 2-tuple of"
                 " floats.".format(bulk_region)
             )
-        start, stop = leap.misc.find_nearest(x, bulk_region, tol=0.01)
+        start, stop = leap.misc.find_nearest(x, bulk_region, tol=tol)
         free_en_bulk = np.mean(free_en[start : stop + 1])
         free_en -= free_en_bulk
     return free_en
