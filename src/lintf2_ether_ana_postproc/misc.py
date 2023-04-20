@@ -55,6 +55,63 @@ def gen_equidist_bins(start, stop, bw_desired):
     return np.linspace(start, stop, n_bins + 1, retstep=True)
 
 
+def extend_bins(bins, prepend=None, append=None):
+    """
+    Extend `bins` with the given prepend and append values.
+
+    Parameters
+    ----------
+    bins : array_like
+        1D array of sorted bin edges.
+    prepend : scalar or array_like or None
+        (Sorted) bin edge(s) to prepend to `bins`.
+    append : scalar or array_like or None
+        (Sorted) bin edge(s) to append to `bins`.
+
+    Returns
+    -------
+    bins_ext : numpy.ndarray
+        Extended 1D array of bin edges.
+    """
+    bins = np.asarray(bins)
+    if not np.allclose(np.sort(bins), bins, rtol=0):
+        raise ValueError("`bins` ({}) must be a sorted 1D array".format(bins))
+
+    if prepend is not None:
+        prepend = np.asarray(prepend)
+        if prepend.ndim > 0 and not np.allclose(
+            np.sort(prepend), prepend, rtol=0
+        ):
+            raise ValueError(
+                "`prepend` ({}) must be a scalar or a sorted 1D"
+                " array".format(prepend)
+            )
+        if np.any(prepend >= bins[0]):
+            raise ValueError(
+                "`prepend` ({}) must be smaller than `bins[0]`"
+                " ({})".format(prepend, bins[0])
+            )
+        bins = np.insert(bins, 0, prepend)
+
+    if append is not None:
+        append = np.asarray(append)
+        if append.ndim > 0 and not np.allclose(
+            np.sort(append), append, rtol=0
+        ):
+            raise ValueError(
+                "`append` ({}) must be a scalar or a sorted 1D"
+                " array".format(append)
+            )
+        if np.any(append <= bins[-1]):
+            raise ValueError(
+                "`append` ({}) must be greater than `bins[-1]`"
+                " ({})".format(append, bins[-1])
+            )
+        bins = np.append(bins, append)
+
+    return bins
+
+
 def find_nearest(a, vals, tol=0.01):
     """
     Get the indices of the values of an array that are closest to the
