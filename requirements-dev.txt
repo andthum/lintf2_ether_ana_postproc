@@ -5,7 +5,7 @@
 # Keep Flake8 plugins in sync with `.pre-commit-config.yaml` and
 # `.flake8`!
 
-bandit >=1.0, <2.0
+bandit[toml] >=1.0, <2.0
 black >=23.0, <24.0
 flake8 >=6.0, <7.0
 flake8-bandit >=4.0, <5.0
@@ -20,5 +20,6 @@ flake8-rst-docstrings >=0.2.6, <1.0
 isort >=5.0, <6.0
 pep8-naming >=0.1, <1.0
 pre-commit >=3.0, <4.0
+pytest >=7.0, <8.0
 shellcheck-py >=0.1, <1.0
 shfmt-py >=3.0, <4.0
