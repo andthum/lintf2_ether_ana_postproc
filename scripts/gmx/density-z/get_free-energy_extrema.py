@@ -13,6 +13,7 @@ import warnings
 from copy import deepcopy
 
 # Third-party libraries
+import matplotlib as mpl
 import matplotlib.pyplot as plt
 import mdtools as mdt
 import mdtools.plot as mdtplt  # Load MDTools plot style  # noqa: F401
@@ -111,6 +112,20 @@ data = np.loadtxt(infile, comments=["#", "@"], usecols=cols, unpack=True)
 xdata, ydata = data[0], data[1:]
 n_samples_half = len(xdata) // 2
 
+box_z = Sim.box[2] / 10  # A -> nm
+if Sim.surfq is None or Sim.surfq == 0:
+    # For bulk simulations and surface simulations with uncharged
+    # surfaces: Average the density profile in the left and right half
+    # of the simulation box.
+    xdata_bfr_sym = np.copy(xdata)  # Data before before symmetrizing
+    ydata_bfr_sym = np.copy(ydata)
+    xdata, ydata = leap.misc.symmetrize_data(
+        xdata, ydata, x2shift=box_z, reassemble=True
+    )
+    symmetrized = True
+else:
+    symmetrized = False
+
 # Maximum peak width for peak finding with `scipy.signal.find_peaks`.
 x_sample_spacing = np.mean(np.diff(xdata))
 n_samples_per_nm = round(1 / x_sample_spacing)
@@ -121,6 +136,10 @@ peak_finding_factors = (-1, 1)  # -1 for finding minima, 1 for maxima.
 bulk_region = Sim.bulk_region / 10  # A -> nm
 for i, y in enumerate(ydata):
     ydata[i] = leap.misc.dens2free_energy(xdata, y, bulk_region=bulk_region)
+    if symmetrized:
+        ydata_bfr_sym[i] = leap.misc.dens2free_energy(
+            xdata_bfr_sym, ydata_bfr_sym[i], bulk_region=bulk_region
+        )
 
 # Calculate the threshold for outlier detection from the standard
 # deviation of the free-energy profile in the bulk region.
@@ -134,11 +153,11 @@ outlier_thresholds *= sd_factor
 print("Finding extrema and creating plot(s)...")
 Elctrd = leap.simulation.Electrode()
 elctrd_thk = Elctrd.ELCTRD_THK / 10  # A -> nm
-box_z = Sim.box[2] / 10  # A -> nm
 
 plot_sections = ("left", "right")
 xmin = 0
 xmax = Elctrd.BULK_START / 10  # A -> nm
+free_en_kwargs = {"label": "Free Energy", "color": "tab:blue"}
 
 ix_shift = np.zeros((len(plot_sections), len(compounds)), dtype=np.uint32)
 peaks = [
@@ -163,12 +182,26 @@ with PdfPages(outfile_pdf) as pdf:
                 y = y[:n_samples_half]
                 x = x[:n_samples_half]
                 x -= elctrd_thk
+                if symmetrized:
+                    # Only required for plotting the original data.
+                    y_bfr_sym = np.copy(ydata_bfr_sym[cmp_ix][:n_samples_half])
+                    x_bfr_sym = np.copy(xdata_bfr_sym[:n_samples_half])
+                    x_bfr_sym -= elctrd_thk
             elif plt_sec == "right":
                 ix_shift[plt_ix][cmp_ix] += n_samples_half
                 y = y[n_samples_half:]
                 x = x[n_samples_half:]
                 x += elctrd_thk
                 x -= box_z
+                # Don't multiply `x` with -1 here, because then the
+                # interpolation of outliers does not work.
+                if symmetrized:
+                    # Only required for plotting the original data.
+                    y_bfr_sym = np.copy(ydata_bfr_sym[cmp_ix][n_samples_half:])
+                    x_bfr_sym = np.copy(xdata_bfr_sym[n_samples_half:])
+                    x_bfr_sym += elctrd_thk
+                    x_bfr_sym -= box_z
+                    x_bfr_sym *= -1  # Ensure positive distance values.
             else:
                 raise ValueError("Unknown plot section: '{}'".format(plt_sec))
             if np.any(np.isnan(x)) or np.any(np.isnan(y)):
@@ -180,9 +213,9 @@ with PdfPages(outfile_pdf) as pdf:
                     " profile".format(cmp, plt_sec)
                 )
 
-            # Remove infinite values that stem from taking the
-            # logarithm of zero when calculating the free-energy
-            # profile from the density profile.
+            # Remove infinite values that stem from taking the logarithm
+            # of zero when calculating the free-energy profile from the
+            # density profile.
             valid = np.isfinite(y)
             n_samples_half_plt_sec = len(valid) // 2
             if not np.all(valid[:n_samples_half_plt_sec]):
@@ -202,7 +235,7 @@ with PdfPages(outfile_pdf) as pdf:
 
             # Prepare data for peak finding.
             # Replace outliers with interpolated values.
-            y_original = np.copy(y)
+            y_bfr_smooth = np.copy(y)  # y data before smoothing.
             y = leap.misc.interp_outliers(
                 x,
                 y,
@@ -237,7 +270,7 @@ with PdfPages(outfile_pdf) as pdf:
                         properties_tmp["right_bases"],
                     ),
                 )
-                # Pseudo Full Width at Half Maximum.  Pseudo, because
+                # Pseudo Full Width at Half Maximum.  "Pseudo", because
                 # it's the width at half prominence and not at half of
                 # the peak height.
                 fwhm_tmp = peak_widths(
@@ -258,12 +291,26 @@ with PdfPages(outfile_pdf) as pdf:
 
             # Plot peak finding results.
             fig, ax = plt.subplots(clear=True)
-            leap.plot.elctrd_left(ax)
+            if surfq is not None:
+                leap.plot.elctrd_left(ax)
             if plt_sec == "right":
                 x *= -1  # Ensure positive distance values.
-            lines = ax.plot(
-                x, y_original, color="tab:blue", label="Free Energy"
-            )
+            if symmetrized:
+                lines = ax.plot(
+                    x_bfr_sym,
+                    y_bfr_sym,
+                    linewidth=1.5 * mpl.rcParams["lines.linewidth"],
+                    **free_en_kwargs,
+                )
+                lines = ax.plot(
+                    x,
+                    y_bfr_smooth,
+                    color="dodgerblue",
+                    label="Symmetrized",
+                    alpha=leap.plot.ALPHA,
+                )
+            else:
+                lines = ax.plot(x, y_bfr_smooth, **free_en_kwargs)
             ax.plot(
                 x,
                 y,
@@ -429,14 +476,18 @@ with PdfPages(outfile_pdf) as pdf:
                 )
 
     # Plot the full free-energy profile.
-    x = xdata
     for cmp_ix, cmp in enumerate(compounds):
-        y = ydata[cmp_ix]
+        if symmetrized:
+            x = xdata_bfr_sym
+            y = ydata_bfr_sym[cmp_ix]
+        else:
+            x = xdata
+            y = ydata[cmp_ix]
         fig, ax = plt.subplots(clear=True)
         leap.plot.elctrds(
             ax, offset_left=elctrd_thk, offset_right=box_z - elctrd_thk
         )
-        lines = ax.plot(x, y, color="tab:blue", label="Free Energy")
+        lines = ax.plot(x, y, **free_en_kwargs)
         for fac_ix, fac in enumerate(peak_finding_factors):
             leap.plot.peaks(
                 ax,
@@ -507,6 +558,8 @@ print("Created {}".format(outfile_pdf))
 
 # Write peak properties to file.
 print("Creating output file(s)...")
+# Write out the x data that were used for peak finding.  Don't write out
+# `xdata_bfr_sym`.
 x = xdata
 ndx = np.arange(len(x))
 for cmp_ix, cmp in enumerate(compounds):
@@ -529,32 +582,41 @@ for cmp_ix, cmp in enumerate(compounds):
             + "Ether oxygens per PEO chain:   {:d}\n".format(Sim.O_per_chain)
             + "\n"
             + "\n"
-            + "The free-energy profile F(z) is calculated from the density\n"
-            + "profile p(z) according to\n"
+            + "Peak finding procedure:\n"
+            + "\n"
+            + "1.) For bulk simulations and surface simulations with\n"
+            + "uncharged surfaces, the density profile is symmetrized with\n"
+            + "respect to the center of the simulation box by taking the\n"
+            + "average of the density profile in the left and right half of\n"
+            + "the simulation box.\n"
+            + "\n"
+            + "2.) The free-energy profile F(z) is calculated from the\n"
+            + "density profile p(z) according to\n"
             + "  F(z)/kT = -ln[p(z)/p0]\n"
             + "where k is the Boltzmann constant and T is the temperature.\n"
-            + "p0 is the average density in the bulk region.\n"
+            + "p0 is the average density in the bulk region.  Thus, the free\n"
+            + "energy in the bulk region is effectively set to zero.\n"
             + "\n"
-            + "Afterwards, outliers are identified by comparing each F(z)\n"
-            + "value to its two neighboring values.  If the value sticks out\n"
-            + "by more than {:>.2f} times the standard deviation of\n".format(
+            + "3.) Outliers are identified by comparing each F(z) value to\n"
+            + "its two neighboring values.  If the value sticks out by more\n"
+            + "than {:>.2f} times the standard deviation of all F(z)\n".format(
                 sd_factor
             )
-            + "all F(z) values in the bulk region, it is regarded as\n"
-            + "outlier.  The identified outliers are replaced by a linear\n"
-            + "interpolation between their two neighboring values.\n"
+            + "values in the bulk region, it is regarded as outlier.  The\n"
+            + "identified outliers are replaced by a linear interpolation\n"
+            + "between their two neighboring values.\n"
             + "\n"
-            + "Subsequently, the free-energy profile is smoothed using a\n"
+            + "4.) The free-energy profile is smoothed using a\n"
             + "Savitzky-Golay filter.\n"
             + "\n"
-            + "Finally, free-energy {:s} are identified on the basis\n".format(
+            + "5.) Free-energy {:s} are identified on the basis of\n".format(
                 peak_type
             )
-            + "of their peak prominence and width.\n"
+            + "their peak prominence and width.\n"
             + "\n"
             + "\n"
             + "(Average) bin width and number of sample points per nm:\n"
-            + "x_sample_spacing: {:>16.9e} nm\n".format(x_sample_spacing)
+            + "sample_spacing:   {:>16.9e} nm\n".format(x_sample_spacing)
             + "n_samples_per_nm:  {:d}\n".format(n_samples_per_nm)
             + "\n"
             + "Start of the bulk region as distance to the electrodes:\n"
@@ -648,47 +710,46 @@ for cmp_ix, cmp in enumerate(compounds):
             + "{:>14d}".format(1)
         )
         pks = peaks_full[cmp_ix][fac_ix]
+        pk_pos = x[pks]
         pks_h = peak_heights_full[cmp_ix][fac_ix]
         props = properties_full[cmp_ix][fac_ix]
         bw = base_widths_full[cmp_ix][fac_ix]
         fwhm = fwhm_full[cmp_ix][fac_ix]
 
-        if np.any(x[pks] <= elctrd_thk):
+        if np.any(pk_pos <= elctrd_thk):
             raise ValueError(
                 "At least one peak lies within the left electrode.  Peak"
                 " positions: {}.  Left electrode:"
-                " {}".format(x[pks], elctrd_thk)
+                " {}".format(pk_pos, elctrd_thk)
             )
-        if np.any(x[pks] >= box_z - elctrd_thk):
+        if np.any(pk_pos >= box_z - elctrd_thk):
             raise ValueError(
                 "At least one peak lies within the right electrode.  Peak"
                 " positions: {}.  Right electrode:"
-                " {}".format(x[pks], box_z - elctrd_thk)
+                " {}".format(pk_pos, box_z - elctrd_thk)
             )
-        if np.any((x[pks] >= bulk_region[0]) & (x[pks] <= bulk_region[1])):
+        if np.any((pk_pos >= bulk_region[0]) & (pk_pos <= bulk_region[1])):
             warnings.warn(
                 "At least one peak lies within the bulk region.  Peak"
                 " positions: {}.  Bulk region:"
-                " {}".format(x[pks], bulk_region),
+                " {}".format(pk_pos, bulk_region),
                 RuntimeWarning,
                 stacklevel=2,
             )
         if surfq == 0:
-            pk_is_left = x[pks] <= (box_z / 2)
+            pk_is_left = pk_pos <= (box_z / 2)
             n_pks_left = np.count_nonzero(pk_is_left)
             n_pks_right = len(pk_is_left) - n_pks_left
             if n_pks_left != n_pks_right:
-                warnings.warn(
+                raise ValueError(
                     "The surface charge is {} e/nm^2 but the number of left"
                     " ({}) and right free-energy {} ({}) do not match for"
                     " compound {}.".format(
                         surfq, n_pks_left, peak_type, n_pks_right, cmp
-                    ),
-                    UserWarning,
-                    stacklevel=2,
+                    )
                 )
 
-        data = np.column_stack([pks, x[pks], pks_h])
+        data = np.column_stack([pks, pk_pos, pks_h])
 
         left_bases_nm = x[props["left_bases"]]
         right_bases_nm = x[props["right_bases"]]
