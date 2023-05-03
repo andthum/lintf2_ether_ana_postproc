@@ -85,6 +85,145 @@ def find_nearest(a, vals, tol=0.01):
     return ix
 
 
+def symmetrize_data(x, y, x2shift=None, reassemble=False, tol=1e-4):
+    """
+    Compute the average of the first and second half of the given data.
+
+    Cut the given data in two halves.  Mirror the second half and take
+    the average of both halves.  This can e.g. be useful when the data
+    are expected to be symmetric to the center, but due to statistical
+    noise or other reasons the symmetry is broken.  By averaging the
+    first and second half of the data, the symmetry can be restored.
+
+    Parameters
+    ----------
+    x : array_like
+        1-dimensional array of x values.
+    y : array_like
+        Array of corresponding y values.  `y` can be 1-dimensional or
+        2-dimensional.  In both cases, ``y.shape[-1]`` must match
+        ``len(x)``.  In the 2-dimensional case, `y` is interpreted as
+        array of y arrays.
+    x2shift : float or None, optional
+        A shift value for the second half of the x values.  If provided,
+        the second half of the x data will be
+        ``x2 = x2shift - x[len(x) - len(x) // 2 :][::-1]``.
+        Otherwise, the second half of the x data will be
+        ``x2 = x[len(x) - len(x) // 2 :][::-1]``.
+    reassemble : bool, optional
+        If ``True``, join the computed average data with their mirror
+        image to reassemble the input data in a symmetrized manner.
+        This means, join `x_av` with ``x_av[::-1]`` (or with
+        ``(x2shift - x_av)[::-1]`` if `x2shift` was provided) and join
+        `y_av` with ``y_av[::-1]`` (or with ``y_av[:, ::-1]`` if `y` is
+        2-dimensional).
+    tol : float or None, optional
+        If provided, the x values in the first and second half must be
+        equal within the given tolerance.  Good values for `tol` are
+        1e-4 if `x` is given in nanometers or 1e-3 if `x` is given in
+        Angstroms.
+
+    Returns
+    -------
+    x_av : numpy.ndarray
+        Array containing the averaged x values.  If `reassemble` is
+        ``True``, the shape of `x_av` will be the same as that of `x`.
+        Otherwise, it will be ``(np.ceil(len(x) / 2),)``.
+    y_av : numpy.ndarray
+        Array containing the averaged y values.  If `reassemble` is
+        ``True``, the shape of `y_av` will be the same as that of `y`.
+        Otherwise, the length of the last dimension (i.e.
+        ``y_av.shape[-1]``) will be ``np.ceil(len(x) / 2)``.
+
+    Notes
+    -----
+    This function was written to symmetrize the density (or free-energy)
+    profiles of surface simulations with uncharged surfaces.
+    """
+    x = np.asarray(x)
+    y = np.asarray(y)
+    if x.ndim != 1:
+        raise ValueError(
+            "`x` has {} dimension(s) but must be 1-dimensional".format(x.ndim)
+        )
+    if y.ndim not in (1, 2):
+        raise ValueError(
+            "`y` has {} dimension(s) but must be 1-dimensional or"
+            " 2-dimensional".format(y.ndim)
+        )
+    if y.shape[-1] != len(x):
+        raise ValueError(
+            "`y.shape[-1]` ({}) must be equal to `len(x)`"
+            " ({})".format(y.shape[-1], len(x))
+        )
+
+    n_data = len(x)
+    n_half = n_data // 2
+    x1 = x[:n_half]
+    x2 = x[n_data - n_half :]
+    x2 = x2[::-1]
+    if x2shift is not None:
+        x2 = x2shift - x2
+    if n_data % 2 != 0:
+        # `x_mid` must be an array, otherwise the call of
+        # `np.concatenate` below will fail.  `mdt.nph.take will` always
+        # returns a view of the input array, thus the result will also
+        # be an array.  In contrast, `x_mid[n_half]` will return a
+        # scalar.
+        x_mid = mdt.nph.take(x, start=n_half, stop=n_half + 1, axis=-1)
+    if x1.shape != x2.shape:
+        raise ValueError(
+            "The number of x data points in the first and second half do not"
+            " match: `x1.shape` ({}) != `x2.shape` ({}).  This should not"
+            " have happened".format(x1.shape, x2.shape)
+        )
+    if tol is not None and not np.allclose(x1, x2, rtol=0, atol=tol):
+        raise ValueError(
+            "The x values in the first and second half do not math within the"
+            " given tolerance of {}.  `x1` = {}.  `x2` ="
+            " {}".format(tol, x1, x2)
+        )
+    x = np.mean([x1, x2], axis=0)
+    del x1, x2
+
+    y1 = mdt.nph.take(y, start=0, stop=n_half, axis=-1)
+    y2 = mdt.nph.take(y, start=y.shape[-1] - n_half, stop=None, axis=-1)
+    y2 = mdt.nph.take(y2, step=-1, axis=-1)
+    if n_data % 2 != 0:
+        y_mid = mdt.nph.take(y, start=n_half, stop=n_half + 1, axis=-1)
+    if y1.shape != y2.shape:
+        raise ValueError(
+            "The number of y data points in the first and second half do not"
+            " match: `y1.shape` ({}) != `y2.shape` ({}).  This should not"
+            " have happened".format(y1.shape, y2.shape)
+        )
+    y = np.mean([y1, y2], axis=0)
+    del y1, y2
+
+    if reassemble:
+        if x2shift is not None:
+            # x2 = x2shift - x2 can mathematically be expressed as
+            # x2' = x2shift - x2
+            # => x2 = x2shift - x2'
+            x2 = x2shift - x
+            x2 = x2[::-1]
+        else:
+            x2 = x[::-1]
+        if n_data % 2 != 0:
+            x = np.concatenate([x, x_mid, x2], axis=-1)
+            y = np.concatenate(
+                [y, y_mid, mdt.nph.take(y, step=-1, axis=-1)], axis=-1
+            )
+        else:
+            x = np.concatenate([x, x2], axis=-1)
+            y = np.concatenate([y, mdt.nph.take(y, step=-1, axis=-1)], axis=-1)
+    elif n_data % 2 != 0:  # and not reassemble
+        x = np.concatenate([x, x_mid], axis=-1)
+        y = np.concatenate([y, y_mid], axis=-1)
+
+    return x, y
+
+
 def dens2free_energy(x, dens, bulk_region=None):
     r"""
     Calculate free-energy profiles from density profiles.
