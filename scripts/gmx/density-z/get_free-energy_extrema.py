@@ -21,6 +21,7 @@ import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.ticker import FormatStrFormatter, MaxNLocator, MultipleLocator
 from scipy.signal import find_peaks, peak_widths, savgol_filter
+from scipy.stats import norm
 
 # First-party libraries
 import lintf2_ether_ana_postproc as leap
@@ -74,7 +75,19 @@ if len(compounds) != len(cols) - 1:
 # Parameters for peak finding with `scipy.signal.find_peaks`.
 # Vertical properties are given in data units, horizontal properties
 # are given in number of sample points if not specified otherwise.
-prominence = 0.25  # kT/2 = Thermal energy in one dimension (E=3kT/2).
+# The prominence is chosen such that 100*`p_min` percent of the
+# particles have a higher kinetic energy in the z direction than the
+# prominence.  See the notes on pages 142-147 in my "derivation book"
+# for a derivation of the formula for the prominence.
+p_min = 0.5  # Fraction of the particles with E higher than `prominence`
+prominence = 0.5 * norm.ppf(1 - 0.5 * p_min) ** 2  # Prominence in kT.
+# Another possible way to choose the prominence is:
+# <T> = 1/2 kT (Average kinetic energy from the equipartition theorem)
+# <T^2> = (1/2 + (1/2)^2) * (kT)^2
+# sigma_T^2 = <T^2> - <T>^2 = 1/2 (kT)^2
+# sigma_T = 1/sqrt(2) kT
+# `prominence` / kT = <T> - 1/2 sigma_T = 1/2 - 1/2 * 1/sqrt(2) = 0.1464
+# See pages 122-125 of my "derivation book".
 min_width = 2  # Required minimum width in number of sample points.
 max_width_nm = 2  # Maximum width at `rel_height` in nm.
 rel_height = 0.2  # Relative height at which the peak width is measured.
@@ -599,7 +612,7 @@ for cmp_ix, cmp in enumerate(compounds):
             + "\n"
             + "3.) Outliers are identified by comparing each F(z) value to\n"
             + "its two neighboring values.  If the value sticks out by more\n"
-            + "than {:>.2f} times the standard deviation of all F(z)\n".format(
+            + "than {:.2f} times the standard deviation of all F(z)\n".format(
                 sd_factor
             )
             + "values in the bulk region, it is regarded as outlier.  The\n"
@@ -612,7 +625,11 @@ for cmp_ix, cmp in enumerate(compounds):
             + "5.) Free-energy {:s} are identified on the basis of\n".format(
                 peak_type
             )
-            + "their peak prominence and width.\n"
+            + "their peak prominence and width.  The prominence is chosen\n"
+            + "such that that {:.2f} percent of the particles have a\n".format(
+                100 * p_min
+            )
+            + "higher kinetic energy in the z direction than the prominence.\n"
             + "\n"
             + "\n"
             + "(Average) bin width and number of sample points per nm:\n"
@@ -645,7 +662,8 @@ for cmp_ix, cmp in enumerate(compounds):
             + "window_length:  {:d} sample points\n".format(wlen)
             + "\n"
             + "Parameters for peak finding with scipy.signal.find_peaks\n"
-            + "prominence:    {:>.2f} kT\n".format(prominence)
+            + "p_min:         {:>.2f}\n".format(p_min)
+            + "prominence:   {:>16.9e} kT\n".format(prominence)
             + "min_width:     {:d} sample points\n".format(min_width)
             + "max_width_nm:  {:>.2f} nm\n".format(max_width_nm)
             + "max_width:     {:d} sample points\n".format(max_width)
