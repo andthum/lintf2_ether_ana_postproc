@@ -90,7 +90,7 @@ bw_desired = 10  # Angstrom
 
 # Minimum distance of the last bin edge within the electrolyte from the
 # electrode surface.
-min_dist_elctrd = 2.5  # Angstrom
+min_dist_elctrd = 2  # Angstrom
 
 
 print("Creating Simulation instance(s)...")
@@ -170,18 +170,59 @@ bins = np.append(bins, pk_pos[~pk_is_left])
 # Third and third-last bin = onset and end of the density profile
 # (`ydata`), except if they are closer to the electrode surface than
 # `min_dist_elctrd`.
-non_zero_first, non_zero_last = np.flatnonzero(ydata)[[0, -1]]
+if Sim.surfq is None or Sim.surfq == 0:
+    # Use symmetrized density profile for bulk simulations and surface
+    # simulations with zero surface charge.
+    xdata_3rd_bin, ydata_3rd_bin = leap.misc.symmetrize_data(
+        xdata, ydata, x2shift=box_z, reassemble=True, tol=1e-3
+    )
+else:
+    xdata_3rd_bin, ydata_3rd_bin = xdata, ydata
+non_zero_first, non_zero_last = np.flatnonzero(ydata_3rd_bin)[[0, -1]]
 non_zero_first = max(non_zero_first - 1, 0)
-non_zero_last = min(non_zero_last, len(xdata) - 1)
-if xdata[non_zero_first] - elctrd_thk < min_dist_elctrd:
+non_zero_last = min(non_zero_last + 1, len(xdata_3rd_bin) - 1)
+if xdata_3rd_bin[non_zero_first] - elctrd_thk < min_dist_elctrd:
     prepend = None
 else:
-    prepend = xdata[non_zero_first]
-if box_z - elctrd_thk - xdata[non_zero_last] < min_dist_elctrd:
+    prepend = xdata_3rd_bin[non_zero_first]
+if box_z - elctrd_thk - xdata_3rd_bin[non_zero_last] < min_dist_elctrd:
     append = None
 else:
-    append = xdata[non_zero_last]
+    append = xdata_3rd_bin[non_zero_last]
+if Sim.surfq is None or Sim.surfq == 0:
+    if (prepend is None and append is not None) or (
+        prepend is not None and append is None
+    ):
+        raise ValueError(
+            "The simulation is a bulk simulation or a surface simulation with"
+            " a surface charge of zero, but the third ({}) and third-last ({})"
+            " bin edge do not match".format(prepend, append)
+        )
+elif Sim.surfq > 0.025:
+    msg = (
+        "The simulation is a surface simulation with a surface charge of"
+        + " {:.4f} e/A^2".format(Sim.surfq)
+    )
+    if args.cmp == "Li":
+        msg += " and the selected compound is {}".format(args.cmp)
+        if prepend is None:
+            msg += " but the third ({}) bin edge is None".format(prepend)
+            raise ValueError(msg)
+        elif append is not None:
+            msg += " but the third-last ({}) bin edge is not None".format(
+                append
+            )
+            raise ValueError(msg)
+    elif args.cmp in ("NBT", "OBT"):
+        msg += " and the selected compound is {}".format(args.cmp)
+        if prepend is not None:
+            msg += " but the third ({}) bin edge is not None".format(prepend)
+            raise ValueError(msg)
+        if append is None:
+            msg += " but the third-last ({}) bin edge is None".format(append)
+            raise ValueError(msg)
 bins = leap.misc.extend_bins(bins, prepend, append)
+del xdata_3rd_bin, ydata_3rd_bin
 
 # Second and second-last bin = electrode surface.
 bins = leap.misc.extend_bins(bins, elctrd_thk, box_z - elctrd_thk)
@@ -191,15 +232,26 @@ bins = leap.misc.extend_bins(bins, 0, box_z)
 
 
 print("Creating output file(s)...")
+tol = 0.05
+
 # Bin widths.
 bin_widths = np.diff(bins, prepend=bins[0])
 
 # Distance of the bins to the left/right electrode surface.
 bins_dist_left = bins - elctrd_thk
 bins_dist_right = box_z - elctrd_thk - bins
+if Sim.surfq is None or Sim.surfq == 0:
+    first_3_bins = bins_dist_left[:3]
+    last_3_bins = bins_dist_right[len(bins_dist_right) - 3 :][::-1]
+    if not np.allclose(first_3_bins, last_3_bins, rtol=0, atol=tol):
+        raise ValueError(
+            "The simulation is a bulk simulation or a surface simulation with"
+            " a surface charge of zero, but three first ({}) and the three"
+            "  last ({}) bin edges do not"
+            " match".format(first_3_bins, last_3_bins)
+        )
 
 # Density and free-energy values at the bin edges.
-tol = 0.05
 ix = leap.misc.find_nearest(xdata, bins, tol=tol)
 free_en = leap.misc.dens2free_energy(
     xdata, ydata, bulk_region=Sim.bulk_region, tol=tol
