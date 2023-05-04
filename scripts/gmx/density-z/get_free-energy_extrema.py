@@ -21,10 +21,335 @@ import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.ticker import FormatStrFormatter, MaxNLocator, MultipleLocator
 from scipy.signal import find_peaks, peak_widths, savgol_filter
-from scipy.stats import norm
 
 # First-party libraries
 import lintf2_ether_ana_postproc as leap
+
+
+def get_peaks(y, prominence, **kwargs):
+    """
+    Find peaks in a signal based on peak properties.
+
+    This is a wrapper function around :func:`scipy.signal.find_peaks`
+    and :func:`scipy.signal.peak_widths`.
+
+    Parameters
+    ----------
+    y : array_like
+        A signal with peaks.
+    prominence :
+        See :func:`scipy.signal.find_peaks`.
+    kwargs : dict, optional
+        Additional keyword arguments to parse to
+        :func:`scipy.signal.find_peaks` besides `prominence`.
+
+    Returns
+    -------
+    peaks, properties : numpy.ndarray, dict of numpy.ndarrays
+        See :func:`scipy.signal.find_peaks`.
+    base_widths : numpy.ndarray
+        The width of each peak at the peak's full prominence, i.e. the
+        width at the lowest contour line.  `base_widths` is the output
+        of :func:`scipy.signal.peak_widths` converted to a 2-dimensional
+        array by parsing it to :func:`numpy.array`.
+    fwhm : numpy.ndarray
+        Pseudo Full Width at Half Maximum for each peak.  "Pseudo",
+        because it is actually the width at the peak's half prominence
+        and not at the peak's half height.  `fwhm` is the output of
+        :func:`scipy.signal.peak_widths` converted to a 2-dimensional
+        array by parsing it to :func:`numpy.array`.
+    """
+    peaks, properties = find_peaks(y, prominence=prominence, **kwargs)
+    base_widths = peak_widths(
+        y,
+        peaks,
+        rel_height=1,
+        prominence_data=(
+            properties["prominences"],
+            properties["left_bases"],
+            properties["right_bases"],
+        ),
+    )
+    fwhm = peak_widths(
+        y,
+        peaks,
+        rel_height=0.5,
+        prominence_data=(
+            properties["prominences"],
+            properties["left_bases"],
+            properties["right_bases"],
+        ),
+    )
+    return peaks, properties, np.array(base_widths), np.array(fwhm)
+
+
+def ensure_last_max(
+    y,
+    minima,
+    maxima,
+    prominences,
+    cutoff,
+    max_gap=None,
+    reverse=False,
+    **kwargs,
+):
+    """
+    Ensure that the last extremum in `y` is a maximum.
+
+    Parameters
+    ----------
+    y : array_like
+        A signal with peaks.
+    minima, maxima : array_like, array_like
+        Array of indices indicating minima/maxima in `y`.
+    prominences : array_like
+        Array of prominences.  If the last found extremum in `y` is a
+        minimum, search for a maximum after the last minimum by
+        successively varying the prominence threshold according to the
+        given prominences.  Usually, `prominences` should be an array of
+        decreasing prominence thresholds and the highest threshold
+        should be lower than the one used to find the initial minima and
+        maxima.  If multiple maxima are found for a given prominence
+        threshold, the maximum closest to the last minimum is chosen.
+    cutoff : scalar
+        If no maximum is found after the last minimum with a prominence
+        higher than ``np.min(prominences)``, the last "maximum" is set
+        to the point where `y` reaches the first time `cutoff` after the
+        last minimum.
+    max_gap : int or None, optional
+        Greatest allowed gap between the last minimum and the found
+        maximum in sample points.  If provided and the found maximum is
+        further away from the last maximum than `max_gap`, the last
+        "maximum" is set to the position of the last minimum plus
+        `max_gap`.
+    reverse : bool, optional
+        If ``True``, reverse `y`.  This corresponds to using
+        ``y[::-1]``, ``len(y) - minima[::-1]`` and
+        ``len(y) - maxima[::-1]`` for finding the last maximum.  Note
+        that the return values of this function (like the index of the
+        last maximum) always refer to the original input array `y`.
+    kwargs : dict, optional
+        Additional keyword arguments to parse to
+        :func:`get_fre-energy_extrema.get_peaks` besides `prominence`.
+
+    Returns
+    -------
+    peaks, properties : int, dict of numpy.ndarrays
+        The index and the properties of the last maximum.  See
+        :func:`get_fre-energy_extrema.get_peaks`.
+    base_widths : numpy.ndarray
+        The width of the last maximum at its full prominence, i.e. the
+        width at the lowest contour line.  See
+        :func:`get_fre-energy_extrema.get_peaks`.
+    fwhm : numpy.ndarray
+        Pseudo Full Width at Half Maximum of the last maximum.  See
+        :func:`get_fre-energy_extrema.get_peaks`.
+
+    If the last extremum in `y` is already a maximum, all return values
+    are ``None``.
+
+    Notes
+    -----
+    This function was originally written to ensure that the layering
+    region and the bulk region of a free-energy profile are separated by
+    a free-energy maximum.
+
+    Sometimes, the layering region ends with a minimum.  This means,
+    when going from the electrode to the bulk region, the last found
+    peak is a minimum.  This can happen, when the difference of the
+    free-energy values at the last found minimum and the next
+    (not-found) maximum is greater than the required prominence, but the
+    difference of the free-energy values at this not-found maximum and
+    the next not-found minimum is less than this threshold.  Hence, the
+    prominence of the not-found maximum is less than the required
+    prominence threshold which is the reason why this maximum is not
+    found.  However, a particle traveling from the electrode to the bulk
+    region has to overcome this not-found maximum which in the direction
+    of travel is higher than the required prominence.  Thus, this
+    not-found maximum should actually be found.  In short, the layering
+    region must not end with a minimum, because then there exists a
+    free-energy barrier that a particle has to overcome when traveling
+    from the electrode to the bulk that is higher than the prominence
+    threshold.
+    """
+    y = np.array(y, copy=True)
+    minima, maxima = np.asarray(minima), np.asarray(maxima)
+    prominences = np.asarray(prominences)
+
+    if reverse:
+        ix_last_min = minima[0]
+        if len(maxima) > 0:
+            ix_last_max = maxima[0]
+        else:
+            ix_last_max = len(y)
+        if ix_last_min > ix_last_max:
+            # The last extremum in `y` is already a maximum.
+            return None, None, None, None
+    else:
+        ix_last_min = minima[-1]
+        if len(maxima) > 0:
+            ix_last_max = maxima[-1]
+        else:
+            ix_last_max = -1
+        if ix_last_min < ix_last_max:
+            # The last extremum in `y` is already a maximum.
+            return None, None, None, None
+    if ix_last_min == ix_last_max:
+        raise ValueError(
+            "The last minimum ({}) and the last maximum ({}) have the same"
+            " index".format(ix_last_min, ix_last_max)
+        )
+
+    # Only the region after the last minimum is of interest.  However,
+    # to get the correct indices for the peak positions, their bases,
+    # intersection points, etc., we cannot simply discard everything
+    # before the last minimum.  This would make things more complicate,
+    # because we would need to know which return values of
+    # :func:`get_free-energy_extrema.get_peaks` would actually be
+    # affected by truncating the input array and which would not.
+    # Instead, we set every value of `y` before the last minimum to the
+    # value at the last minimum so that we cannot find a maximum there.
+    # For the same reason, we don't simply reverse `y` by using
+    # ``y[::-1]`` if `reverse` is ``True``.
+    if reverse:
+        y[ix_last_min + 1 :] = y[ix_last_min]
+    else:
+        y[:ix_last_min] = y[ix_last_min]
+
+    # Search for maxima with a prominence of at least
+    # ``np.min(prom_min)``.
+    found_max = False
+    for prom in prominences:
+        pks, prop, bw, fwhm = get_peaks(y, prom, **kwargs)
+        if len(pks) > 0:
+            found_max = True
+            if (reverse and np.any(pks >= ix_last_min)) or (
+                not reverse and np.any(pks <= ix_last_min)
+            ):
+                raise ValueError(
+                    "Found a maximum before the last minimum.  This should not"
+                    " have happened."
+                )
+            if reverse:
+                ix = -1
+                start, stop = -1, None
+            else:
+                ix = 0
+                start, stop = 0, 1
+            pks = pks[ix]
+            for key, val in prop.items():
+                prop[key] = val[ix]
+            bw = mdt.nph.take(bw, start=start, stop=stop, axis=-1)
+            fwhm = mdt.nph.take(fwhm, start=start, stop=stop, axis=-1)
+            break
+
+    if not found_max:
+        # Set the last "maximum" to the point where `y` reaches the
+        # first time `cutoff` after the last minimum.
+        if reverse:
+            y_after_last_min = y[:ix_last_min]
+            y_after_last_min = y_after_last_min[::-1]
+        else:
+            y_after_last_min = y[ix_last_min + 1 :]
+        pks = np.argmax(y_after_last_min >= cutoff)
+        if reverse:
+            pks = len(y_after_last_min) - pks
+        else:
+            pks += ix_last_min + 1
+
+    max_gap_exceeded = False
+    if max_gap is not None and abs(pks - ix_last_min) > max_gap:
+        # Set the last "maximum" to the position of the last minimum
+        # plus `max_gap`.
+        max_gap_exceeded = True
+        if reverse:
+            pks = ix_last_min - max_gap
+        else:
+            pks = ix_last_min + max_gap
+        if pks < 0 or pks >= len(y):
+            raise ValueError(
+                "`max_gap` ({}) is too large for an input array of length {}"
+                " and the last minimum being at position {}.  This results in"
+                " the last maximum being at position {}, which is outside the"
+                " input array".format(max_gap, len(y), ix_last_min, pks)
+            )
+
+    if not found_max or max_gap_exceeded:
+        # Set all peak properties to the peak position.
+        for key in prop.keys():
+            if key == "peak_heights":
+                prop[key] = np.array(y[pks])
+            elif key == "left_thresholds":
+                try:
+                    prop[key] = np.array(y[pks - 1])
+                except IndexError:
+                    prop[key] = np.array(y[pks])
+            elif key == "right_thresholds":
+                try:
+                    prop[key] = np.array(y[pks + 1])
+                except IndexError:
+                    prop[key] = np.array(y[pks])
+            elif key in ("prominences", "widths", "plateau_sizes"):
+                prop[key] = np.array([0])
+            elif key == "width_heights":
+                prop[key] = np.array([kwargs.pop("rel_height", 0.0)])
+            elif key in (
+                "right_bases",
+                "left_bases",
+                "left_ips",
+                "right_ips",
+                "left_edges",
+                "right_edges",
+            ):
+                prop[key] = np.array([pks])
+            else:
+                raise KeyError("Unknown key: '{}'".format(key))
+        bw = np.zeros((4, 1))
+        bw[0, 0] = 0  # widths
+        bw[1, 0] = 1.0  # width_heights
+        bw[2, 0] = 0  # left_ips
+        bw[3, 0] = 0  # right_ips
+        fwhm = np.copy(bw)
+        fwhm[1, 0] = 0.5  # width_heights
+
+    return pks, prop, bw, fwhm
+
+
+def insert_into_arr_in_dct(dct1, ix, dct2):
+    """
+    Insert values into the arrays in a dictionary.
+
+    Parameters
+    ----------
+    dct1 : dict
+        Dictionary containing the arrays into which the arrays of `dct2`
+        should be inserted.  `dct1` is changed inplace but the arrays
+        are copied.
+    ix : int
+        The index of the arrays of `dct1` before which to insert the
+        arrays of `dct2`.
+    dct2 : dict
+        Dictionary containing the arrays that should be inserted into
+        the arrays of `dct1`.  `dct2` must contain all keys of `dct1`.
+
+    Returns
+    -------
+    dct1 : dict
+        The input dictionary with appended arrays.
+
+    Notes
+    -----
+    This function was originally written to insert values into the
+    arrays in a dictionary of peak properties as returned by
+    :func:`scipy.signal.find_peaks`.
+    """
+    if not all(key1 in dct2.keys() for key1 in dct1.keys()):
+        raise ValueError("`dct2` must contain all keys of `dct1`")
+
+    for key1, val1 in dct1.items():
+        dct1[key1] = np.insert(val1, ix, dct2[key1])
+
+    return dct1
 
 
 # Input parameters.
@@ -72,15 +397,22 @@ if len(compounds) != len(cols) - 1:
         " ({})".format(len(compounds), len(cols) - 1)
     )
 
+# Factor for multiplying the standard deviation of the free-energy
+# profile in the bulk region for finding outliers and for finding the
+# last maximum that separates the layering and bulk region.
+sd_factor = 4
+# In the interval [mean-4*sd, mean+4*sd] lie 99.993666 % of all values
+# of a normally distributed random variable.
+# See https://de.wikipedia.org/wiki/Normalverteilung#Streuintervalle
+
 # Parameters for peak finding with `scipy.signal.find_peaks`.
 # Vertical properties are given in data units, horizontal properties
 # are given in number of sample points if not specified otherwise.
-# The prominence is chosen such that 100*`p_min` percent of the
+# The prominence is chosen such that 100*`prob_thresh` percent of the
 # particles have a higher kinetic energy in the z direction than the
-# prominence.  See the notes on pages 142-147 in my "derivation book"
-# for a derivation of the formula for the prominence.
-p_min = 0.5  # Fraction of the particles with E higher than `prominence`
-prominence = 0.5 * norm.ppf(1 - 0.5 * p_min) ** 2  # Prominence in kT.
+# prominence.
+prob_thresh = 0.5
+prominence = leap.misc.e_kin(prob_thresh)  # Prominence in kT.
 # Another possible way to choose the prominence is:
 # <T> = 1/2 kT (Average kinetic energy from the equipartition theorem)
 # <T^2> = (1/2 + (1/2)^2) * (kT)^2
@@ -88,12 +420,31 @@ prominence = 0.5 * norm.ppf(1 - 0.5 * p_min) ** 2  # Prominence in kT.
 # sigma_T = 1/sqrt(2) kT
 # `prominence` / kT = <T> - 1/2 sigma_T = 1/2 - 1/2 * 1/sqrt(2) = 0.1464
 # See pages 122-125 of my "derivation book".
-min_width = 2  # Required minimum width in number of sample points.
+min_width = 2  # Required minimum width at `rel_height` in sample points
 max_width_nm = 2  # Maximum width at `rel_height` in nm.
 rel_height = 0.2  # Relative height at which the peak width is measured.
 
+# Parameters for finding the last maximum in case the layering and bulk
+# region are separated by a minium.
+# See :func:`get_free-energy_extrema.ensure_last_max`.
+prob_thresh_max = 0.9
+prob_thresh_step_size = 0.1
+prob_thresholds = np.arange(
+    prob_thresh,
+    prob_thresh_max + prob_thresh_step_size / 2,
+    prob_thresh_step_size,
+)
+# Discard the first prominence threshold, because this is already used
+# for the initial peak finding.
+prob_thresholds = prob_thresholds[1:]
+prominences_last_max = np.asarray(leap.misc.e_kin(prob_thresholds))
+# height_min = 0 - outlier_threshold.
+plateau_size_max = 2
+# cutoff = height_min.
+max_gap_nm = 1  # Allowed gap between the last minimum and maximum in nm
+
 # Parameters for finding outliers with `scipy.signal.find_peaks`.
-sd_factor = 4  # threshold = sd_factor * bulk_standard_deviation.
+# outlier_threshold = sd_factor * bulk_sd.
 outlier_max_width = min_width
 outlier_rel_height = rel_height
 
@@ -125,12 +476,12 @@ data = np.loadtxt(infile, comments=["#", "@"], usecols=cols, unpack=True)
 xdata, ydata = data[0], data[1:]
 n_samples_half = len(xdata) // 2
 
+# Average the density profile in the left and right half of the
+# simulation box for bulk simulations and surface simulations with
+# uncharged surfaces.
 box_z = Sim.box[2] / 10  # A -> nm
 if Sim.surfq is None or Sim.surfq == 0:
-    # For bulk simulations and surface simulations with uncharged
-    # surfaces: Average the density profile in the left and right half
-    # of the simulation box.
-    xdata_bfr_sym = np.copy(xdata)  # Data before before symmetrizing
+    xdata_bfr_sym = np.copy(xdata)  # Data before before symmetrization.
     ydata_bfr_sym = np.copy(ydata)
     xdata, ydata = leap.misc.symmetrize_data(
         xdata, ydata, x2shift=box_z, reassemble=True
@@ -138,12 +489,6 @@ if Sim.surfq is None or Sim.surfq == 0:
     symmetrized = True
 else:
     symmetrized = False
-
-# Maximum peak width for peak finding with `scipy.signal.find_peaks`.
-x_sample_spacing = np.mean(np.diff(xdata))
-n_samples_per_nm = round(1 / x_sample_spacing)
-max_width = max_width_nm * n_samples_per_nm
-peak_finding_factors = (-1, 1)  # -1 for finding minima, 1 for maxima.
 
 # Calculate free-energy profiles from density profiles.
 bulk_region = Sim.bulk_region / 10  # A -> nm
@@ -154,13 +499,22 @@ for i, y in enumerate(ydata):
             xdata_bfr_sym, ydata_bfr_sym[i], bulk_region=bulk_region
         )
 
+# Maximum peak width for peak finding with `scipy.signal.find_peaks`.
+x_sample_spacing = np.mean(np.diff(xdata))
+n_samples_per_nm = round(1 / x_sample_spacing)
+max_width = int(max_width_nm * n_samples_per_nm)
+width = (min_width, max_width)  # Discard noise and broad peaks.
+# Maximum allowed gap between the last minimum and the last maximum.
+max_gap = int(max_gap_nm * n_samples_per_nm)
+
 # Calculate the threshold for outlier detection from the standard
 # deviation of the free-energy profile in the bulk region.
 bulk_begin_ix, bulk_end_ix = leap.misc.find_nearest(xdata, bulk_region)
-outlier_thresholds = np.nanstd(
-    ydata[:, bulk_begin_ix:bulk_end_ix], axis=-1, ddof=1
-)
-outlier_thresholds *= sd_factor
+bulk_sds = np.nanstd(ydata[:, bulk_begin_ix:bulk_end_ix], axis=-1, ddof=1)
+outlier_thresholds = sd_factor * bulk_sds
+# Cutoff and minimal required peak height for finding the last maximum.
+height_mins = 0 - outlier_thresholds
+cutoffs = height_mins
 
 
 print("Finding extrema and creating plot(s)...")
@@ -171,6 +525,10 @@ plot_sections = ("left", "right")
 xmin = 0
 xmax = Elctrd.BULK_START / 10  # A -> nm
 free_en_kwargs = {"label": "Free Energy", "color": "tab:blue"}
+
+peak_finding_factors = (-1, 1)  # -1 for finding minima, 1 for maxima.
+minima_ix = peak_finding_factors.index(-1)
+maxima_ix = peak_finding_factors.index(1)
 
 ix_shift = np.zeros((len(plot_sections), len(compounds)), dtype=np.uint32)
 peaks = [
@@ -264,43 +622,68 @@ with PdfPages(outfile_pdf) as pdf:
 
             # Find free-energy extrema.
             for fac_ix, fac in enumerate(peak_finding_factors):
-                peaks_tmp, properties_tmp = find_peaks(
+                pks_tmp, prop_tmp, bw_tmp, fwhm_tmp = get_peaks(
                     fac * y,
                     prominence=prominence,
-                    width=(
-                        min_width,  # Discard noise.
-                        max_width,  # Discard broad peaks.
-                    ),
+                    # Use same arguments as for finding the last maximum
+                    width=width,
                     rel_height=rel_height,
                 )
-                base_widths_tmp = peak_widths(
-                    fac * y,
-                    peaks_tmp,
-                    rel_height=1,
-                    prominence_data=(
-                        properties_tmp["prominences"],
-                        properties_tmp["left_bases"],
-                        properties_tmp["right_bases"],
-                    ),
-                )
-                # Pseudo Full Width at Half Maximum.  "Pseudo", because
-                # it's the width at half prominence and not at half of
-                # the peak height.
-                fwhm_tmp = peak_widths(
-                    fac * y,
-                    peaks_tmp,
-                    rel_height=0.5,
-                    prominence_data=(
-                        properties_tmp["prominences"],
-                        properties_tmp["left_bases"],
-                        properties_tmp["right_bases"],
-                    ),
-                )
-                peaks[plt_ix][cmp_ix][fac_ix] = peaks_tmp
-                peak_heights[plt_ix][cmp_ix][fac_ix] = np.copy(y[peaks_tmp])
-                properties[plt_ix][cmp_ix][fac_ix] = properties_tmp
-                base_widths[plt_ix][cmp_ix][fac_ix] = base_widths_tmp
+                peaks[plt_ix][cmp_ix][fac_ix] = pks_tmp
+                peak_heights[plt_ix][cmp_ix][fac_ix] = np.copy(y[pks_tmp])
+                properties[plt_ix][cmp_ix][fac_ix] = prop_tmp
+                base_widths[plt_ix][cmp_ix][fac_ix] = bw_tmp
                 fwhm[plt_ix][cmp_ix][fac_ix] = fwhm_tmp
+
+            # Ensure that the layering region and the bulk region are
+            # separated by a free-energy maximum.
+            pks_tmp, prop_tmp, bw_tmp, fwhm_tmp = ensure_last_max(
+                y,
+                minima=peaks[plt_ix][cmp_ix][minima_ix],
+                maxima=peaks[plt_ix][cmp_ix][maxima_ix],
+                prominences=prominences_last_max,
+                cutoff=cutoffs[cmp_ix],
+                max_gap=max_gap,
+                reverse=(plt_sec == "right"),
+                # Use same arguments as for peak finding.
+                width=width,
+                rel_height=rel_height,
+                # Additional arguments.
+                height=height_mins[cmp_ix],
+                plateau_size=(None, plateau_size_max),
+            )
+            if pks_tmp is not None:
+                if plt_sec == "left":
+                    insert_ix = len(peaks[plt_ix][cmp_ix][maxima_ix])
+                elif plt_sec == "right":
+                    insert_ix = 0
+                else:
+                    raise ValueError(
+                        "Unknown plot section: '{}'".format(plt_sec)
+                    )
+                peaks[plt_ix][cmp_ix][maxima_ix] = np.insert(
+                    peaks[plt_ix][cmp_ix][maxima_ix], insert_ix, pks_tmp
+                )
+                peak_heights[plt_ix][cmp_ix][maxima_ix] = np.insert(
+                    peak_heights[plt_ix][cmp_ix][maxima_ix],
+                    insert_ix,
+                    y[pks_tmp],
+                )
+                properties[plt_ix][cmp_ix][maxima_ix] = insert_into_arr_in_dct(
+                    properties[plt_ix][cmp_ix][maxima_ix], insert_ix, prop_tmp
+                )
+                base_widths[plt_ix][cmp_ix][maxima_ix] = np.insert(
+                    base_widths[plt_ix][cmp_ix][maxima_ix],
+                    insert_ix,
+                    np.squeeze(bw_tmp),
+                    axis=-1,
+                )
+                fwhm[plt_ix][cmp_ix][maxima_ix] = np.insert(
+                    fwhm[plt_ix][cmp_ix][maxima_ix],
+                    insert_ix,
+                    np.squeeze(fwhm_tmp),
+                    axis=-1,
+                )
 
             # Plot peak finding results.
             fig, ax = plt.subplots(clear=True)
@@ -419,6 +802,36 @@ with PdfPages(outfile_pdf) as pdf:
 
             pdf.savefig()
             plt.close()
+
+            # Consistency checks.
+            pks_min = peaks[plt_ix][cmp_ix][minima_ix]
+            pks_max = peaks[plt_ix][cmp_ix][maxima_ix]
+            if len(pks_min) != len(pks_max):
+                raise ValueError(
+                    "Compound: {}\n"
+                    "Plot section: {}\n"
+                    "The number of minima ({}) does not match the number of"
+                    " maxima"
+                    " ({})".format(cmp, plt_sec, len(pks_min), len(pks_max))
+                )
+            if plt_sec == "left" and np.any(pks_min >= pks_max):
+                raise ValueError(
+                    "Compound: {}\n"
+                    "Plot section: {}\n"
+                    "Either the first extremum is not a minium or minima and"
+                    " maxima are not ordered alternately.  Minima: {}."
+                    "  Maxima: {}".format(cmp, plt_sec, pks_min, pks_max)
+                )
+            elif plt_sec == "right" and np.any(pks_min <= pks_max):
+                raise ValueError(
+                    "Compound: {}\n"
+                    "Plot section: {}\n"
+                    "Either the first extremum is not a maximum or minima and"
+                    " maxima are not ordered alternately.  Minima: {}."
+                    "  Maxima: {}".format(cmp, plt_sec, pks_min, pks_max)
+                )
+            else:
+                raise ValueError("Unknown plot section: '{}'".format(plt_sec))
 
     # Combine extrema that were found in the left and right section of
     # the free-energy profile for each compound.
@@ -627,47 +1040,94 @@ for cmp_ix, cmp in enumerate(compounds):
             )
             + "their peak prominence and width.  The prominence is chosen\n"
             + "such that that {:.2f} percent of the particles have a\n".format(
-                100 * p_min
+                100 * prob_thresh
             )
             + "higher kinetic energy in the z direction than the prominence.\n"
             + "\n"
+            + "6.) The layering region must not end with a minimum, because\n"
+            + "then there exists a free-energy barrier that a particle has\n"
+            + "to overcome when traveling from the electrode to the bulk\n"
+            + "that is higher than the prominence threshold.  Thus, if the\n"
+            + "layering and bulk region are separated by a free-energy\n"
+            + "minimum, search for a free-energy maximum between this\n"
+            + "minimum and the bulk region.  This is done by gradually\n"
+            + "decreasing the prominence threshold from a value that\n"
+            + "corresponds to a kinetic energy that {:.2f} percent\n".format(
+                100 * prob_thresh
+            )
+            + "of the particles exceed to a value that corresponds to a\n"
+            + "kinetic energy that {:.2f} percent of the particles\n".format(
+                100 * prob_thresh_max
+            )
+            + "exceed in steps of {:.2f} percent.\n".format(
+                100 * prob_thresh_step_size
+            )
+            + "The maximum must have a height of at least {:.9e} kT.\n".format(
+                height_mins[cmp_ix]
+            )
+            + "If no such maximum is found, the last 'maximum' between the\n"
+            + "layering and bulk region is set to the point where the\n"
+            + "free-energy profile reaches the first time\n"
+            + "{:.9e} kT after the last minimum.  However, if the\n".format(
+                cutoffs[cmp_ix]
+            )
+            + "last maximum is further away from the last minimum than\n"
+            + "{:.2f} nm, the last maximum is set to the position of\n".format(
+                max_gap_nm
+            )
+            + "the last minimum plus {:.2f} nm.\n".format(max_gap_nm)
+            + "\n"
             + "\n"
             + "(Average) bin width and number of sample points per nm:\n"
-            + "sample_spacing:   {:>16.9e} nm\n".format(x_sample_spacing)
-            + "n_samples_per_nm:  {:d}\n".format(n_samples_per_nm)
+            + "sample_spacing:   {:.9e} nm\n".format(x_sample_spacing)
+            + "n_samples_per_nm: {:d}\n".format(n_samples_per_nm)
             + "\n"
             + "Start of the bulk region as distance to the electrodes:\n"
-            + "bulk_start:  {:>.2f} nm\n".format(Elctrd.BULK_START / 10)
+            + "bulk_start: {:.2f} nm\n".format(Elctrd.BULK_START / 10)
             + "Bulk region in absolute coordinates:\n"
-            + "z_bulk_min: {:>16.9e} nm\n".format(bulk_region[0])
-            + "z_bulk_max: {:>16.9e} nm\n".format(bulk_region[1])
+            + "z_bulk_min: {:.9e} nm\n".format(bulk_region[0])
+            + "z_bulk_max: {:.9e} nm\n".format(bulk_region[1])
             + "Box length in z direction in nm\n"
-            + "box_z:      {:>16.9e} nm\n".format(box_z)
+            + "box_z:      {:.9e} nm\n".format(box_z)
+            + "Standard deviation of the free energy in the bulk region\n"
+            + "bulk_sd:    {:.9e} kT\n".format(bulk_sds[cmp_ix])
+            + "sd_factor:  {:.2f}\n".format(sd_factor)
             + "\n"
             + "Parameters for finding outliers with scipy.signal.find_peaks\n"
-            + "Standard deviation: {:>16.9e} kT\n".format(
-                outlier_thresholds[cmp_ix] / sd_factor
-            )
-            + "sd_factor:           {:>.2f}\n".format(sd_factor)
-            + "outlier_threshold:  {:>16.9e} kT\n".format(
+            + "outlier_threshold:  {:.9e} kT\n".format(
                 outlier_thresholds[cmp_ix]
             )
-            + "outlier_max_width:   {:d} sample points\n".format(
+            + "outlier_max_width:  {:d} sample points\n".format(
                 outlier_max_width
             )
-            + "outlier_rel_height:  {:>.2f}\n".format(outlier_rel_height)
+            + "outlier_rel_height: {:.2f}\n".format(outlier_rel_height)
             + "\n"
             + "Parameters for data smoothing with scipy.signal.savgol_filter\n"
-            + "polyorder:      {:d}\n".format(polyorder)
-            + "window_length:  {:d} sample points\n".format(wlen)
+            + "polyorder:     {:d}\n".format(polyorder)
+            + "window_length: {:d} sample points\n".format(wlen)
             + "\n"
             + "Parameters for peak finding with scipy.signal.find_peaks\n"
-            + "p_min:         {:>.2f}\n".format(p_min)
-            + "prominence:   {:>16.9e} kT\n".format(prominence)
-            + "min_width:     {:d} sample points\n".format(min_width)
-            + "max_width_nm:  {:>.2f} nm\n".format(max_width_nm)
-            + "max_width:     {:d} sample points\n".format(max_width)
-            + "rel_height:    {:>.2f}\n".format(rel_height)
+            + "prob_thresh:  {:.2f}\n".format(prob_thresh)
+            + "prominence:   {:.9e} kT\n".format(prominence)
+            + "min_width:    {:d} sample points\n".format(min_width)
+            + "max_width_nm: {:.2f} nm\n".format(max_width_nm)
+            + "max_width:    {:d} sample points\n".format(max_width)
+            + "rel_height:   {:.2f}\n".format(rel_height)
+            + "\n"
+            + "Parameters for finding the last maximum in case the layering\n"
+            + "and bulk region are separated by a free-energy minimum.\n"
+            + "prob_thresh_max:       {:.2f}\n".format(prob_thresh_max)
+            + "prob_thresh_step_size: {:.2f}\n".format(prob_thresh_step_size)
+            + "prominence_min:        {:.9e} kT\n".format(
+                np.min(prominences_last_max)
+            )
+            + "height_min:            {:.9e} kT\n".format(height_mins[cmp_ix])
+            + "plateau_size_max:      {:d} sample points\n".format(
+                plateau_size_max
+            )
+            + "cutoff:                {:.9e} kT\n".format(cutoffs[cmp_ix])
+            + "max_gap_nm:            {:.2f} nm\n".format(max_gap_nm)
+            + "max_gap:               {:d} sample points\n".format(max_gap)
             + "\n"
             + "The columns contain:\n"
             + "(Direct return values from `scipy.signal.find_peaks` and from\n"
@@ -736,21 +1196,27 @@ for cmp_ix, cmp in enumerate(compounds):
 
         if np.any(pk_pos <= elctrd_thk):
             raise ValueError(
+                "Compound: {}\n"
+                "Peak type: {}\n"
                 "At least one peak lies within the left electrode.  Peak"
                 " positions: {}.  Left electrode:"
-                " {}".format(pk_pos, elctrd_thk)
+                " {}".format(cmp, peak_type, pk_pos, elctrd_thk)
             )
         if np.any(pk_pos >= box_z - elctrd_thk):
             raise ValueError(
+                "Compound: {}\n"
+                "Peak type: {}\n"
                 "At least one peak lies within the right electrode.  Peak"
                 " positions: {}.  Right electrode:"
-                " {}".format(pk_pos, box_z - elctrd_thk)
+                " {}".format(cmp, peak_type, pk_pos, box_z - elctrd_thk)
             )
         if np.any((pk_pos >= bulk_region[0]) & (pk_pos <= bulk_region[1])):
             warnings.warn(
+                "Compound: {}\n"
+                "Peak type: {}\n"
                 "At least one peak lies within the bulk region.  Peak"
                 " positions: {}.  Bulk region:"
-                " {}".format(pk_pos, bulk_region),
+                " {}".format(cmp, peak_type, pk_pos, bulk_region),
                 RuntimeWarning,
                 stacklevel=2,
             )
