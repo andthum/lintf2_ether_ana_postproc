@@ -25,6 +25,121 @@ from scipy.signal import find_peaks, peak_widths, savgol_filter
 import lintf2_ether_ana_postproc as leap
 
 
+def get_noise_free_start(
+    y, no_noise_min, slope_region, slope="increasing", reverse=False
+):
+    """
+    Return the starting point after which the input data are noise-free.
+
+    Parameters
+    ----------
+    y : array_like
+        A signal that is expected to have a increasing or decreasing
+        slope at its beginning but this slope is obscured by noise.
+    no_noise_min : int
+        A minimal number of consecutive data points that must be
+        monotonically decreasing/increasing to regard the data points as
+        noise-free.
+    slope_region : int
+        A conservative guess for the length of the slopy region at the
+        beginning of `y`.  This guess should never be greater than the
+        actual length of the slopy region, because otherwise the entire
+        slopy region and more might be regarded as noise.
+    slope : ("increasing", "decreasing"), optional
+        Whether the slope at the beginning of `y` should be increasing
+        or decreasing.
+    reverse : bool, optional
+        If ``True`` use ``y[::-1]`` instead of ``y`` and invert `slope`.
+        Thus, the returned index does not indicate the starting point
+        after which `y` gets noise-free but the end point after which
+        `y` gets noisy.
+
+    Returns
+    -------
+    start : int
+        The index after which `y` gets noise-free.
+
+    Notes
+    -----
+    This function was originally written to remove noisy parts of the
+    free-energy profile near the electrode surfaces.
+
+    Data within the first `slope_region` data points of `y` are
+    characterized as noise if they are not monotonically
+    increasing/decreasing for at least `no_noise_min` sample points.  If
+    at the end of `slope_region` the data are still noisy,
+    `slope_region` is gradually extend by `no_noise_min` sample points
+    until the data increase/decrease monotonically for at least
+    `no_noise_min` sample points.  Finally, the index of the first data
+    point at which `y` gets noise-free is returned.
+    """
+    y = np.asarray(y)
+    if y.ndim != 1:
+        raise ValueError(
+            "`y` has {} dimension(s) but must be 1-dimensional".format(y.ndim)
+        )
+    slope = slope.lower()
+    if slope not in ("increasing", "decreasing"):
+        raise ValueError("Unknown `slope`: '{}'".format(slope))
+    if slope_region < 2:
+        raise ValueError(
+            "`slope_region` ({}) must be at least 2".format(slope_region)
+        )
+    elif slope_region > len(y):
+        raise ValueError(
+            "`slope_region` ({}) must not be greater than the length of `y`"
+            " ({})".format(slope_region, len(y))
+        )
+    if no_noise_min < 2:
+        raise ValueError(
+            "`no_noise_min` ({}) must be at least 2".format(no_noise_min)
+        )
+    elif no_noise_min > slope_region:
+        raise ValueError(
+            "`no_noise_min` ({}) must not be greater than `slope_region`"
+            " ({})".format(no_noise_min, slope_region)
+        )
+
+    if reverse:
+        y = y[::-1]
+        if slope == "increasing":
+            slope = "decreasing"
+        else:
+            slope = "increasing"
+
+    # The gradient should be positive/negative when the slope is
+    # increasing/decreasing => Data with opposite gradient is regarded
+    # as noise.
+    grad = np.diff(y[:slope_region])
+    if slope == "increasing":
+        noise = grad < 0
+    else:
+        noise = grad > 0
+
+    extend_slope_region = 0
+    while np.any(noise[len(noise) - no_noise_min :]):
+        # Noisy region is larger than `slope_region`.  Try to find the
+        # end of the noisy region.
+        start = slope_region + extend_slope_region - 1
+        stop = slope_region + extend_slope_region + no_noise_min
+        grad = np.diff(y[start:stop])
+        if slope == "increasing":
+            noise = np.append(noise, grad < 0)
+        else:
+            noise = np.append(noise, grad > 0)
+        extend_slope_region += no_noise_min
+
+    if np.any(noise):
+        start = len(noise) - np.argmax(noise[::-1])
+    else:
+        start = 0
+
+    if reverse:
+        start = len(y) - start
+
+    return start
+
+
 def get_peaks(y, prominence, **kwargs):
     """
     Find peaks in a signal based on peak properties.
@@ -455,6 +570,17 @@ outlier_rel_height = rel_height
 polyorder = 3  # Order or the polynomial used to fit the samples.
 wlen = 15  # Length of the filter window.
 
+# Parameters for removing noisy parts within the first and last
+# `noise_buffer` sample points of the free-energy profile (i.e. near the
+# electrode surfaces).  If the last `noise_free_min` sample points in
+# the buffer region are not monotonically decreasing (at the left
+# electrode) or increasing (at the right electrode), gradually increase
+# the buffer size by `noise_free_min` sample points until the last
+# `noise_free_min` sample points are monotonically
+# decreasing/increasing.
+noise_buffer = 9  # Must be at least 2.
+noise_free_min = 3  # At least 2 but not greater than `noise_buffer`.
+
 
 print("Creating Simulation instance(s)...")
 if "_gra_" in args.system:
@@ -576,14 +702,19 @@ with PdfPages(outfile_pdf) as pdf:
                     x_bfr_sym *= -1  # Ensure positive distance values.
             else:
                 raise ValueError("Unknown plot section: '{}'".format(plt_sec))
+
+            # `scipy.signal.find_peaks` cannot handle NaN values.
             if np.any(np.isnan(x)) or np.any(np.isnan(y)):
-                # `scipy.signal.find_peaks` cannot handle NaN values.
                 raise ValueError(
                     "Compound: {}\n"
                     "Plot section: {}\n"
                     "Encountered NaN values in free-energy"
                     " profile".format(cmp, plt_sec)
                 )
+
+            # Data before smoothing and other pre-processing.
+            x_bfr_smooth = np.copy(x)
+            y_bfr_smooth = np.copy(y)
 
             # Remove infinite values that stem from taking the logarithm
             # of zero when calculating the free-energy profile from the
@@ -605,9 +736,7 @@ with PdfPages(outfile_pdf) as pdf:
                 y = leap.misc.interp_invalid(x, y, invalid)
             del valid, invalid
 
-            # Prepare data for peak finding.
             # Replace outliers with interpolated values.
-            y_bfr_smooth = np.copy(y)  # y data before smoothing.
             y = leap.misc.interp_outliers(
                 x,
                 y,
@@ -616,10 +745,36 @@ with PdfPages(outfile_pdf) as pdf:
                 width=(None, outlier_max_width),
                 rel_height=outlier_rel_height,
             )
+
             # Smooth data with Savitzky-Golay filter.
             y = savgol_filter(
                 y, window_length=wlen, polyorder=polyorder, mode="nearest"
             )
+
+            # Remove free-energy values near the electrode surfaces that
+            # are still noisy.
+            if plt_sec == "left":
+                start = get_noise_free_start(
+                    y,
+                    no_noise_min=noise_free_min,
+                    slope_region=noise_buffer,
+                    slope="decreasing",
+                )
+                x = x[start:]
+                y = y[start:]
+                ix_shift[plt_ix][cmp_ix] += start
+            elif plt_sec == "right":
+                stop = get_noise_free_start(
+                    y,
+                    no_noise_min=noise_free_min,
+                    slope_region=noise_buffer,
+                    slope="increasing",
+                    reverse=True,
+                )
+                x = x[:stop]
+                y = y[:stop]
+            else:
+                raise ValueError("Unknown plot section: '{}'".format(plt_sec))
 
             # Find free-energy extrema.
             for fac_ix, fac in enumerate(peak_finding_factors):
@@ -692,6 +847,7 @@ with PdfPages(outfile_pdf) as pdf:
                 leap.plot.elctrd_left(ax)
             if plt_sec == "right":
                 x *= -1  # Ensure positive distance values.
+                x_bfr_smooth *= -1  # Ensure positive distance values.
             if symmetrized:
                 lines = ax.plot(
                     x_bfr_sym,
@@ -700,14 +856,14 @@ with PdfPages(outfile_pdf) as pdf:
                     **free_en_kwargs,
                 )
                 lines = ax.plot(
-                    x,
+                    x_bfr_smooth,
                     y_bfr_smooth,
                     color="dodgerblue",
                     label="Symmetrized",
                     alpha=leap.plot.ALPHA,
                 )
             else:
-                lines = ax.plot(x, y_bfr_smooth, **free_en_kwargs)
+                lines = ax.plot(x_bfr_smooth, y_bfr_smooth, **free_en_kwargs)
             ax.plot(
                 x,
                 y,
@@ -1036,7 +1192,24 @@ for cmp_ix, cmp in enumerate(compounds):
             + "4.) The free-energy profile is smoothed using a\n"
             + "Savitzky-Golay filter.\n"
             + "\n"
-            + "5.) Free-energy {:s} are identified on the basis of\n".format(
+            + "5.) Still noisy data within the first and last {:d}\n".format(
+                noise_buffer
+            )
+            + "sample points (i.e. near the electrode surfaces) are removed.\n"
+            + "In this region, free-energy values are characterized as noise\n"
+            + "if they are not monotonically decreasing (at the left\n"
+            + "electrode) or increasing (at the right electrode) for at\n"
+            + "least {:d} sample points.  If at the end of the\n".format(
+                noise_free_min
+            )
+            + "buffer region the data are still noisy, the buffer region is\n"
+            + "gradually extended by {:d} sample points until the\n".format(
+                noise_free_min
+            )
+            + "data decrease/increase monotonically for at least\n"
+            + "{:d} sample points.\n".format(noise_free_min)
+            + "\n"
+            + "6.) Free-energy {:s} are identified on the basis of\n".format(
                 peak_type
             )
             + "their peak prominence and width.  The prominence is chosen\n"
@@ -1045,7 +1218,7 @@ for cmp_ix, cmp in enumerate(compounds):
             )
             + "higher kinetic energy in the z direction than the prominence.\n"
             + "\n"
-            + "6.) The layering region must not end with a minimum, because\n"
+            + "7.) The layering region must not end with a minimum, because\n"
             + "then there exists a free-energy barrier that a particle has\n"
             + "to overcome when traveling from the electrode to the bulk\n"
             + "that is higher than the prominence threshold.  Thus, if the\n"
@@ -1106,6 +1279,10 @@ for cmp_ix, cmp in enumerate(compounds):
             + "Parameters for data smoothing with scipy.signal.savgol_filter\n"
             + "polyorder:     {:d}\n".format(polyorder)
             + "window_length: {:d} sample points\n".format(wlen)
+            + "\n"
+            + "Parameters for removing noise near the electrodes.\n"
+            + "noise_buffer:   {:d} sample points\n".format(noise_buffer)
+            + "noise_free_min: {:d} sample points\n".format(noise_free_min)
             + "\n"
             + "Parameters for peak finding with scipy.signal.find_peaks\n"
             + "prob_thresh:  {:.2f}\n".format(prob_thresh)
