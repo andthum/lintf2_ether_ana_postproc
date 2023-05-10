@@ -2597,6 +2597,175 @@ def get_ana_files(Sims, ana_name, ana_tool, file_suffix):
     return ana_files
 
 
+def read_free_energy_extrema_single(Sim, cmp, peak_type, cols, prom_min=None):
+    """
+    Read the free-energy extrema from file for a single simulation.
+
+    Parameters
+    ----------
+    Sim : lintf2_ether_ana_postproc.simulation.Simulation
+        The :class:`~lintf2_ether_ana_postproc.simulation.Simulation`
+        for which to read the free-energy extrema from file.
+    cmp : {"Li", "NBT", "OBT", "OE"}
+        The compound to consider.
+    peak_type : {"minima", "maxima"}
+        The peak/extremum type to consider.
+    cols : array_like
+        The columns to read from the output files of
+        :file:`scripts/gmx/density-z/get_free-energy_extrema.py`.
+        `cols` must contain the column that holds the peak positions in
+        nm.
+    prom_min : float or None, optional
+        If provided, only return peaks with a prominence of at least
+        `prom_min`.
+
+    Returns
+    -------
+    data : list
+        2-dimensional list of read data.  The first index addresses the
+        read columns.  The second index addresses the peak-position
+        type, i.e. whether the peak is in the left or right half of the
+        simulation box.
+
+    See Also
+    --------
+    :func:`lintf2_ether_ana_postproc.simulation.read_free_energy_extrema` :
+        Read free-energy extrema from file for multiple simulations
+    """  # noqa: W505
+    if cmp not in ("Li", "NBT", "OBT", "OE"):
+        raise ValueError("Unknown `cmp`: {}".format(cmp))
+    peak_type = peak_type.lower()
+    if peak_type not in ("minima", "maxima"):
+        raise ValueError("Unknown `peak_type`: {}".format(peak_type))
+    cols = np.asarray(cols)
+    if cols.ndim != 1:
+        raise ValueError(
+            "`cols` has {} dimension(s) but must have 1"
+            " dimension".format(cols.ndim)
+        )
+
+    # Assemble input file names
+    file_suffix = "free_energy_" + peak_type + "_" + cmp + ".txt.gz"
+    analysis = "density-z"  # Analysis name.
+    tool = "gmx"  # Analysis software.
+    infile = leap.simulation.get_ana_file(Sim, analysis, tool, file_suffix)
+
+    # Column in the output file of
+    # "scripts/gmx/density-z/get_free-energy_extrema.py" that contains
+    # the peak positions in nm.  Column numbering starts at zero.
+    pkp_col = 1
+    pkp_col_ix = np.where(cols == pkp_col)[0]
+    if pkp_col_ix.shape != (1,):
+        raise ValueError(
+            "`cols` ({}) must contain the column index {} exactly"
+            " ones".format(cols, pkp_col)
+        )
+    pkp_col_ix = pkp_col_ix[0]
+
+    if prom_min is not None:
+        prom_col = 3  # Column containing the peak prominences.
+        if prom_col not in cols:
+            cols = np.append(cols, prom_col)
+        prom_col_ix = np.flatnonzero(cols == prom_col)[0]
+
+    Elctrd = leap.simulation.Electrode()
+    elctrd_thk = Elctrd.ELCTRD_THK / 10  # A -> nm
+    bulk_start = Elctrd.BULK_START / 10  # A -> nm
+    box_z = Sim.box[2] / 10  # A -> nm
+    bulk_region = Sim.bulk_region / 10  # A -> nm
+
+    # Due to `unpack=True`, columns in the input file become rows in the
+    # created array and rows become columns.
+    data_raw = np.loadtxt(infile, usecols=cols, unpack=True, ndmin=2)
+    if prom_min is not None:
+        valid_pks = data_raw[prom_col_ix] >= prom_min
+        data_raw = data_raw[:, valid_pks]
+        if not np.any(valid_pks):
+            raise ValueError(
+                "No peaks with a prominence of at least {} contained in the"
+                " input file".format(prom_min)
+            )
+    pk_pos = data_raw[pkp_col_ix]
+    pk_is_left = pk_pos <= (box_z / 2)
+
+    if np.any(pk_pos <= elctrd_thk):
+        raise ValueError(
+            "At least one peak lies within the left electrode.  Peak"
+            " positions: {}.  Left electrode:"
+            " {}".format(pk_pos, elctrd_thk)
+        )
+    if np.any(pk_pos >= box_z - elctrd_thk):
+        raise ValueError(
+            "At least one peak lies within the right electrode.  Peak"
+            " positions: {}.  Right electrode:"
+            " {}".format(pk_pos, box_z - elctrd_thk)
+        )
+    if np.any((pk_pos >= bulk_region[0]) & (pk_pos <= bulk_region[1])):
+        raise ValueError(
+            "At least one peak lies within the bulk region.  Peak"
+            " positions: {}.  Bulk region:"
+            " {}".format(pk_pos, bulk_region)
+        )
+    if Sim.surfq == 0:
+        n_pks_left = np.count_nonzero(pk_is_left)
+        n_pks_right = len(pk_is_left) - n_pks_left
+        if n_pks_left != n_pks_right:
+            raise ValueError(
+                "The surface charge is {} e/nm^2 but the number of left"
+                " ({}) and right free-energy {} ({}) do not"
+                " match.".format(Sim.surfq, n_pks_left, peak_type, n_pks_right)
+            )
+
+    pk_pos_types = ("left", "right")
+    data = [[None for pkp_type in pk_pos_types] for col in cols]
+    for pkt_ix, pkp_type in enumerate(pk_pos_types):
+        if pkp_type == "left":
+            valid_pks = pk_is_left
+            data_raw_valid = data_raw[:, valid_pks]
+            pk_pos = data_raw_valid[pkp_col_ix]
+            # Convert absolute peak positions to distances to the
+            # electrodes.
+            pk_pos -= elctrd_thk
+        elif pkp_type == "right":
+            valid_pks = ~pk_is_left
+            data_raw_valid = data_raw[:, valid_pks]
+            # Reverse the order of rows to sort peaks as function of
+            # the distance to the electrodes in ascending order.
+            data_raw_valid = data_raw_valid[:, ::-1]
+            pk_pos = data_raw_valid[pkp_col_ix]
+            # Convert absolute peak positions to distances to the
+            # electrodes.
+            pk_pos += elctrd_thk
+            pk_pos -= box_z
+            pk_pos *= -1  # Ensure positive distance values.
+        else:
+            raise ValueError(
+                "Unknown peak position type: '{}'".format(pkp_type)
+            )
+        if np.any(pk_pos <= 0):
+            raise ValueError(
+                "Peak position type: '{}'.\n"
+                "At least one peak lies within the electrode.  This should"
+                " not have happened.  Peak positions: {}.  Electrode:"
+                " 0".format(pkp_type, pk_pos)
+            )
+        if np.any(pk_pos >= bulk_start):
+            raise ValueError(
+                "Peak position type: '{}'.\n"
+                "At least one peak lies within the bulk region or near the"
+                " opposite electrode.  Peak positions: {}.  Bulk start:"
+                " {}.  Opposite electrode: {}".format(
+                    pkp_type, pk_pos, bulk_start, box_z - 2 * elctrd_thk
+                )
+            )
+        data_raw_valid[pkp_col_ix] = pk_pos
+
+        for col_ix, dat_col_raw_valid in enumerate(data_raw_valid):
+            data[col_ix][pkt_ix] = dat_col_raw_valid
+
+    return data
+
+
 def read_free_energy_extrema(Sims, cmp, peak_type, cols, prom_min=None):
     """
     Read free-energy extrema from file for multiple simulations.
@@ -2636,7 +2805,12 @@ def read_free_energy_extrema(Sims, cmp, peak_type, cols, prom_min=None):
     n_pks_max : numpy.ndarray
         Maximum number of peaks in a single simulation for each
         peak-position type.
-    """
+
+    See Also
+    --------
+    :func:`lintf2_ether_ana_postproc.simulation.read_free_energy_extrema_single` :
+        Read the free-energy extrema from file for a single simulation
+    """  # noqa: E501, W505
     if cmp not in ("Li", "NBT", "OBT", "OE"):
         raise ValueError("Unknown `cmp`: {}".format(cmp))
     peak_type = peak_type.lower()
