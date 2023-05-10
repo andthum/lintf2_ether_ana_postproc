@@ -453,7 +453,7 @@ outlier_rel_height = rel_height
 # flattens them.  Note that a Savitzky-Golay filter with a polynomial
 # order of zero is identical to a moving average.
 polyorder = 3  # Order or the polynomial used to fit the samples.
-wlen = 9  # Length of the filter window.
+wlen = 15  # Length of the filter window.
 
 
 print("Creating Simulation instance(s)...")
