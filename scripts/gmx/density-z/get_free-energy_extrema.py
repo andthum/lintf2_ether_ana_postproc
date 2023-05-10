@@ -9,7 +9,6 @@ compounds of a single simulation.
 
 # Standard libraries
 import argparse
-import warnings
 from copy import deepcopy
 
 # Third-party libraries
@@ -474,7 +473,6 @@ infile = leap.simulation.get_ana_file(Sim, analysis, tool, file_suffix)
 
 data = np.loadtxt(infile, comments=["#", "@"], usecols=cols, unpack=True)
 xdata, ydata = data[0], data[1:]
-n_samples_half = len(xdata) // 2
 
 # Average the density profile in the left and right half of the
 # simulation box for bulk simulations and surface simulations with
@@ -520,6 +518,9 @@ cutoffs = height_mins
 print("Finding extrema and creating plot(s)...")
 Elctrd = leap.simulation.Electrode()
 elctrd_thk = Elctrd.ELCTRD_THK / 10  # A -> nm
+# Increase the layering region for peak finding by a small buffer.
+bulk_begin_ix += 2
+bulk_end_ix -= 2
 
 plot_sections = ("left", "right")
 xmin = 0
@@ -550,26 +551,26 @@ with PdfPages(outfile_pdf) as pdf:
             x = np.copy(xdata)
             y = np.copy(ydata[cmp_ix])
             if plt_sec == "left":
-                y = y[:n_samples_half]
-                x = x[:n_samples_half]
+                y = y[:bulk_begin_ix]
+                x = x[:bulk_begin_ix]
                 x -= elctrd_thk
                 if symmetrized:
                     # Only required for plotting the original data.
-                    y_bfr_sym = np.copy(ydata_bfr_sym[cmp_ix][:n_samples_half])
-                    x_bfr_sym = np.copy(xdata_bfr_sym[:n_samples_half])
+                    y_bfr_sym = np.copy(ydata_bfr_sym[cmp_ix][:bulk_begin_ix])
+                    x_bfr_sym = np.copy(xdata_bfr_sym[:bulk_begin_ix])
                     x_bfr_sym -= elctrd_thk
             elif plt_sec == "right":
-                ix_shift[plt_ix][cmp_ix] += n_samples_half
-                y = y[n_samples_half:]
-                x = x[n_samples_half:]
+                ix_shift[plt_ix][cmp_ix] += bulk_end_ix
+                y = y[bulk_end_ix:]
+                x = x[bulk_end_ix:]
                 x += elctrd_thk
                 x -= box_z
                 # Don't multiply `x` with -1 here, because then the
                 # interpolation of outliers does not work.
                 if symmetrized:
                     # Only required for plotting the original data.
-                    y_bfr_sym = np.copy(ydata_bfr_sym[cmp_ix][n_samples_half:])
-                    x_bfr_sym = np.copy(xdata_bfr_sym[n_samples_half:])
+                    y_bfr_sym = np.copy(ydata_bfr_sym[cmp_ix][bulk_end_ix:])
+                    x_bfr_sym = np.copy(xdata_bfr_sym[bulk_end_ix:])
                     x_bfr_sym += elctrd_thk
                     x_bfr_sym -= box_z
                     x_bfr_sym *= -1  # Ensure positive distance values.
@@ -1194,45 +1195,6 @@ for cmp_ix, cmp in enumerate(compounds):
         bw = base_widths_full[cmp_ix][fac_ix]
         fwhm = fwhm_full[cmp_ix][fac_ix]
 
-        if np.any(pk_pos <= elctrd_thk):
-            raise ValueError(
-                "Compound: {}\n"
-                "Peak type: {}\n"
-                "At least one peak lies within the left electrode.  Peak"
-                " positions: {}.  Left electrode:"
-                " {}".format(cmp, peak_type, pk_pos, elctrd_thk)
-            )
-        if np.any(pk_pos >= box_z - elctrd_thk):
-            raise ValueError(
-                "Compound: {}\n"
-                "Peak type: {}\n"
-                "At least one peak lies within the right electrode.  Peak"
-                " positions: {}.  Right electrode:"
-                " {}".format(cmp, peak_type, pk_pos, box_z - elctrd_thk)
-            )
-        if np.any((pk_pos >= bulk_region[0]) & (pk_pos <= bulk_region[1])):
-            warnings.warn(
-                "Compound: {}\n"
-                "Peak type: {}\n"
-                "At least one peak lies within the bulk region.  Peak"
-                " positions: {}.  Bulk region:"
-                " {}".format(cmp, peak_type, pk_pos, bulk_region),
-                RuntimeWarning,
-                stacklevel=2,
-            )
-        if surfq == 0:
-            pk_is_left = pk_pos <= (box_z / 2)
-            n_pks_left = np.count_nonzero(pk_is_left)
-            n_pks_right = len(pk_is_left) - n_pks_left
-            if n_pks_left != n_pks_right:
-                raise ValueError(
-                    "The surface charge is {} e/nm^2 but the number of left"
-                    " ({}) and right free-energy {} ({}) do not match for"
-                    " compound {}.".format(
-                        surfq, n_pks_left, peak_type, n_pks_right, cmp
-                    )
-                )
-
         data = np.column_stack([pks, pk_pos, pks_h])
 
         left_bases_nm = x[props["left_bases"]]
@@ -1279,5 +1241,43 @@ for cmp_ix, cmp in enumerate(compounds):
 
         leap.io_handler.savetxt(outfile, data, header=header)
         print("Created {}".format(outfile))
+
+        # Consistency checks.
+        if np.any(pk_pos <= elctrd_thk):
+            raise ValueError(
+                "Compound: {}\n"
+                "Peak type: {}\n"
+                "At least one peak lies within the left electrode.  Peak"
+                " positions: {}.  Left electrode:"
+                " {}".format(cmp, peak_type, pk_pos, elctrd_thk)
+            )
+        if np.any(pk_pos >= box_z - elctrd_thk):
+            raise ValueError(
+                "Compound: {}\n"
+                "Peak type: {}\n"
+                "At least one peak lies within the right electrode.  Peak"
+                " positions: {}.  Right electrode:"
+                " {}".format(cmp, peak_type, pk_pos, box_z - elctrd_thk)
+            )
+        if np.any((pk_pos >= bulk_region[0]) & (pk_pos <= bulk_region[1])):
+            raise ValueError(
+                "Compound: {}\n"
+                "Peak type: {}\n"
+                "At least one peak lies within the bulk region.  Peak"
+                " positions: {}.  Bulk region:"
+                " {}".format(cmp, peak_type, pk_pos, bulk_region)
+            )
+        if surfq == 0:
+            pk_is_left = pk_pos <= (box_z / 2)
+            n_pks_left = np.count_nonzero(pk_is_left)
+            n_pks_right = len(pk_is_left) - n_pks_left
+            if n_pks_left != n_pks_right:
+                raise ValueError(
+                    "The surface charge is {} e/nm^2 but the number of left"
+                    " ({}) and right free-energy {} ({}) do not match for"
+                    " compound {}.".format(
+                        surfq, n_pks_left, peak_type, n_pks_right, cmp
+                    )
+                )
 
 print("Done")
