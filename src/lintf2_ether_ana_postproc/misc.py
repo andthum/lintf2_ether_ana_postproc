@@ -281,6 +281,67 @@ def dens2free_energy(x, dens, bulk_region=None):
     return free_en
 
 
+def interp_invalid(x, y, invalid, inplace=True):
+    """
+    Replace invalid values in `y` with linearly interpolated values.
+
+    Parameters
+    ----------
+    x, y : array_like
+        1-dimensional input arrays containing the x- and y-coordinates
+        of the data points.  `x` must be monotonically increasing.  `x`
+        and `y` must not contain NaN values.
+    invalid : array_like
+        Boolean array of the same shape as `x` and `y` indicating
+        invalid `y` values.
+    inplace : bool, optional
+        If ``True``, change `y` in place (therefore, `y` must be a
+        :class:`numpy.ndarray`).
+
+    Returns
+    -------
+    y_interp : numpy.ndarray
+        y-coordinates where invalid values are replaced by interpolated
+        values.
+
+    See Also
+    --------
+    :func:`lintf2_ether_ana_postproc.misc.interp_outliers` :
+        Find outliers and replace them with linearly interpolated values
+    """
+    x = np.asarray(x)
+    y = np.array(y, copy=not inplace)
+    invalid = np.asarray(invalid)
+    valid = ~invalid
+    if y.shape != x.shape:
+        raise ValueError(
+            "`y` ({}) must have the same shape as `x`"
+            " ({})".format(y.shape, x.shape)
+        )
+    if invalid.shape != y.shape:
+        raise ValueError(
+            "`invalid` ({}) must have the same shape as `y`"
+            " ({})".format(invalid.shape, y.shape)
+        )
+    if np.any(np.isnan(y[valid])):
+        # `scipy.signal.find_peaks` cannot handle NaN values.
+        raise ValueError("`y[~invalid]` must not contain NaN values")
+    if np.any(np.isnan(x)):
+        # `numpy.interp` cannot handle NaN values.
+        raise ValueError("`x` must not contain NaN values")
+    if np.any(np.diff(x) <= 0):
+        # `x` must be monotonically increasing for `numpy.interp`.
+        raise ValueError("`x` must be monotonically increasing")
+
+    if np.all(invalid):
+        raise ValueError("All y data are marked invalid")
+    elif np.any(invalid):
+        y[invalid] = np.interp(x[invalid], x[valid], y[valid])
+    else:  # all valid
+        y = y
+    return y
+
+
 def interp_outliers(x, y, inplace=False, **kwargs):
     r"""
     Find outliers and replace them with linearly interpolated values.
@@ -309,6 +370,11 @@ def interp_outliers(x, y, inplace=False, **kwargs):
     y_interp : numpy.ndarray
         y-coordinates where outliers are replaced by interpolated
         values.
+
+    See Also
+    --------
+    :func:`lintf2_ether_ana_postproc.misc.interp_invalid` :
+        Replace invalid values in `y` with linearly interpolated values
 
     Notes
     -----
