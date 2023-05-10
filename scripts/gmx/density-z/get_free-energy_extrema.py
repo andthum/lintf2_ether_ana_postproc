@@ -588,21 +588,21 @@ with PdfPages(outfile_pdf) as pdf:
             # of zero when calculating the free-energy profile from the
             # density profile.
             valid = np.isfinite(y)
-            n_samples_half_plt_sec = len(valid) // 2
-            if not np.all(valid[:n_samples_half_plt_sec]):
-                start = np.argmin(valid[n_samples_half_plt_sec - 1 :: -1])
-                start = n_samples_half_plt_sec - start
-            else:
+            if np.all(valid):
                 start = 0
-            if not np.all(valid[n_samples_half_plt_sec:]):
-                stop = np.argmin(valid[n_samples_half_plt_sec:])
-                stop = n_samples_half_plt_sec + stop
+                stop = len(y)
             else:
-                stop = len(x)
+                # Remove infinite values at the data edges.
+                start = np.argmax(valid)
+                stop = len(y) - np.argmax(valid[::-1])
             x = x[start:stop]
             y = y[start:stop]
             ix_shift[plt_ix][cmp_ix] += start
-            del valid
+            invalid = ~valid[start:stop]
+            if np.any(invalid):
+                # Interpolate intermediate infinite values.
+                y = leap.misc.interp_invalid(x, y, invalid)
+            del valid, invalid
 
             # Prepare data for peak finding.
             # Replace outliers with interpolated values.
