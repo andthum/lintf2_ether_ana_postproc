@@ -5,6 +5,7 @@
 import mdtools as mdt
 import numpy as np
 from scipy.signal import find_peaks
+from scipy.stats import norm
 
 # First-party libraries
 import lintf2_ether_ana_postproc as leap
@@ -404,3 +405,69 @@ def peaks_are_max(y, peaks):
         return False
 
     raise ValueError("The given peaks are a mix of maxima and minima")
+
+
+def e_kin(p):
+    r"""
+    Return the kinetic energy that 100*`p` percent of the particles of a
+    system in a canonical (:math:`NVT`) ensemble exceed.
+
+    Parameters
+    ----------
+    p : scalar or array_like
+        The fraction of particles that should have a higher kinetic
+        energy than the returned one.
+
+    Returns
+    -------
+    e_kin : scalar or numpy.ndarray
+        The kinetic energy threshold in :math:`k_B T` that 100*`p`
+        percent of the particles exceed.
+
+    Notes
+    -----
+    In the canonical ensemble, the probability density distribution of
+    the kinetic energy :math:`E_{kin}` of a particle moving along one
+    spatial dimension is given by
+
+    .. math::
+
+        \rho(E_{kin}) = \frac{1}{\sqrt{\pi k_B T}} \frac{1}{E_{kin}}
+        \exp{\left( -\frac{E_kin}{k_B T} \right)}
+
+    where, :math:`k_B` is the Boltzmann constant and :math:`T` is the
+    temperature.  From this follows the probability that a particle has
+    a kinetic energy higher than :math:`c` along this spatial dimension.
+
+    .. math::
+
+        p(E_{kin} > c) = 1 - p(E_{kin} \leq c) = 2
+        \left[
+            1 - \Phi_{0,1}
+            \left(
+                \sqrt{\frac{2c}{k_B T}}
+            \right)
+        \right]
+
+    Here, :math:`\Phi_{0,1}(z)` denotes the cumulative distribution
+    function of the normal distribution.  Thus, given a probability
+    :math:`p(E_{kin} > c)` that a particle has a kinetic energy higher
+    than :math:`c`, the corresponding kinetic energy :math:`c` can be
+    calculated by
+
+    .. math::
+
+        c = \frac{k_B T}{2}
+        \left(
+            \Phi_{0,1}^{-1}
+            \left[
+                1 - \frac{1}{2} p(E_{kin} > c)
+            \right]
+        \right)^2
+
+    See the notes on pages 142-147 in my "derivation book" for a
+    derivation of the above formulas.
+    """
+    if p < 0 or p > 1:
+        raise ValueError("`p` ({}) must be between 0 and 1".format(p))
+    return 0.5 * norm.ppf(1 - 0.5 * p) ** 2
