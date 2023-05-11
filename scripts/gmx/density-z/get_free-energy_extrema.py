@@ -541,8 +541,8 @@ rel_height = 0.2  # Relative height at which the peak width is measured.
 # Parameters for finding the last maximum in case the layering and bulk
 # region are separated by a minium.
 # See :func:`get_free-energy_extrema.ensure_last_max`.
-prob_thresh_max = 0.9
-prob_thresh_step_size = 0.1
+prob_thresh_max = 0.95
+prob_thresh_step_size = 0.05
 prob_thresholds = np.arange(
     prob_thresh,
     prob_thresh_max + prob_thresh_step_size / 2,
