@@ -214,22 +214,31 @@ xlabel = r"Ether Oxygens per Chain $n_{EO}$"
 xlim = (1, 200)
 if args.common_ylim:
     if args.cmp == "Li":
+        ylims = [
+            (0.1, 3.2),  # Peak positions [nm]
+            (None, None),  # Peak heights [kT]
+            (0, 11),  # Peak prominences [kT]
+            (0, 0.65),  # Peak width at  50 % prominence [nm]
+            (0, 2.8),  # Peak width at 100 % prominence [nm]
+        ]
         if args.peak_type == "minima":
-            ylims = [
-                (0.1, 2.2),  # Peak positions [nm]
-                (-6, 4.5),  # Peak heights [kT]
-                (0, 11),  # Peak prominences [kT]
-                (0, 0.6),  # Peak width at  50 % prominence [nm]
-                (0, 5.5),  # Peak width at 100 % prominence [nm]
-            ]
+            # ylims = [
+            #     (0.1, 3.1),  # Peak positions [nm]
+            #     (-6, 4.5),  # Peak heights [kT]
+            #     (0, 11),  # Peak prominences [kT]
+            #     (0.02, 0.62),  # Peak width at  50 % prominence [nm]
+            #     (0, 2.8),  # Peak width at 100 % prominence [nm]
+            # ]
+            ylims[1] = (-6, 4.5)  # Peak heights [kT]
         elif args.peak_type == "maxima":
-            ylims = [
-                (0.1, 2.2),  # Peak positions [nm]
-                (-0.5, 7.5),  # Peak heights [kT]
-                (0, 8.5),  # Peak prominences [kT]
-                (0, 0.6),  # Peak width at  50 % prominence [nm]
-                (0.05, 1.5),  # Peak width at 100 % prominence [nm]
-            ]
+            # ylims = [
+            #     (0.2, 3.2),  # Peak positions [nm]
+            #     (-0.5, 7.5),  # Peak heights [kT]
+            #     (0, 8.25),  # Peak prominences [kT]
+            #     (0.04, 0.6),  # Peak width at  50 % prominence [nm]
+            #     (0.05, 2),  # Peak width at 100 % prominence [nm]
+            # ]
+            ylims[1] = (-0.5, 7.5)  # Peak heights [kT]
         else:
             raise ValueError("Unknown --peak-type ({})".format(args.peak_type))
     else:
