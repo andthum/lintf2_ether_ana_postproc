@@ -1,6 +1,9 @@
 """Miscellaneous functions."""
 
 
+# Standard libraries
+from copy import deepcopy
+
 # Third-party libraries
 import mdtools as mdt
 import numpy as np
@@ -279,6 +282,191 @@ def dens2free_energy(x, dens, bulk_region=None):
         free_en_bulk = np.mean(free_en[start : stop + 1])
         free_en -= free_en_bulk
     return free_en
+
+
+def free_energy_barriers(
+    minima, maxima, pkp_col_ix, pkh_col_ix, thresh=0, absolute_pos=False
+):
+    """
+    Calculate the barrier heights between the minima and maxima of a
+    free-energy profile.
+
+    Parameters
+    ----------
+    minima, maxima : list
+        3-dimensional list of minima/maxima data as returned by
+        :func:`lintf2_ether_ana_postproc.simulation.read_free_energy_extrema`.
+        The first index must address the columns read from the output
+        file of
+        :file:`scripts/gmx/density-z/get_free-energy_extrema.py`.  The
+        second index must address the peak-position type, i.e. whether
+        the peak is in the left or right half of the simulation box.
+        The third index must address the simulation.
+    pkp_col_ix : int
+        The index for the first dimension of `minima`/`maxima` that
+        returns the peak positions.  The positions of minima and maxima
+        must be alternating.
+    pkh_col_ix : int
+        The index for the first dimension of `minima`/`maxima`  that
+        returns the peak heights.
+    thresh : float, optional
+        Remove free-energy barriers from the final output that are not
+        greater than the given threshold.  Set to ``None`` to not remove
+        any free-energy barriers.
+    absolute_pos : bool, optional
+        If ``True``, assume that the peak minima/maxima positions are
+        given as absolute coordinates rather than as distance to the
+        electrode as returned by
+        :func:`lintf2_ether_ana_postproc.simulation.read_free_energy_extrema`.
+
+    Returns
+    -------
+    barriers_l2r : list
+        Same list as `maxima`, but with the maxima heights (index
+        `pkh_col_ix`) replaced by the barrier heights as they appear
+        when moving from left to right.
+    barriers_r2l : list
+        Same list as `maxima`, but with the maxima heights (index
+        `pkh_col_ix`) replaced by the barrier heights as they appear
+        when moving from right to left.
+    """
+    try:
+        n_pkp_types_minima = len(minima[0])
+        n_pkp_types_maxima = len(maxima[0])
+        n_pkp_types = n_pkp_types_maxima
+    except (TypeError, IndexError):
+        raise TypeError("`minima` and `maxima` must be a 3-dimensional lists")
+    if n_pkp_types_minima != n_pkp_types_maxima:
+        raise ValueError(
+            "The length of the second dimension of `minima` ({}) and `maxima`"
+            " ({}) must be the"
+            " same".format(n_pkp_types_minima, n_pkp_types_maxima)
+        )
+    try:
+        n_sims_minima = len(minima[0][0])
+        n_sims_maxima = len(maxima[0][0])
+        n_sims = n_sims_maxima
+    except (TypeError, IndexError):
+        raise TypeError("`minima` and `maxima` must be a 3-dimensional lists")
+    if n_sims_minima != n_sims_maxima:
+        raise ValueError(
+            "The length of the third dimension of `minima` ({}) and `maxima`"
+            " ({}) must be the same".format(n_sims_minima, n_sims_maxima)
+        )
+
+    try:
+        pk_pos_minima = minima[pkp_col_ix]
+        pk_pos_maxima = maxima[pkp_col_ix]
+    except IndexError:
+        raise IndexError(
+            "`pkp_col_ix` ({}) is out of bounds for axis 0 of `minima` (size"
+            " {}) or `maxima` (size"
+            " {})".format(pkp_col_ix, len(minima), len(maxima))
+        )
+    try:
+        pk_height_minima = minima[pkh_col_ix]
+        pk_height_maxima = maxima[pkh_col_ix]
+    except IndexError:
+        raise IndexError(
+            "`pkh_col_ix` ({}) is out of bounds for axis 0 of `minima` (size"
+            " {}) or `maxima` (size"
+            " {})".format(pkh_col_ix, len(minima), len(maxima))
+        )
+
+    if absolute_pos:
+        pk_pos_types = ("left", "right")  # Peak at left or right electrode.
+    else:
+        # Peak positions are given as distance to the electrode and
+        # therefore peaks at the right electrode behave as peaks at the
+        # left electrode.
+        pk_pos_types = ("left", "left")
+    if n_pkp_types != len(pk_pos_types):
+        raise TypeError(
+            "`minima` and `maxima` must contain values for {} peak-position"
+            " types but contain values for {} peak-position"
+            " type(s)".format(len(pk_pos_types), n_pkp_types)
+        )
+
+    barriers_l2r = deepcopy(maxima)
+    barriers_r2l = deepcopy(maxima)
+    if thresh is not None:
+        bars_l2r_valid = [
+            [None for pkh_sim in pkh_pkt] for pkh_pkt in pk_height_maxima
+        ]
+        bars_r2l_valid = deepcopy(bars_l2r_valid)
+
+    for pkt_ix, pkp_type in enumerate(pk_pos_types):
+        for sim_ix in range(n_sims):
+            pkp_minima = pk_pos_minima[pkt_ix][sim_ix]
+            pkp_maxima = pk_pos_maxima[pkt_ix][sim_ix]
+            pkh_minima = pk_height_minima[pkt_ix][sim_ix]
+            pkh_maxima = pk_height_maxima[pkt_ix][sim_ix]
+
+            if len(pkp_minima) != len(pkp_maxima):
+                raise ValueError(
+                    "Simulation: '{}'.\n"
+                    "Peak-position type: {}\n"
+                    "The number of minima ({}) does not match the number of"
+                    " maxima ({})".format(
+                        sim_ix, pkp_type, len(pkp_minima), len(pkp_maxima)
+                    )
+                )
+            if pkp_type == "left":
+                if np.any(pkp_minima >= pkp_maxima):
+                    raise ValueError(
+                        "Simulation: '{}'.\n"
+                        "Peak-position type: {}\n"
+                        "Either the first extremum is not a minium or minima"
+                        " and maxima are not ordered alternately.  Minima: {}."
+                        "  Maxima:"
+                        " {}".format(sim_ix, pkp_type, pkp_minima, pkp_maxima)
+                    )
+                bars_l2r = pkh_maxima - pkh_minima
+                barriers_l2r[pkh_col_ix][pkt_ix][sim_ix] = bars_l2r
+                bars_r2l = pkh_maxima[:-1] - pkh_minima[1:]
+                bars_r2l = np.append(bars_r2l, pkh_maxima[-1] - 0)
+                barriers_r2l[pkh_col_ix][pkt_ix][sim_ix] = bars_r2l
+                if thresh is not None:
+                    bars_l2r_valid[pkt_ix][sim_ix] = bars_l2r > thresh
+                    bars_r2l_valid[pkt_ix][sim_ix] = bars_r2l > thresh
+            elif pkp_type == "right":
+                if np.any(pkp_minima <= pkp_maxima):
+                    raise ValueError(
+                        "Simulation: '{}'.\n"
+                        "Peak-position type: {}\n"
+                        "Either the first extremum is not a maximum or minima"
+                        " and maxima are not ordered alternately.  Minima: {}."
+                        "  Maxima:"
+                        " {}".format(sim_ix, pkp_type, pkp_minima, pkp_maxima)
+                    )
+                bars_l2r = pkh_maxima[1:] - pkh_minima[:-1]
+                bars_l2r = np.insert(bars_l2r, 0, pkh_maxima[0] - 0)
+                barriers_l2r[pkh_col_ix][pkt_ix][sim_ix] = bars_l2r
+                bars_r2l = pkh_maxima - pkh_minima
+                barriers_r2l[pkh_col_ix][pkt_ix][sim_ix] = bars_r2l
+                if thresh is not None:
+                    bars_l2r_valid[pkt_ix][sim_ix] = bars_l2r > thresh
+                    bars_r2l_valid[pkt_ix][sim_ix] = bars_r2l > thresh
+            else:
+                raise ValueError(
+                    "Unknown peak-position type: '{}'".format(pkp_type)
+                )
+
+    if thresh is not None:
+        for col_ix, bars_l2r_col in enumerate(barriers_l2r):
+            for pkt_ix, bars_l2r_pkt in enumerate(bars_l2r_col):
+                for sim_ix, bars_l2r_sim in enumerate(bars_l2r_pkt):
+                    valid_l2r = bars_l2r_valid[pkt_ix][sim_ix]
+                    barriers_l2r[col_ix][pkt_ix][sim_ix] = bars_l2r_sim[
+                        valid_l2r
+                    ]
+                    bars_r2l_sim = barriers_r2l[col_ix][pkt_ix][sim_ix]
+                    valid_r2l = bars_r2l_valid[pkt_ix][sim_ix]
+                    barriers_r2l[col_ix][pkt_ix][sim_ix] = bars_r2l_sim[
+                        valid_r2l
+                    ]
+
+    return barriers_l2r, barriers_r2l
 
 
 def interp_invalid(x, y, invalid, inplace=True):
