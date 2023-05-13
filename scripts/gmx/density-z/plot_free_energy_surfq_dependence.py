@@ -32,6 +32,49 @@ from matplotlib.ticker import FormatStrFormatter, MaxNLocator, MultipleLocator
 import lintf2_ether_ana_postproc as leap
 
 
+def equalize_xticks(ax):
+    """
+    Equalize x-ticks so that plots can be better stacked together.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        The :class:`~matplotlib.axes.Axes` for which to equalize the x
+        ticks.
+    """
+    xlim = np.asarray(ax.get_xlim())
+    xlim_diff = xlim[-1] - xlim[0]
+    if xlim_diff > 2.5 and xlim_diff < 5:
+        ax.xaxis.set_major_locator(MultipleLocator(1))
+        ax.xaxis.set_minor_locator(MultipleLocator(0.2))
+
+
+def equalize_yticks(ax):
+    """
+    Equalize y-ticks so that plots can be better stacked together.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        The :class:`~matplotlib.axes.Axes` for which to equalize the y
+        ticks.
+
+    Notes
+    -----
+    This function relies on global variables!
+    """
+    ylim = np.asarray(ax.get_ylim())
+    ylim_diff = ylim[-1] - ylim[0]
+    yticks = np.asarray(ax.get_yticks())
+    yticks_valid = (yticks >= ylim[0]) & (yticks <= ylim[-1])
+    yticks = yticks[yticks_valid]
+    if ylim_diff >= 10 and ylim_diff < 20:
+        ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+    if not args.common_ylim:
+        if np.all(yticks >= 0) and np.all(yticks < 10) and ylim_diff > 2:
+            ax.yaxis.set_major_formatter(FormatStrFormatter("%.1f"))
+
+
 # Input parameters.
 parser = argparse.ArgumentParser(
     description="Plot free-energy profiles for different surface charges."
@@ -204,19 +247,8 @@ with PdfPages(outfile) as pdf:
                 xlim=xlim,
                 ylim=(ymin[ps_ix][cmp_ix], ymax[ps_ix][cmp_ix]),
             )
-
-            # Equalize x- and y-ticks so that plots can be stacked
-            # together.
-            xlim_diff = np.diff(ax.get_xlim())
-            if xlim_diff > 2.5 and xlim_diff < 5:
-                ax.xaxis.set_major_locator(MultipleLocator(1))
-                ax.xaxis.set_minor_locator(MultipleLocator(0.2))
-            ylim_diff = np.diff(ax.get_ylim())
-            if ylim_diff > 10 and ylim_diff < 20:
-                ax.yaxis.set_major_locator(MaxNLocator(integer=True))
-            if not args.common_ylim:
-                if all(np.abs(ax.get_ylim()) < 10) and ylim_diff > 2:
-                    ax.yaxis.set_major_formatter(FormatStrFormatter("%.1f"))
+            equalize_xticks(ax)
+            equalize_yticks(ax)
 
             legend_title = (
                 r"$n_{EO} = %d$" % Sims.O_per_chain[0]
