@@ -19,6 +19,7 @@ import mdtools as mdt
 import mdtools.plot as mdtplt  # Load MDTools plot style  # noqa: F401
 import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.ticker import FormatStrFormatter, MaxNLocator, MultipleLocator
 
 # First-party libraries
 import lintf2_ether_ana_postproc as leap
@@ -55,6 +56,40 @@ def legend_title(surfq_sign):
         + r"}$ "
         + args.peak_type.capitalize()
     )
+
+
+def equalize_xticks(ax):
+    """
+    Equalize x-ticks so that plots can be better stacked together.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        The :class:`~matplotlib.axes.Axes` for which to equalize the x
+        ticks.
+    """
+    ax.xaxis.set_major_locator(MultipleLocator(0.1))
+
+
+def equalize_yticks(ax):
+    """
+    Equalize y-ticks so that plots can be better stacked together.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        The :class:`~matplotlib.axes.Axes` for which to equalize the y
+        ticks.
+    """
+    ylim = np.asarray(ax.get_ylim())
+    ylim_diff = ylim[-1] - ylim[0]
+    yticks = np.asarray(ax.get_yticks())
+    yticks_valid = (yticks >= ylim[0]) & (yticks <= ylim[-1])
+    yticks = yticks[yticks_valid]
+    if ylim_diff >= 10 and ylim_diff < 20:
+        ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+    if np.all(yticks >= 0) and np.all(yticks < 10) and ylim_diff > 2:
+        ax.yaxis.set_major_formatter(FormatStrFormatter("%.1f"))
 
 
 # Input parameters.
@@ -357,6 +392,8 @@ with PdfPages(outfile) as pdf:
                 xlim=xlim,
                 ylim=ylims[col_ix],
             )
+            equalize_xticks(ax_sep)
+            equalize_yticks(ax_sep)
             legend_sep = ax_sep.legend(
                 title=legend_title_sep + legend_title_suffix,
                 ncol=2,
@@ -373,6 +410,8 @@ with PdfPages(outfile) as pdf:
             xlim=xlim,
             ylim=ylims[col_ix],
         )
+        equalize_xticks(ax_comb)
+        equalize_yticks(ax_comb)
         legend_comb = ax_comb.legend(
             title=legend_title(r"\pm") + legend_title_suffix,
             ncol=n_legend_cols_comb,
