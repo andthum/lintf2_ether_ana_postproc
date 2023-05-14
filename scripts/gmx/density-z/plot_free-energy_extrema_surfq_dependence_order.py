@@ -103,7 +103,7 @@ outfile = (  # Output file name.
     + args.peak_type
     + "_"
     + args.cmp
-    + "_order"
+    + "_order_pthresh_%.2f" % args.prob_thresh
 )
 if args.common_ylim:
     outfile += "_common_ylim.pdf"
@@ -193,7 +193,7 @@ xlim = (-0.1, 1.1)
 if args.common_ylim:
     if args.cmp == "Li":
         ylims = [
-            (0.1, 3.2),  # Peak positions [nm]
+            (0, 3.6),  # Peak positions [nm] (--prob-thresh 1)
             (None, None),  # Peak heights [kT]
             (0, 11),  # Peak prominences [kT]
             (0, 0.65),  # Peak width at  50 % prominence [nm]
