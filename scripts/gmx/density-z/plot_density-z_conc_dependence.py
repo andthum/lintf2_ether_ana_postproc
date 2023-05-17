@@ -6,8 +6,6 @@
 
 # Standard libraries
 import argparse
-import glob
-import os
 
 # Third-party libraries
 import matplotlib.pyplot as plt
@@ -19,6 +17,49 @@ from matplotlib.ticker import FormatStrFormatter, MaxNLocator, MultipleLocator
 
 # First-party libraries
 import lintf2_ether_ana_postproc as leap
+
+
+def equalize_xticks(ax):
+    """
+    Equalize x-ticks so that plots can be better stacked together.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        The :class:`~matplotlib.axes.Axes` for which to equalize the x
+        ticks.
+    """
+    xlim = np.asarray(ax.get_xlim())
+    xlim_diff = xlim[-1] - xlim[0]
+    if xlim_diff > 2.5 and xlim_diff < 5:
+        ax.xaxis.set_major_locator(MultipleLocator(1))
+        ax.xaxis.set_minor_locator(MultipleLocator(0.2))
+
+
+def equalize_yticks(ax):
+    """
+    Equalize y-ticks so that plots can be better stacked together.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        The :class:`~matplotlib.axes.Axes` for which to equalize the y
+        ticks.
+
+    Notes
+    -----
+    This function relies on global variables!
+    """
+    ylim = np.asarray(ax.get_ylim())
+    ylim_diff = ylim[-1] - ylim[0]
+    yticks = np.asarray(ax.get_yticks())
+    yticks_valid = (yticks >= ylim[0]) & (yticks <= ylim[-1])
+    yticks = yticks[yticks_valid]
+    if ylim_diff >= 10 and ylim_diff < 20:
+        ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+    if not args.common_ylim:
+        if np.all(yticks >= 0) and np.all(yticks < 10) and ylim_diff > 2:
+            ax.yaxis.set_major_formatter(FormatStrFormatter("%.1f"))
 
 
 # Input parameters.
@@ -82,40 +123,26 @@ if len(compounds) != len(cols):
     )
 
 
-print("Creating Simulation instances...")
-SimPaths = leap.simulation.SimPaths()
-pattern_system = (
-    "lintf2_" + args.sol + "_[0-9]*-[0-9]*_gra_" + args.surfq + "_sc80"
+print("Creating Simulation instance(s)...")
+sys_pat = "lintf2_" + args.sol + "_[0-9]*-[0-9]*_gra_" + args.surfq + "_sc80"
+set_pat = "[0-9][0-9]_" + settings + "_" + sys_pat
+Sims = leap.simulation.get_sims(
+    sys_pat, set_pat, args.surfq, sort_key="Li_O_ratio"
 )
-pattern_settings = "[0-9][0-9]_" + settings + "_" + pattern_system
-pattern = os.path.join(
-    SimPaths.PATHS[args.surfq], pattern_system, pattern_settings
-)
-paths = glob.glob(pattern)
-Sims = leap.simulation.Simulations(*paths, sort_key="Li_O_ratio")
-
-
-print("Assembling input file name(s)...")
-infiles = []
-file_suffix = analysis + analysis_suffix + ".xvg.gz"
-for i, path in enumerate(Sims.paths_ana):
-    fname = Sims.fnames_ana_base[i] + file_suffix
-    fpath = os.path.join(path, tool, analysis, fname)
-    if not os.path.isfile(fpath):
-        raise FileNotFoundError("No such file: '{}'".format(fpath))
-    infiles.append(fpath)
-n_infiles = len(infiles)
 
 
 print("Reading data and creating plot(s)...")
+file_suffix = analysis + analysis_suffix + ".xvg.gz"
+infiles = leap.simulation.get_ana_files(Sims, analysis, tool, file_suffix)
+n_infiles = len(infiles)
+
 Elctrd = leap.simulation.Electrode()
 elctrd_thk = Elctrd.ELCTRD_THK / 10  # A -> nm
 box_z_max = np.max(Sims.boxes_z)
 
 plot_sections = ("left", "right", "full")
-# xmin = -elctrd_thk
 xmin = 0
-xmax = 4
+xmax = Elctrd.BULK_START / 10  # A -> nm
 if args.sol == "g1":
     if args.surfq == "q0":
         ymax = tuple((6.5, 4.8, 3.1, 3.8) for _ in plot_sections)
@@ -157,7 +184,6 @@ if args.common_ylim:
         tuple(6.5 for _cmp in compounds) for _plt_sec in plot_sections
     )
 
-linewidth = 1.5
 cmap = plt.get_cmap()
 mdt.fh.backup(outfile)
 with PdfPages(outfile) as pdf:
@@ -172,7 +198,7 @@ with PdfPages(outfile) as pdf:
                 if plt_sec in ("left", "right"):
                     # Also, for the plot of the right electrode, the
                     # electrode position will be shifted to zero.
-                    leap.plot.plot_elctrd_left(ax, linewidth=linewidth)
+                    leap.plot.elctrd_left(ax)
 
                 for sim_ix, Sim in enumerate(Sims.sims):
                     x, y = np.loadtxt(
@@ -182,8 +208,12 @@ with PdfPages(outfile) as pdf:
                         unpack=True,
                     )
                     if plt_sec == "left":
+                        y = y[: len(y) // 2]
+                        x = x[: len(x) // 2]
                         x -= elctrd_thk
                     elif plt_sec == "right":
+                        y = y[len(y) // 2 :]
+                        x = x[len(x) // 2 :]
                         x += elctrd_thk
                         x -= Sim.box[2] / 10  # A -> nm
                         x *= -1  # Ensure positive x-axis.
@@ -203,19 +233,18 @@ with PdfPages(outfile) as pdf:
                         y,
                         label="$%.4f$" % Sim.Li_O_ratio,
                         linestyle=linestyle,
-                        linewidth=linewidth,
-                        alpha=2 / 3,
+                        alpha=leap.plot.ALPHA,
                     )
 
                 ylabel = (
                     r"Density $\rho_{"
-                    + leap.plot.atom_type2display_name[cmp]
+                    + leap.plot.ATOM_TYPE2DISPLAY_NAME[cmp]
                     + r"}"
                 )
                 if y_normed:
                     ylabel += (
                         r" / \rho_{"
-                        + leap.plot.atom_type2display_name[cmp]
+                        + leap.plot.ATOM_TYPE2DISPLAY_NAME[cmp]
                         + r"}^{bulk}$"
                     )
                     ylim = (0, ymax[ps_ix][cmp_ix])
@@ -233,21 +262,8 @@ with PdfPages(outfile) as pdf:
                     xlabel = r"$z$ / nm"
                     xlim = (0, box_z_max)
                 ax.set(xlabel=xlabel, ylabel=ylabel, xlim=xlim, ylim=ylim)
-
-                # Equalize x- and y-ticks so that plots can be stacked
-                # together.
-                xlim_diff = np.diff(ax.get_xlim())
-                if xlim_diff > 2.5 and xlim_diff < 5:
-                    ax.xaxis.set_major_locator(MultipleLocator(1))
-                    ax.xaxis.set_minor_locator(MultipleLocator(0.2))
-                if not args.common_ylim:
-                    ylim_diff = np.diff(ax.get_ylim())
-                    if all(np.abs(ax.get_ylim()) < 10) and ylim_diff > 2:
-                        ax.yaxis.set_major_formatter(
-                            FormatStrFormatter("%.1f")
-                        )
-                    elif ylim_diff > 10 and ylim_diff < 20:
-                        ax.yaxis.set_major_locator(MaxNLocator(integer=True))
+                equalize_xticks(ax)
+                equalize_yticks(ax)
 
                 legend_title = (
                     r"%.2f$" % Sims.surfqs[0]

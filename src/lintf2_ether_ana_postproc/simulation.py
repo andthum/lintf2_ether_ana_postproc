@@ -101,6 +101,18 @@ class Electrode:
         :type: float
         """
 
+        self.BULK_START = 40.0
+        """
+        Distance to the electrodes in Angstroms at which the bulk region
+        starts.
+
+        This is just a subjective value I defined from visual inspection
+        of the density profiles.  There is no underlying calculation or
+        objective criterion behind it.
+
+        :type: float
+        """
+
 
 class Simulation:
     """
@@ -366,6 +378,21 @@ class Simulation:
         :type: dict
         """
 
+        self.bulk_region = None
+        """
+        Begin and end of the bulk region of the simulation box along the
+        z direction in Angstrom.
+
+        For bulk simulations, this is the entire simulation box from
+        zero to :math:`l_z`.  For surface simulations, this is the
+        region from
+        :attr:`Electrode.ELCTRD_THK` + :attr:`Electrode.BULK_START` to
+        :attr:`self.box[2]` - :attr:`Electrode.ELCTRD_THK` -
+        :attr:`Electrode.BULK_START`.
+
+        :type: numpy.ndarray of two floats
+        """
+
         path = os.path.expandvars(os.path.expanduser(path))
         if not os.path.isdir(path):
             raise FileNotFoundError("No such directory: '{}'".format(path))
@@ -389,6 +416,7 @@ class Simulation:
         self.get_Li_O_ratio()
         self.get_vol()
         self.get_dens()
+        self.get_bulk_region()
 
         # Release memory.
         del self._Universe, self._BulkSim
@@ -672,17 +700,7 @@ class Simulation:
             self.surfq = None
             return self.surfq
 
-        system = self.system.split("_")
-        for s in system:
-            if s.startswith("q"):
-                self.surfq = s[1:]
-                break
-        if self.surfq is None:
-            raise ValueError(
-                "Could not infer the surface charge from `self.system`"
-                " ({})".format(self.system)
-            )
-        self.surfq = float(self.surfq)
+        self.surfq = leap.simulation.get_surfq(self.system)
         self.surfq /= 100  # e/nm^2 -> e/Angstrom^2
 
         if self._surfq_u is not None and not np.isclose(
@@ -1441,6 +1459,42 @@ class Simulation:
 
         return self.dens
 
+    def get_bulk_region(self):
+        """
+        Get the begin and end of the bulk region of the simulation box
+        along the z direction in Angstrom.
+
+        Return the value of :attr:`self.bulk_region`.  If
+        :attr:`self.bulk_region` is ``None``, calculate the bulk region
+        from :attr:`self.box`, :attr:`Electrode.ELCTRD_THK` and
+        :attr:`Electrode.BULK_START`.
+
+        For bulk simulations, the bulk region spans the entire
+        simulation box.
+
+        Returns
+        -------
+        self.bulk_region : numpy.ndarray of two floats
+            The begin and end of the bulk region of the simulation box
+            along the z direction in Angstrom.
+        """
+        if self.bulk_region is not None:
+            return self.bulk_region
+
+        if self.is_bulk is None:
+            self.get_is_bulk()
+        if self.box is None:
+            self.get_box()
+
+        bulk_begin = 0
+        bulk_end = self.box[2]
+        if not self.is_bulk:
+            Elctrd = leap.simulation.Electrode()
+            bulk_begin += Elctrd.ELCTRD_THK + Elctrd.BULK_START
+            bulk_end -= Elctrd.ELCTRD_THK + Elctrd.BULK_START
+        self.bulk_region = np.array([bulk_begin, bulk_end])
+        return self.bulk_region
+
 
 class Simulations:
     """
@@ -1510,6 +1564,13 @@ class Simulations:
 
             :type: list
             """
+
+        self.n_sims = None
+        """
+        Number of simulations stored in this container class.
+
+        :type: int
+        """
 
         self.paths = None
         """
@@ -1644,6 +1705,16 @@ class Simulations:
         :type: dict
         """
 
+        self.bulk_regions = None
+        """
+        Array of shape ``(n_sims, 2)`` containing the begin and end of
+        the bulk region of the simulation box along the z direction in
+        nanometers for each
+        :class:`~lintf2_ether_ana_postproc.simulation.Simulation`.
+
+        :type: numpy.ndarray
+        """
+
         self.paths = []
         for path in paths:
             path = os.path.expandvars(os.path.expanduser(path))
@@ -1651,6 +1722,7 @@ class Simulations:
                 raise FileNotFoundError("No such directory: '{}'".format(path))
             self.paths.append(os.path.abspath(path))
         self.get_sims(sort_key)
+        self.get_n_sims()
         self.get_paths_ana()
         self.get_fnames_ana_base()
         self.get_res_names()
@@ -1664,6 +1736,7 @@ class Simulations:
         self.get_boxes_z()
         self.get_vols()
         self.get_dens()
+        self.get_bulk_regions()
 
     def get_sims(self, sort_key=None):
         """
@@ -1745,6 +1818,28 @@ class Simulations:
         self.__init__(*paths)
 
         return self.sims
+
+    def get_n_sims(self):
+        """
+        Get the number of simulations stored in this container class.
+
+        Return the value of :attr:`self.n_sims`.  If :attr:`self.n_sims`
+        is ``None``, infer the number of simulations from
+        :attr:`self.sims`.
+
+        Returns
+        -------
+        self.n_sims : int
+            The number of simulations stored in this container class.
+        """
+        if self.n_sims is not None:
+            return self.n_sims
+
+        if self.sims is None:
+            self.get_sims()
+
+        self.n_sims = len(self.sims)
+        return self.n_sims
 
     def get_paths(self):
         """
@@ -2169,6 +2264,69 @@ class Simulations:
                     self.dens[cmp][cn][dens_type] = dens_array
         return self.dens
 
+    def get_bulk_regions(self):
+        """
+        Get the begin and end of the bulk region of the simulation box
+        along the z direction in nanometers for each
+        :class:`~lintf2_ether_ana_postproc.simulation.Simulation`.
+
+        Return the value of :attr:`self.bulk_regions`.  If
+        :attr:`self.bulk_regions` is ``None``, create it from
+        :attr:`self.sims`.
+
+        Returns
+        -------
+        self.bulk_regions : numpy.ndarray
+            Array of shape ``(n_sims, 2)`` containing the begin and end
+            of the bulk region of the simulation box along the z
+            direction in nanometers for each
+            :class:`~lintf2_ether_ana_postproc.simulation.Simulation`.
+        """
+        if self.bulk_regions is not None:
+            return self.bulk_regions
+
+        if self.sims is None:
+            self.get_sims()
+
+        self.bulk_regions = np.array([sim.bulk_region for sim in self.sims])
+        self.bulk_regions /= 10  # Angstrom -> nm
+        return self.bulk_regions
+
+
+def get_surfq(system):
+    """
+    Extract the surface charge of the electrodes in a surface simulation
+    from the system name.
+
+    Parameters
+    ----------
+    system : str
+        Name of the simulated system.  The surface charge of the
+        electrodes must be contained in the system name as "*_qX_*",
+        where X can be any integer or floating point number.
+
+    Returns
+    -------
+    surfq : float
+        The surface charge of the electrodes inferred from the system
+        name.
+
+    Raises
+    ------
+    ValueError :
+        If `system` does not contain the pattern "*_qX_*".
+    """
+    for s in system.split("_"):
+        if s.startswith("q"):
+            surfq = s[1:]
+            break
+    if surfq is None:
+        raise ValueError(
+            "Could not infer the surface charge from `system`"
+            " ({})".format(system)
+        )
+    return float(surfq)
+
 
 def num_res_per_name(ag):
     """
@@ -2218,3 +2376,594 @@ def num_atoms_per_type(ag, attr="types"):
         for at in unique_atom_types
     ]
     return dict(zip(unique_atom_types, n_atoms_per_type))
+
+
+def get_sim(sys_pat, set_pat, path_key, exclude_pat=None):
+    """
+    Create a :class:`~lintf2_ether_ana_postproc.simulation.Simulation`
+    instance from glob patterns.
+
+    Parameters
+    ----------
+    sys_pat : str
+        System name pattern.
+    set_pat : str
+        Simulations settings name pattern.
+    path_key : str
+        Path key to fetch the top-level path that contains the desired
+        simulation from
+        :attr:`~lintf2_ether_ana_postproc.simulation.SimPaths.PATHS`.
+        See there for possible keys.
+    exclude_pat : str or None, optional
+        System name pattern to exclude.  Any simulation whose system
+        system name matches this glob pattern will be excluded from the
+        created
+        :class:`~lintf2_ether_ana_postproc.simulation.Simulations`
+        instance.
+
+    Returns
+    -------
+    Sim : lintf2_ether_ana_postproc.simulation.Simulations
+        A :class:`~lintf2_ether_ana_postproc.simulation.Simulation`
+        instance.
+
+    See Also
+    --------
+    :func:`lintf2_ether_ana_postproc.simulation.get_sims` :
+        Create a
+        :class:`~lintf2_ether_ana_postproc.simulation.Simulations`
+        instance from glob patterns.
+    """
+    SimPaths = leap.simulation.SimPaths()
+    pattern = os.path.join(SimPaths.PATHS[path_key], sys_pat, set_pat)
+    paths = glob.glob(pattern)
+
+    if exclude_pat is not None:
+        pattern_exclude = os.path.join(
+            SimPaths.PATHS[path_key], exclude_pat, set_pat
+        )
+        paths_exclude = glob.glob(pattern_exclude)
+        paths = list(set(paths) - set(paths_exclude))
+        err_msg_suffix = " and excluding the pattern '{}'".format(
+            pattern_exclude
+        )
+    else:
+        err_msg_suffix = ""
+
+    if len(paths) == 0:
+        err_msg = (
+            "Could not find any file/directory matching the pattern"
+            " '{}'".format(pattern)
+        )
+        raise ValueError(err_msg + err_msg_suffix)
+    elif len(paths) > 1:
+        err_msg = (
+            "Found more than one file/directory matching the pattern"
+            " '{}'".format(pattern)
+        )
+        raise ValueError(err_msg + err_msg_suffix)
+    return leap.simulation.Simulation(paths[0])
+
+
+def get_sims(sys_pat, set_pat, path_key, exclude_pat=None, **kwargs):
+    """
+    Create a :class:`~lintf2_ether_ana_postproc.simulation.Simulations`
+    instance from glob patterns.
+
+    Parameters
+    ----------
+    sys_pat : str
+        System name pattern.
+    set_pat : str
+        Simulations settings name pattern.
+    path_key : str
+        Path key to fetch the top-level path that contains the desired
+        simulations from
+        :attr:`~lintf2_ether_ana_postproc.simulation.SimPaths.PATHS`.
+        See there for possible keys.
+    exclude_pat : str or None, optional
+        System name pattern to exclude.  Any simulation whose system
+        system name matches this glob pattern will be excluded from the
+        created
+        :class:`~lintf2_ether_ana_postproc.simulation.Simulations`
+        instance.
+    kwargs : dict, optional
+        Additional keyword arguments (besides `paths`) to parse to the
+        constructor of
+        :class:`~lintf2_ether_ana_postproc.simulation.Simulations`
+
+    Returns
+    -------
+    Sims : lintf2_ether_ana_postproc.simulation.Simulations
+        A :class:`~lintf2_ether_ana_postproc.simulation.Simulations`
+        instance.
+
+    See Also
+    --------
+    :func:`lintf2_ether_ana_postproc.simulation.get_sim` :
+        Create a
+        :class:`~lintf2_ether_ana_postproc.simulation.Simulation`
+        instance from glob patterns.
+    """
+    SimPaths = leap.simulation.SimPaths()
+    pattern = os.path.join(SimPaths.PATHS[path_key], sys_pat, set_pat)
+    paths = glob.glob(pattern)
+
+    if exclude_pat is not None:
+        pattern_exclude = os.path.join(
+            SimPaths.PATHS[path_key], exclude_pat, set_pat
+        )
+        paths_exclude = glob.glob(pattern_exclude)
+        paths = list(set(paths) - set(paths_exclude))
+        err_msg_suffix = " and excluding the pattern '{}'".format(
+            pattern_exclude
+        )
+    else:
+        err_msg_suffix = ""
+
+    if len(paths) == 0:
+        err_msg = (
+            "Could not find any file/directory matching the pattern"
+            " '{}'".format(pattern)
+        )
+        raise ValueError(err_msg + err_msg_suffix)
+    return leap.simulation.Simulations(*paths, **kwargs)
+
+
+def get_ana_file(Sim, ana_name, ana_tool, file_suffix):
+    """
+    Get the path to the given analysis file for a given
+    :class:`~lintf2_ether_ana_postproc.simulation.Simulation` instance.
+
+    Parameters
+    ----------
+    Sim : lintf2_ether_ana_postproc.simulation.Simulation
+        The :class:`~lintf2_ether_ana_postproc.simulation.Simulation`
+        instance.
+    ana_name : str
+        The analysis name.
+    ana_tool : {"gmx", "mdtools"}
+        The software/tool used to generate the analysis file.
+    file_suffix : str
+        The suffix of the analysis file without the simulation settings
+        and the system name, i.e. everything after
+        :attr:`lintf2_ether_ana_postproc.simulation.Simulation.fname_ana_base`.
+
+    Returns
+    -------
+    ana_file : str
+        Path to the analysis files.
+
+    See Also
+    --------
+    :func:`lintf2_ether_ana_postproc.get_ana_files` :
+        Get the paths to the given analysis files for each
+        :class:`~lintf2_ether_ana_postproc.simulation.Simulation` in a
+        given :class:`~lintf2_ether_ana_postproc.simulation.Simulations`
+        instance.
+    """
+    if ana_tool not in ("gmx", "mdtools"):
+        raise ValueError("Unknown `ana_tool`: '{}'".format(ana_tool))
+
+    fname = Sim.fname_ana_base + file_suffix
+    ana_file = os.path.join(Sim.path_ana, ana_tool, ana_name, fname)
+    if not os.path.isfile(ana_file):
+        raise FileNotFoundError("No such file: '{}'".format(ana_file))
+    return ana_file
+
+
+def get_ana_files(Sims, ana_name, ana_tool, file_suffix):
+    """
+    Get the paths to the given analysis files for each
+    :class:`~lintf2_ether_ana_postproc.simulation.Simulation` in a given
+    :class:`~lintf2_ether_ana_postproc.simulation.Simulations` instance.
+
+    Parameters
+    ----------
+    Sims : lintf2_ether_ana_postproc.simulation.Simulations
+        The :class:`~lintf2_ether_ana_postproc.simulation.Simulations`
+        instance.
+    ana_name : str
+        The analysis name.
+    ana_tool : {"gmx", "mdtools"}
+        The software/tool used to generate the analysis file.
+    file_suffix : str
+        The suffix of the analysis file without the simulation settings
+        and the system name, i.e. everything after
+        :attr:`lintf2_ether_ana_postproc.simulation.Simulations.fnames_ana_base`.
+
+    Returns
+    -------
+    ana_files : list
+        List of paths to the analysis files.
+
+    See Also
+    --------
+    :func:`lintf2_ether_ana_postproc.get_ana_file` :
+        Get the path to the given analysis file for a given
+        :class:`~lintf2_ether_ana_postproc.simulation.Simulation`
+        instance.
+    """
+    if ana_tool not in ("gmx", "mdtools"):
+        raise ValueError("Unknown `ana_tool`: '{}'".format(ana_tool))
+
+    ana_files = []
+    for sim_ix, path in enumerate(Sims.paths_ana):
+        fname = Sims.fnames_ana_base[sim_ix] + file_suffix
+        fpath = os.path.join(path, ana_tool, ana_name, fname)
+        if not os.path.isfile(fpath):
+            raise FileNotFoundError("No such file: '{}'".format(fpath))
+        ana_files.append(fpath)
+    return ana_files
+
+
+def read_free_energy_extrema_single(Sim, cmp, peak_type, cols, prom_min=None):
+    """
+    Read the free-energy extrema from file for a single simulation.
+
+    Parameters
+    ----------
+    Sim : lintf2_ether_ana_postproc.simulation.Simulation
+        The :class:`~lintf2_ether_ana_postproc.simulation.Simulation`
+        for which to read the free-energy extrema from file.
+    cmp : {"Li", "NBT", "OBT", "OE"}
+        The compound to consider.
+    peak_type : {"minima", "maxima"}
+        The peak/extremum type to consider.
+    cols : array_like
+        The columns to read from the output files of
+        :file:`scripts/gmx/density-z/get_free-energy_extrema.py`.
+        `cols` must contain the column that holds the peak positions in
+        nm.
+    prom_min : float or None, optional
+        If provided, only return peaks with a prominence of at least
+        `prom_min`.
+
+    Returns
+    -------
+    data : list
+        2-dimensional list of read data.  The first index addresses the
+        read columns.  The second index addresses the peak-position
+        type, i.e. whether the peak is in the left or right half of the
+        simulation box.
+
+    See Also
+    --------
+    :func:`lintf2_ether_ana_postproc.simulation.read_free_energy_extrema` :
+        Read free-energy extrema from file for multiple simulations
+    """  # noqa: W505
+    if cmp not in ("Li", "NBT", "OBT", "OE"):
+        raise ValueError("Unknown `cmp`: {}".format(cmp))
+    peak_type = peak_type.lower()
+    if peak_type not in ("minima", "maxima"):
+        raise ValueError("Unknown `peak_type`: {}".format(peak_type))
+    cols = np.asarray(cols)
+    if cols.ndim != 1:
+        raise ValueError(
+            "`cols` has {} dimension(s) but must have 1"
+            " dimension".format(cols.ndim)
+        )
+
+    # Assemble input file names
+    file_suffix = "free_energy_" + peak_type + "_" + cmp + ".txt.gz"
+    analysis = "density-z"  # Analysis name.
+    tool = "gmx"  # Analysis software.
+    infile = leap.simulation.get_ana_file(Sim, analysis, tool, file_suffix)
+
+    # Column in the output file of
+    # "scripts/gmx/density-z/get_free-energy_extrema.py" that contains
+    # the peak positions in nm.  Column numbering starts at zero.
+    pkp_col = 1
+    pkp_col_ix = np.where(cols == pkp_col)[0]
+    if pkp_col_ix.shape != (1,):
+        raise ValueError(
+            "`cols` ({}) must contain the column index {} exactly"
+            " ones".format(cols, pkp_col)
+        )
+    pkp_col_ix = pkp_col_ix[0]
+
+    if prom_min is not None:
+        prom_col = 3  # Column containing the peak prominences.
+        if prom_col not in cols:
+            cols = np.append(cols, prom_col)
+        prom_col_ix = np.flatnonzero(cols == prom_col)[0]
+
+    Elctrd = leap.simulation.Electrode()
+    elctrd_thk = Elctrd.ELCTRD_THK / 10  # A -> nm
+    bulk_start = Elctrd.BULK_START / 10  # A -> nm
+    box_z = Sim.box[2] / 10  # A -> nm
+    bulk_region = Sim.bulk_region / 10  # A -> nm
+
+    # Due to `unpack=True`, columns in the input file become rows in the
+    # created array and rows become columns.
+    data_raw = np.loadtxt(infile, usecols=cols, unpack=True, ndmin=2)
+    if prom_min is not None:
+        valid_pks = data_raw[prom_col_ix] >= prom_min
+        data_raw = data_raw[:, valid_pks]
+        if not np.any(valid_pks):
+            raise ValueError(
+                "No peaks with a prominence of at least {} contained in the"
+                " input file".format(prom_min)
+            )
+    pk_pos = data_raw[pkp_col_ix]
+    pk_is_left = pk_pos <= (box_z / 2)
+
+    if np.any(pk_pos <= elctrd_thk):
+        raise ValueError(
+            "At least one peak lies within the left electrode.  Peak"
+            " positions: {}.  Left electrode:"
+            " {}".format(pk_pos, elctrd_thk)
+        )
+    if np.any(pk_pos >= box_z - elctrd_thk):
+        raise ValueError(
+            "At least one peak lies within the right electrode.  Peak"
+            " positions: {}.  Right electrode:"
+            " {}".format(pk_pos, box_z - elctrd_thk)
+        )
+    if np.any((pk_pos >= bulk_region[0]) & (pk_pos <= bulk_region[1])):
+        raise ValueError(
+            "At least one peak lies within the bulk region.  Peak"
+            " positions: {}.  Bulk region:"
+            " {}".format(pk_pos, bulk_region)
+        )
+    if Sim.surfq == 0:
+        n_pks_left = np.count_nonzero(pk_is_left)
+        n_pks_right = len(pk_is_left) - n_pks_left
+        if n_pks_left != n_pks_right:
+            raise ValueError(
+                "The surface charge is {} e/nm^2 but the number of left"
+                " ({}) and right free-energy {} ({}) do not"
+                " match.".format(Sim.surfq, n_pks_left, peak_type, n_pks_right)
+            )
+
+    pk_pos_types = ("left", "right")
+    data = [[None for pkp_type in pk_pos_types] for col in cols]
+    for pkt_ix, pkp_type in enumerate(pk_pos_types):
+        if pkp_type == "left":
+            valid_pks = pk_is_left
+            data_raw_valid = data_raw[:, valid_pks]
+            pk_pos = data_raw_valid[pkp_col_ix]
+            # Convert absolute peak positions to distances to the
+            # electrodes.
+            pk_pos -= elctrd_thk
+        elif pkp_type == "right":
+            valid_pks = ~pk_is_left
+            data_raw_valid = data_raw[:, valid_pks]
+            # Reverse the order of rows to sort peaks as function of
+            # the distance to the electrodes in ascending order.
+            data_raw_valid = data_raw_valid[:, ::-1]
+            pk_pos = data_raw_valid[pkp_col_ix]
+            # Convert absolute peak positions to distances to the
+            # electrodes.
+            pk_pos += elctrd_thk
+            pk_pos -= box_z
+            pk_pos *= -1  # Ensure positive distance values.
+        else:
+            raise ValueError(
+                "Unknown peak position type: '{}'".format(pkp_type)
+            )
+        if np.any(pk_pos <= 0):
+            raise ValueError(
+                "Peak position type: '{}'.\n"
+                "At least one peak lies within the electrode.  This should"
+                " not have happened.  Peak positions: {}.  Electrode:"
+                " 0".format(pkp_type, pk_pos)
+            )
+        if np.any(pk_pos >= bulk_start):
+            raise ValueError(
+                "Peak position type: '{}'.\n"
+                "At least one peak lies within the bulk region or near the"
+                " opposite electrode.  Peak positions: {}.  Bulk start:"
+                " {}.  Opposite electrode: {}".format(
+                    pkp_type, pk_pos, bulk_start, box_z - 2 * elctrd_thk
+                )
+            )
+        data_raw_valid[pkp_col_ix] = pk_pos
+
+        for col_ix, dat_col_raw_valid in enumerate(data_raw_valid):
+            data[col_ix][pkt_ix] = dat_col_raw_valid
+
+    return data
+
+
+def read_free_energy_extrema(Sims, cmp, peak_type, cols, prom_min=None):
+    """
+    Read free-energy extrema from file for multiple simulations.
+
+    Read the output file of
+    :file:`scripts/gmx/density-z/get_free-energy_extrema.py` for
+    multiple simulations.
+
+    Parameters
+    ----------
+    Sims : lintf2_ether_ana_postproc.simulation.Simulations
+        A :class:`~lintf2_ether_ana_postproc.simulation.Simulations`
+        instance holding the simulations for which to read the
+        free-energy extrema from file.
+    cmp : {"Li", "NBT", "OBT", "OE"}
+        The compound to consider.
+    peak_type : {"minima", "maxima"}
+        The peak/extremum type to consider.
+    cols : array_like
+        The columns to read from the output files of
+        :file:`scripts/gmx/density-z/get_free-energy_extrema.py`.
+        `cols` must contain the column that holds the peak positions in
+        nm.
+    prom_min : float or None, optional
+        If provided, only return peaks with a prominence of at least
+        `prom_min`.
+
+    Returns
+    -------
+    data : list
+        3-dimensional list of read data.  The first index addresses the
+        read columns.  The second index addresses the peak-position
+        type, i.e. whether the peak is in the left or right half of the
+        simulation box.  The third index addresses the simulation.  This
+        structure of `data` is useful for plotting the values in
+        specific columns as function of the simulation.
+    n_pks_max : numpy.ndarray
+        Maximum number of peaks in a single simulation for each
+        peak-position type.
+
+    See Also
+    --------
+    :func:`lintf2_ether_ana_postproc.simulation.read_free_energy_extrema_single` :
+        Read the free-energy extrema from file for a single simulation
+    """  # noqa: E501, W505
+    if cmp not in ("Li", "NBT", "OBT", "OE"):
+        raise ValueError("Unknown `cmp`: {}".format(cmp))
+    peak_type = peak_type.lower()
+    if peak_type not in ("minima", "maxima"):
+        raise ValueError("Unknown `peak_type`: {}".format(peak_type))
+    cols = np.asarray(cols)
+    if cols.ndim != 1:
+        raise ValueError(
+            "`cols` has {} dimension(s) but must have 1"
+            " dimension".format(cols.ndim)
+        )
+
+    # Assemble input file names
+    file_suffix = "free_energy_" + peak_type + "_" + cmp + ".txt.gz"
+    analysis = "density-z"  # Analysis name.
+    tool = "gmx"  # Analysis software.
+    infiles = leap.simulation.get_ana_files(Sims, analysis, tool, file_suffix)
+
+    # Column in the output file of
+    # "scripts/gmx/density-z/get_free-energy_extrema.py" that contains
+    # the peak positions in nm.  Column numbering starts at zero.
+    pkp_col = 1
+    pkp_col_ix = np.where(cols == pkp_col)[0]
+    if pkp_col_ix.shape != (1,):
+        raise ValueError(
+            "`cols` ({}) must contain the column index {} exactly"
+            " ones".format(cols, pkp_col)
+        )
+    pkp_col_ix = pkp_col_ix[0]
+
+    if prom_min is not None:
+        prom_col = 3  # Column containing the peak prominences.
+        if prom_col not in cols:
+            cols = np.append(cols, prom_col)
+        prom_col_ix = np.flatnonzero(cols == prom_col)[0]
+
+    Elctrd = leap.simulation.Electrode()
+    elctrd_thk = Elctrd.ELCTRD_THK / 10  # A -> nm
+    bulk_start = Elctrd.BULK_START / 10  # A -> nm
+
+    pk_pos_types = ("left", "right")
+    n_pks_max = np.zeros_like(pk_pos_types, dtype=int)
+    data = [
+        [[None for sim in Sims.sims] for pkp_type in pk_pos_types]
+        for col in cols
+    ]
+    for sim_ix, Sim in enumerate(Sims.sims):
+        box_z = Sim.box[2] / 10  # A -> nm
+        bulk_region = Sim.bulk_region / 10  # A -> nm
+
+        # Due to `unpack=True`, columns in the input file become rows in
+        # the created array and rows become columns.
+        data_sim = np.loadtxt(
+            infiles[sim_ix], usecols=cols, unpack=True, ndmin=2
+        )
+        if prom_min is not None:
+            valid_pks = data_sim[prom_col_ix] >= prom_min
+            data_sim = data_sim[:, valid_pks]
+            if not np.any(valid_pks):
+                raise ValueError(
+                    "Simulation: '{}'.\n"
+                    "No peaks with a prominence of at least {} contained in"
+                    " the input file".format(Sim.path, prom_min)
+                )
+        pk_pos = data_sim[pkp_col_ix]
+        pk_is_left = pk_pos <= (box_z / 2)
+
+        if np.any(pk_pos <= elctrd_thk):
+            raise ValueError(
+                "Simulation: '{}'.\n"
+                "At least one peak lies within the left electrode.  Peak"
+                " positions: {}.  Left electrode: {}".format(
+                    Sim.path, pk_pos, elctrd_thk
+                )
+            )
+        if np.any(pk_pos >= box_z - elctrd_thk):
+            raise ValueError(
+                "Simulation: '{}'.\n"
+                "At least one peak lies within the right electrode.  Peak"
+                " positions: {}.  Right electrode:"
+                " {}".format(Sim.path, pk_pos, box_z - elctrd_thk)
+            )
+        if np.any((pk_pos >= bulk_region[0]) & (pk_pos <= bulk_region[1])):
+            raise ValueError(
+                "Simulation: '{}'.\n"
+                "At least one peak lies within the bulk region.  Peak"
+                " positions: {}.  Bulk region: {}".format(
+                    Sim.path, pk_pos, bulk_region
+                )
+            )
+        if Sim.surfq == 0:
+            n_pks_left = np.count_nonzero(pk_is_left)
+            n_pks_right = len(pk_is_left) - n_pks_left
+            if n_pks_left != n_pks_right:
+                raise ValueError(
+                    "Simulation: '{}'.\n"
+                    "The surface charge is {} e/nm^2 but the number of left"
+                    " ({}) and right free-energy {} ({}) do not"
+                    " match.".format(
+                        Sim.path, Sim.surfq, n_pks_left, peak_type, n_pks_right
+                    )
+                )
+
+        for pkt_ix, pkp_type in enumerate(pk_pos_types):
+            if pkp_type == "left":
+                valid_pks = pk_is_left
+                data_sim_valid = data_sim[:, valid_pks]
+                pk_pos = data_sim_valid[pkp_col_ix]
+                # Convert absolute peak positions to distances to the
+                # electrodes.
+                pk_pos -= elctrd_thk
+            elif pkp_type == "right":
+                valid_pks = ~pk_is_left
+                data_sim_valid = data_sim[:, valid_pks]
+                # Reverse the order of rows to sort peaks as function of
+                # the distance to the electrodes in ascending order.
+                data_sim_valid = data_sim_valid[:, ::-1]
+                pk_pos = data_sim_valid[pkp_col_ix]
+                # Convert absolute peak positions to distances to the
+                # electrodes.
+                pk_pos += elctrd_thk
+                pk_pos -= box_z
+                pk_pos *= -1  # Ensure positive distance values.
+            else:
+                raise ValueError(
+                    "Unknown peak position type: '{}'".format(pkp_type)
+                )
+            if np.any(pk_pos <= 0):
+                raise ValueError(
+                    "Simulation: '{}'.\n"
+                    "Peak-position type: '{}'.\n"
+                    "At least one peak lies within the electrode.  This should"
+                    " not have happened.  Peak positions: {}.  Electrode:"
+                    " 0".format(Sim.path, pkp_type, pk_pos)
+                )
+            if np.any(pk_pos >= bulk_start):
+                raise ValueError(
+                    "Simulation: '{}'.\n"
+                    "Peak-position type: '{}'.\n"
+                    "At least one peak lies within the bulk region or near the"
+                    " opposite electrode.  Peak positions: {}.  Bulk start:"
+                    " {}.  Opposite electrode: {}".format(
+                        Sim.path,
+                        pkp_type,
+                        pk_pos,
+                        bulk_start,
+                        box_z - 2 * elctrd_thk,
+                    )
+                )
+            data_sim_valid[pkp_col_ix] = pk_pos
+            n_pks_max[pkt_ix] = max(n_pks_max[pkt_ix], len(pk_pos))
+
+            for col_ix, dat_col_sim_valid in enumerate(data_sim_valid):
+                data[col_ix][pkt_ix][sim_ix] = dat_col_sim_valid
+
+    return data, n_pks_max
