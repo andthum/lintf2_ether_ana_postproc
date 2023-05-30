@@ -525,10 +525,10 @@ def dens2free_energy(x, dens, bulk_region=None, tol=0.005):
         -\ln\left[ \frac{\rho(z)}{\rho^\circ} \right]
 
     Here, :math:`k_B` is the Boltzmann constant and :math:`T` is the
-    temperature.  If `bulk_start` is given, :math:`\rho^\circ` is set to
-    the average density in the bulk region (i.e. the free energy in the
-    bulk region is effectively set to zero).  If `bulk_start` is None,
-    :math:`\rho^\circ` is set to one.
+    temperature.  If `bulk_region` is given, :math:`\rho^\circ` is set
+    to the average density in the bulk region (i.e. the free energy in
+    the bulk region is effectively set to zero).  If `bulk_region` is
+    None, :math:`\rho^\circ` is set to one.
     """
     free_en = -np.log(dens)
     if bulk_region is not None:
