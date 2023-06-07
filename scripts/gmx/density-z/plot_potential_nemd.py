@@ -195,19 +195,19 @@ ylabels = (
     r"Electric Potential $\phi$ / V",
 )
 if args.sol == "g1":
-    ymin = ((-60, None, None), (-14, None, None))
+    ymin = ((-60, None, None), (-16, None, None))
     ymin += ((None, None, None),)
     ymax = ((55, None, None), (30, None, None))
     ymax += ((None, None, None),)
 elif args.sol == "g4":
-    ymin = ((-60, None, None), (-7, None, None))
-    ymin += ((None, None, None),)
-    ymax = ((50, None, None), (14, None, None))
-    ymax += ((None, None, None),)
-elif args.sol == "peo63":
     ymin = ((-60, None, None), (-18, None, None))
     ymin += ((None, None, None),)
-    ymax = ((45, None, None), (13, None, None))
+    ymax = ((50, None, None), (16, None, None))
+    ymax += ((None, None, None),)
+elif args.sol == "peo63":
+    ymin = ((-60, None, None), (-26, None, None))
+    ymin += ((None, None, None),)
+    ymax = ((45, None, None), (18, None, None))
     ymax += ((None, None, None),)
 else:
     raise ValueError("Unknown solvent --sol: '{}'".format(args.sol))
