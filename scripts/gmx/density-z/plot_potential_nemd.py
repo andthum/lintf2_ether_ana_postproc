@@ -159,15 +159,16 @@ else:
 
 
 print("Creating EQMD Simulation instance(s)...")
-sys_pat = "lintf2_" + args.sol + "_20-1_gra_q[0,1]_sc80"
+sys_pat = "lintf2_" + args.sol + "_20-1_gra_q[0-9]*_sc80"
 set_pat = "[0-9][0-9]_" + settings + "_" + sys_pat
-sys_pat = os.path.join("q[0,1]", sys_pat)
+sys_pat = os.path.join("q[0-9]*", sys_pat)
 Sims = leap.simulation.get_sims(sys_pat, set_pat, "walls", sort_key="surfq")
 
 
 print("Reading data and creating plot(s)...")
 file_suffix = analysis + analysis_suffix + ".xvg.gz"
 infiles = leap.simulation.get_ana_files(Sims, analysis, tool, file_suffix)
+n_eqmd_sims = len(Sims.sims)
 infile_nemd = base_name_nemd + ".xvg.gz"
 infiles.append(infile_nemd)
 n_infiles = len(infiles)
@@ -223,8 +224,8 @@ if args.common_ylim:
     ymax = tuple((10.5, 8.5, 0.55) for _plt_sec in plot_sections)
 
 cmap = plt.get_cmap()
-c_vals = np.arange(n_infiles)
-c_norm = n_infiles - 1
+c_vals = np.arange(n_eqmd_sims)
+c_norm = n_eqmd_sims - 1
 c_vals_normed = c_vals / c_norm
 colors = cmap(c_vals_normed)
 
@@ -271,23 +272,27 @@ with PdfPages(outfile) as pdf:
                     x -= box_z
                     x *= -1  # Ensure positive x-axis.
 
-                label = r"$\sigma_s = "
-                if plt_sec == "left":
-                    label += r"+"
-                elif plt_sec == "right":
-                    label += r"-"
-                else:
-                    label += r"\pm"
                 if sim_ix < n_infiles - 1:
-                    label += r"%d$ $e$/nm$^2$" % Sims.surfqs[sim_ix]
-                    label = r"EQMD, " + label
+                    if plt_sec == "left":
+                        label = r"$+"
+                    elif plt_sec == "right":
+                        label = r"$-"
+                    else:
+                        label = r"$\pm"
+                    label += r"%.2f$" % Sims.surfqs[sim_ix]
+                    color = None
                     marker = None
                 else:
-                    label += r"%d$ $e$/nm$^2$" % 1
-                    label = r"NEMD, " + label
+                    label = "NEMD"
+                    color = "tab:red"
                     marker = "."
                 ax.plot(
-                    x, y, label=label, marker=marker, alpha=leap.plot.ALPHA
+                    x,
+                    y,
+                    label=label,
+                    color=color,
+                    marker=marker,
+                    alpha=leap.plot.ALPHA,
                 )
 
             if plt_sec == "left":
@@ -312,6 +317,8 @@ with PdfPages(outfile) as pdf:
                 r"$n_{EO} = %d$" % Sims.O_per_chain[0]
                 + "\n"
                 + r"$r = %.2f$" % Sims.Li_O_ratios[0]
+                + "\n"
+                + r"$\sigma_s$ / $e$/nm$^2$"
             )
             if plt_sec == "left":
                 legend_loc = "right"
