@@ -143,7 +143,7 @@ for system in lintf2_[gp]*[0-9]*_[0-9]*-[0-9]*_sc80; do
         echo "WARNING: No such directory: '${system}'"
         continue
     fi
-    cd "${system}/" || exit
+    cd "${system}" || exit
 
     sim_dir="${settings}_${system}"
     if [[ ${system} != *_gra_* ]]; then
@@ -211,7 +211,7 @@ for surfq in q[0-9]*; do
             echo "WARNING: No such directory: '${system}'"
             continue
         fi
-        cd "${system}/" || exit
+        cd "${system}" || exit
 
         sim_dir="${settings}_${system}"
         if [[ ${system} != *_gra_* ]]; then
