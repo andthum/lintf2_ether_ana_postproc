@@ -52,7 +52,7 @@ class SimPaths:
         :type: dict
         """
 
-        for path in ("bulk", "walls"):
+        for path in ("bulk", "walls", "transfer_Li", "flux_Li"):
             self.PATHS[path] = os.path.normpath(os.path.join(root, path))
         for path in ("q0", "q0.25", "q0.5", "q0.75", "q1"):
             self.PATHS[path] = os.path.normpath(
