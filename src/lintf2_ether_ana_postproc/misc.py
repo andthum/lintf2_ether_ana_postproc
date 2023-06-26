@@ -7,6 +7,8 @@ from copy import deepcopy
 # Third-party libraries
 import mdtools as mdt
 import numpy as np
+from scipy import constants
+from scipy.integrate import cumulative_trapezoid
 from scipy.signal import find_peaks
 from scipy.stats import norm
 
@@ -291,6 +293,199 @@ def symmetrize_data(x, y, x2shift=None, reassemble=False, tol=1e-4):
     return x, y
 
 
+def qdens2field(x, qdens, bulk_region=None, tol=0.005):
+    r"""
+    Calculate the electric field resulting from a given charge-density
+    profile.
+
+    Parameters
+    ----------
+    x : array_like
+        x values in nm at which the charge-density profile was sampled.
+    qdens : array_like
+        Charge-density profile in e/nm³.
+    bulk_region : None or 2-tuple of floats, optional
+        Start and end of the bulk region in units of `x`.  If provided,
+        the electric field will be shifted such that the bulk region is
+        field-free.
+    tol : float, optional
+        Tolerance value for finding the indices of `x` that correspond
+        to the values provided by `bulk_region`.  Is ignored, if
+        `bulk_region` is ``None``.  This function uses
+        :func:`lintf2_ether_ana_postproc.misc.find_nearest` to find the
+        indices of the bulk region.  Good values for `tol` are 0.005 if
+        `x` is given in nanometers or 0.05 if `x` is given in Angstroms.
+
+    Returns
+    -------
+    field : numpy.ndarray
+        The electric field :math:`\epsilon_r E(z)` in V/nm.
+
+    See Also
+    --------
+    :func:`lintf2_ether_ana_postproc.mise.qdens2pot` :
+        Calculate the electric potential resulting from a given
+        charge-density profile
+
+    Notes
+    -----
+    The electric field :math:`E(z)` is calculated from the given charge
+    density :math:`\rho(z)` based on Poisson's equation
+
+    .. math::
+
+        \frac{\text{d}^2 \phi(z)}{\text{d}z^2} =
+        -\frac{\rho(z)}{\epsilon_r \epsilon_0}
+
+    where :math:`\epsilon_r` is the relative permittivity of the medium
+    and :math:`\epsilon_0` is the vacuum permittivity.
+
+    Given a charge density :math:`\rho(z)`, the resulting electric field
+    can be calculated by:
+
+    .. math::
+
+        E(z) = -\frac{\text{d} \phi(z)}{\text{d}z}
+        = -\int{\frac{\text{d}^2 \phi(z)}{\text{d}z^2} \text{ d}z} - c
+        = \frac{1}{\epsilon_r \epsilon_0} \int{\rho(z) \text{ d}z} - c
+
+    The integration constant :math:`c` is determined by the boundary
+    conditions.  If `bulk_region` is provided, :math:`c` is set to the
+    average electric field in the bulk region.  Thus, the electric field
+    in the bulk region is effectively set to zero.  If `bulk_region` is
+    not provided, :math:`c` is set to zero.
+
+    Note that this function returns :math:`\epsilon_r E(z)` rather than
+    :math:`E(z)`.
+    """
+    # Vacuum permittivity in e/(V*nm).
+    eps_0 = constants.epsilon_0 / (constants.e * 1e9)
+    field = cumulative_trapezoid(y=qdens, x=x, initial=0)
+    field /= eps_0
+    if bulk_region is not None:
+        try:
+            if len(bulk_region) != 2:
+                raise ValueError(
+                    "`bulk_region` ({}) must be None or a 2-tuple of"
+                    " floats.".format(bulk_region)
+                )
+        except TypeError:
+            raise TypeError(
+                "`bulk_region` ({}) must be None or a 2-tuple of"
+                " floats.".format(bulk_region)
+            )
+        start, stop = leap.misc.find_nearest(x, bulk_region, tol=tol)
+        field_bulk = np.mean(field[start : stop + 1])
+        field -= field_bulk
+    return field
+
+
+def qdens2pot(x, qdens, bulk_region=None, tol=0.005, return_field=False):
+    r"""
+    Calculate the electric potential resulting from a given
+    charge-density profile.
+
+    Parameters
+    ----------
+    x : array_like
+        x values in nm at which the charge-density profile was sampled.
+    qdens : array_like
+        Charge-density profile in e/nm³.
+    bulk_region : None or 2-tuple of floats, optional
+        Start and end of the bulk region in units of `x`.  If provided,
+        the electric field and the electric potential will be shifted
+        such that they are zero in the bulk region.
+    tol : float, optional
+        Tolerance value for finding the indices of `x` that correspond
+        to the values provided by `bulk_region`.  Is ignored, if
+        `bulk_region` is ``None``.  This function uses
+        :func:`lintf2_ether_ana_postproc.misc.find_nearest` to find the
+        indices of the bulk region.  Good values for `tol` are 0.005 if
+        `x` is given in nanometers or 0.05 if `x` is given in Angstroms.
+    return_field : bool, optional
+        If ``True``, return the electric field.  The electric field is
+        the integral of the charge density and is thus calculated as an
+        intermediate step during the computation of the electric
+        potential.
+
+    Returns
+    -------
+    pot : numpy.ndarray
+        The electric potential :math:`\epsilon_r \phi(z)` in V.
+    field : numpy.ndarray
+        The electric field :math:`\epsilon_r E(z)` in V/nm.  Only
+        returned if `return_field` is ``True``.
+
+    See Also
+    --------
+    :func:`lintf2_ether_ana_postproc.mise.qdens2field` :
+        Calculate the electric field resulting from a given
+        charge-density profile
+
+    Notes
+    -----
+    The electric potential :math:`\phi(z)` is calculated from the given
+    charge density :math:`\rho(z)` based on Poisson's equation
+
+    .. math::
+
+        \frac{\text{d}^2 \phi(z)}{\text{d}z^2} =
+        -\frac{\rho(z)}{\epsilon_r \epsilon_0}
+
+    where :math:`\epsilon_r` is the relative permittivity of the medium
+    and :math:`\epsilon_0` is the vacuum permittivity.
+
+    Given a charge density :math:`\rho(z)`, the resulting electric
+    potential can be calculated by:
+
+    .. math::
+
+        \phi(z)
+        = \int{
+            \int{
+                \frac{\text{d}^2 \phi(z)}{\text{d}z^2}
+            \text{ d}z} + c
+        \text{ d}z} - k
+        = \int{
+            \int{
+                -\frac{\rho(z)}{\epsilon_r \epsilon_0}
+            \text{ d}z} + c
+        \text{ d}z} - k
+        = -\frac{1}{\epsilon_r \epsilon_0}
+        \int{\int{\rho(z) \text{ d}z} \text{ d}z}
+        + cz - k
+
+    The integration constants :math:`c` and :math:`k` are determined by
+    the boundary conditions.  If `bulk_region` is provided, :math:`c` is
+    set to the average electric field in the bulk region.  Thus, the
+    electric field in the bulk region is effectively set to zero.
+    Likewise, :math:`k` is set to the average electric potential in the
+    bulk region.  If `bulk_region` is not provided, :math:`c` and
+    :math:`k` are set to zero.
+
+    Note that this function returns :math:`\epsilon_r \phi(z)` rather
+    than :math:`\phi(z)`.
+    """
+    field = leap.misc.qdens2field(x, qdens, bulk_region, tol)
+    pot = -cumulative_trapezoid(y=field, x=x, initial=0)
+    if bulk_region is not None:
+        try:
+            if len(bulk_region) != 2:
+                raise ValueError(
+                    "`bulk_region` ({}) must be None or a 2-tuple of"
+                    " floats.".format(bulk_region)
+                )
+        except TypeError:
+            raise TypeError(
+                "`bulk_region` ({}) must be None or a 2-tuple of"
+                " floats.".format(bulk_region)
+            )
+        start, stop = leap.misc.find_nearest(x, bulk_region, tol=tol)
+        pot_bulk = np.mean(pot[start : stop + 1])
+        pot -= pot_bulk
+    return pot
+
+
 def dens2free_energy(x, dens, bulk_region=None, tol=0.005):
     r"""
     Calculate free-energy profiles from density profiles.
@@ -330,10 +525,10 @@ def dens2free_energy(x, dens, bulk_region=None, tol=0.005):
         -\ln\left[ \frac{\rho(z)}{\rho^\circ} \right]
 
     Here, :math:`k_B` is the Boltzmann constant and :math:`T` is the
-    temperature.  If `bulk_start` is given, :math:`\rho^\circ` is set to
-    the average density in the bulk region (i.e. the free energy in the
-    bulk region is effectively set to zero).  If `bulk_start` is None,
-    :math:`\rho^\circ` is set to one.
+    temperature.  If `bulk_region` is given, :math:`\rho^\circ` is set
+    to the average density in the bulk region (i.e. the free energy in
+    the bulk region is effectively set to zero).  If `bulk_region` is
+    None, :math:`\rho^\circ` is set to one.
     """
     free_en = -np.log(dens)
     if bulk_region is not None:
