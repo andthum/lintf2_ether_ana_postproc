@@ -25,7 +25,8 @@ class SimPaths:
 
     def __init__(self, root=None):
         """
-        Initialize a :class:`~lintf2_ether_ana_postproc.simulation.Path`
+        Initialize a
+        :class:`~lintf2_ether_ana_postproc.simulation.SimPaths`
         instance.
 
         Parameters
