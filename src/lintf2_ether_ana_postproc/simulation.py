@@ -124,6 +124,13 @@ class Simulation:
     change them after initialization.
     """
 
+    sys_prefix = "lintf2_"
+    """
+    Prefix of all system names.
+
+    :type: str
+    """
+
     bulk_sys_suffix = "_sc80"
     """
     Suffix of the system name of all bulk simulations.
@@ -947,22 +954,19 @@ class Simulation:
         if self.system is None:
             self.get_system()
 
-        _counts = list(range(2, 6))
-        if self.system.count("_") not in _counts or not self.system.startswith(
-            "lintf2"
+        if (
+            not self.system.startswith(self.sys_prefix)
+            or self.system.count("_") < 2
         ):
             raise ValueError(
-                "The system name ({}) must follow the pattern"
-                " 'lintf2_solvent_EO-Li-ratio_charge-scaling' or"
-                " 'lintf2_solvent_EO-Li-ratio_electrode_surface-charge"
-                "_charge-scaling' (`_charge-scaling' can be"
-                " omitted)".format(self.system)
+                "The system name ('{}') must start with"
+                " '{}<solvent>_'".format(self.system, self.sys_prefix)
             )
         salt = self.system.split("_")[0]
+        solvent = self.system.split("_")[1]
         self.res_names = {}
         self.res_names["cation"] = salt[:2]
         self.res_names["anion"] = salt[2:]
-        solvent = self.system.split("_")[1]
         self._res_name_solvent = solvent
         if "peo" in solvent:
             # Remove digits from the solvent name, because in my
