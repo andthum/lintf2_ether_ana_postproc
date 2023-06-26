@@ -326,8 +326,8 @@ class Simulation:
 
         self._O_Li_ratio_sys = None
         """
-        Ratio of ether oxygen atoms to lithium ions  as inferred
-        from :attr:`self.system`.
+        Ratio of ether oxygen atoms to lithium ions as inferred from
+        :attr:`self.system`.
 
         See Also
         --------
