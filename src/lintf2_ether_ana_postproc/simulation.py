@@ -123,6 +123,21 @@ class Simulation:
     change them after initialization.
     """
 
+    bulk_sys_suffix = "_sc80"
+    """
+    Suffix of the system name of all bulk simulations.
+
+    :type: str
+    """
+
+    elctrd_regex = r"_gra_q[0-9][0-9\.]*[0-9]*"
+    """
+    Regular expression string to match the part describing the electrode
+    in a system name.
+
+    :type: str
+    """
+
     def __init__(self, path):
         """
         Initialize an instance of the
@@ -142,11 +157,11 @@ class Simulation:
             character).
 
             The name of the system must follow the pattern
-            "lintf2_solvent_EO-Li-ratio(_charge-scaling)" (e.g.
-            lintf2_g1_20-1_sc80) or
-            "lintf2_solvent_EO-Li-ratio_electrode_surface-charge(_charge-scaling)"
+            "lintf2_solvent_EO-Li-ratio_sc80(_additional_description)"
+            (e.g. lintf2_g1_20-1_sc80) or
+            "lintf2_solvent_EO-Li-ratio_gra_surface-charge_sc80(_additional_description)"
             (e.g. lintf2_peo15_20-1_gra_q0.5_sc80), where
-            "_charge-scaling" can be omitted.
+            "_additional_description" is optional.
 
             The toplevel directory of the given simulation directory
             must be named after the system: ``system``.
@@ -571,13 +586,13 @@ class Simulation:
         if self.system is None:
             self.get_system()
 
-        if re.search("_gra_q[0-9].*_", self.system) is None:
+        if re.search(self.elctrd_regex, self.system) is None:
             self.is_bulk = True
         else:
             self.is_bulk = False
         return self.is_bulk
 
-    def _get_BulkSim_path(self):
+    def _get_BulkSim_path(self, root=None):
         """
         Get the path to the corresponding bulk simulation (only relevant
         for surface simulations).
@@ -586,6 +601,12 @@ class Simulation:
         :attr:`self._bulk_sim_path` is ``None``, assemble the path from
         :attr:`self.path`, :attr:`self.system`, and
         :attr:`self.settings`.
+
+        Parameters
+        ----------
+        root : str or bytes or os.PathLike or None, optional
+            Path of the root directory that contains all Gromacs MD
+            simulations.  See :meth:`SimPaths.__init__`.
 
         Returns
         -------
@@ -613,22 +634,40 @@ class Simulation:
             self._bulk_sim_path = self.path
             return self._bulk_sim_path
 
-        bulk_sys = re.sub("_gra_q[0-9].*_", "_", self.system)
-        bulk_sys_path = "../../../../bulk/" + bulk_sys
-        bulk_sys_path = os.path.join(self.path, bulk_sys_path)
-        bulk_sys_path = os.path.normpath(bulk_sys_path)
+        SimPaths = leap.simulation.SimPaths(root=root)
+        bulk_sys = re.sub(self.elctrd_regex, "", self.system)
+        if self.bulk_sys_suffix not in bulk_sys:
+            raise KeyError(
+                "Could not find the corresponding bulk simulation.  The system"
+                " name ('{}') does not contain the bulk system suffix"
+                " ('{}')".format(self.system, self.bulk_sys_suffix)
+            )
+        elif not bulk_sys.endswith(self.bulk_sys_suffix):
+            # Allow "_additional_description" (like "Li104_transferred"
+            # or "flux") at the end of the system name which is not
+            # present in the bulk simulation.
+            ix = bulk_sys.rfind(self.bulk_sys_suffix)
+            bulk_sys = bulk_sys[: ix + len(self.bulk_sys_suffix)]
+        bulk_sys_path = os.path.join(SimPaths.PATHS["bulk"], bulk_sys)
         if not os.path.isdir(bulk_sys_path):
             raise FileNotFoundError(
                 "Could not find the corresponding bulk simulation.  No such"
                 " directory: '{}'".format(bulk_sys_path)
             )
 
-        glob_pattern = bulk_sys_path + "/*" + self.settings + "*"
+        glob_pattern = os.path.join(
+            bulk_sys_path, "[0-9][0-9]_" + self.settings + "_" + bulk_sys
+        )
         bulk_sim_path = glob.glob(glob_pattern)
         if len(bulk_sim_path) == 0:
             raise FileNotFoundError(
                 "Could not find the corresponding bulk simulation.  The glob"
                 " pattern '{}' does not match anything".format(glob_pattern)
+            )
+        elif len(bulk_sim_path) > 1:
+            raise ValueError(
+                "Found multiple bulk simulations matching the glob pattern"
+                " '{}'".format(glob_pattern)
             )
         bulk_sim_path = bulk_sim_path[0]
         if not os.path.isdir(bulk_sim_path):
