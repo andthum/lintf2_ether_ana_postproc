@@ -1295,14 +1295,12 @@ class Simulation:
         if self.system is None:
             self.get_system()
 
-        _counts = list(range(2, 6))
-        if self.system.count("_") not in _counts:
+        if self.system.count("_") < 2:
             raise ValueError(
-                "The system name ({}) must follow the pattern"
-                " 'lintf2_solvent_EO-Li-ratio_charge-scaling' or"
-                " 'lintf2_solvent_EO-Li-ratio_electrode_surface-charge"
-                "_charge-scaling' (`_charge-scaling' can be"
-                " omitted)".format(self.system)
+                "The system name ('{}') must start with"
+                " '{}<solvent>_<EO-Li-ratio>'".format(
+                    self.system, self.sys_prefix
+                )
             )
         O_Li_ratio = self.system.split("_")[2]
         n_O, n_Li = O_Li_ratio.split("-")
