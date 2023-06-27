@@ -517,9 +517,14 @@ class Simulation:
         self.settings = self.settings.split(self.system)[0]
         if self.system in self.settings:
             raise ValueError(
-                "The last part of `path` ({}) must contain the system name"
-                " ({}) at the end but nowhere"
+                "The path basename ({}) must contain the system name ({}) at"
+                " the end but nowhere"
                 " else".format(os.path.basename(self.path), self.system)
+            )
+        if len(self.settings) < 4:
+            raise ValueError(
+                "Unexpected error: Could not infer the settings string from"
+                " the path ('{}')".format(self.path)
             )
         # Remove preceding number and trailing underscore.
         self.settings = self.settings[3:-1]
