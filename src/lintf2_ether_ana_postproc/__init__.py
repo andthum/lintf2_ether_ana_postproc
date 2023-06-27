@@ -6,10 +6,10 @@ of LiTFSI-ether mixtures.
 
 
 # Local imports
-from . import clstr, io_handler, misc, plot, simulation
+from . import clstr, io_handler, misc, plot, simulation, transfer
 
 
-__all__ = ["clstr", "io_handler", "misc", "plot", "simulation"]
+__all__ = ["clstr", "io_handler", "misc", "plot", "simulation", "transfer"]
 
 # Project metadata.  Keep in sync with `pyproject.toml`!
 __title__ = "lintf2_ether_ana_postproc"
