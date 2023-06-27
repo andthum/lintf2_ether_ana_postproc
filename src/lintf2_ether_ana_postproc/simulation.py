@@ -5,6 +5,7 @@
 import glob
 import os
 import re
+import warnings
 
 # Third-party libraries
 import MDAnalysis as mda
@@ -637,11 +638,15 @@ class Simulation:
         SimPaths = leap.simulation.SimPaths(root=root)
         bulk_sys = re.sub(self.elctrd_regex, "", self.system)
         if self.bulk_sys_suffix not in bulk_sys:
-            raise KeyError(
+            warnings.warn(
                 "Could not find the corresponding bulk simulation.  The system"
                 " name ('{}') does not contain the bulk system suffix"
-                " ('{}')".format(self.system, self.bulk_sys_suffix)
+                " ('{}')".format(self.system, self.bulk_sys_suffix),
+                UserWarning,
+                stacklevel=2,
             )
+            self._bulk_sim_path = None
+            return self._bulk_sim_path
         elif not bulk_sys.endswith(self.bulk_sys_suffix):
             # Allow "_additional_description" (like "Li104_transferred"
             # or "flux") at the end of the system name which is not
@@ -650,20 +655,28 @@ class Simulation:
             bulk_sys = bulk_sys[: ix + len(self.bulk_sys_suffix)]
         bulk_sys_path = os.path.join(SimPaths.PATHS["bulk"], bulk_sys)
         if not os.path.isdir(bulk_sys_path):
-            raise FileNotFoundError(
+            warnings.warn(
                 "Could not find the corresponding bulk simulation.  No such"
-                " directory: '{}'".format(bulk_sys_path)
+                " directory: '{}'".format(bulk_sys_path),
+                UserWarning,
+                stacklevel=2,
             )
+            self._bulk_sim_path = None
+            return self._bulk_sim_path
 
         glob_pattern = os.path.join(
             bulk_sys_path, "[0-9][0-9]_" + self.settings + "_" + bulk_sys
         )
         bulk_sim_path = glob.glob(glob_pattern)
         if len(bulk_sim_path) == 0:
-            raise FileNotFoundError(
+            warnings.warn(
                 "Could not find the corresponding bulk simulation.  The glob"
-                " pattern '{}' does not match anything".format(glob_pattern)
+                " pattern '{}' does not match anything".format(glob_pattern),
+                UserWarning,
+                stacklevel=2,
             )
+            self._bulk_sim_path = None
+            return self._bulk_sim_path
         elif len(bulk_sim_path) > 1:
             raise ValueError(
                 "Found multiple bulk simulations matching the glob pattern"
@@ -671,10 +684,14 @@ class Simulation:
             )
         bulk_sim_path = bulk_sim_path[0]
         if not os.path.isdir(bulk_sim_path):
-            raise FileNotFoundError(
+            warnings.warn(
                 "Could not find the corresponding bulk simulation.  No such"
-                " directory: '{}'".format(bulk_sim_path)
+                " directory: '{}'".format(bulk_sim_path),
+                UserWarning,
+                stacklevel=2,
             )
+            self._bulk_sim_path = None
+            return self._bulk_sim_path
 
         self._bulk_sim_path = bulk_sim_path
         return self._bulk_sim_path
@@ -708,6 +725,9 @@ class Simulation:
 
         if self.is_bulk:
             # This simulation is already a bulk simulation.
+            self._BulkSim = None
+        elif self._bulk_sim_path is None:
+            # This simulation has no corresponding bulk simulation.
             self._BulkSim = None
         else:
             self._BulkSim = leap.simulation.Simulation(self._bulk_sim_path)
