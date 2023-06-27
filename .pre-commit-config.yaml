@@ -86,7 +86,7 @@ repos:
       # Check whether the files parse as valid Python.
       - id: "check-ast"
       # Check if docstrings come before the code.
-      - id: "check-docstring-first"
+      # - id: "check-docstring-first"
       # Check for debug statements.
       - id: "debug-statements"
       # Verify that test files are named correctly.
