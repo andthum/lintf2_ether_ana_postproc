@@ -1610,7 +1610,7 @@ class Simulations:
 
         Parameters
         ----------
-        path : str or bytes or os.PathLike
+        paths : str or bytes or os.PathLike
             Relative or absolute paths to the directories containing the
             input and output files of the Gromacs MD simulations you
             want to use.  See
@@ -1796,6 +1796,10 @@ class Simulations:
         """
 
         self.paths = []
+        if len(paths) == 0:
+            raise ValueError(
+                "No paths provided (`paths` = '{}')".format(paths)
+            )
         for path in paths:
             path = os.path.expandvars(os.path.expanduser(path))
             if not os.path.isdir(path):
