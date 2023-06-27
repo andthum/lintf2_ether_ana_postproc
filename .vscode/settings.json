@@ -112,6 +112,7 @@
         "posix",
         "postproc",
         "pthresh",
+        "pyedr",
         "pyplot",
         "pyproject",
         "pytest",
