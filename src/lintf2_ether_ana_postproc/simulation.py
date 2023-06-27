@@ -468,7 +468,20 @@ class Simulation:
                 "No such directory: '{}'".format(self.path)
             )
 
-        self.system = os.path.basename(os.path.dirname(self.path))
+        self.system = os.path.basename(self.path)
+        if self.sys_prefix not in self.system:
+            raise ValueError(
+                "Could not infer the system name from the path basename ('{}')"
+                " because the path basename does not contain the common system"
+                " prefix ('{}')".format(self.system, self.sys_prefix)
+            )
+        ix = self.system.find(self.sys_prefix)
+        self.system = self.system[ix:]
+        if len(self.system) == 0:
+            raise ValueError(
+                "Unexpected error: Could not infer the system name from the"
+                " path ('{}')".format(self.path)
+            )
         return self.system
 
     def get_settings(self):
