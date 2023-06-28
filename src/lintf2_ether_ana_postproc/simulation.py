@@ -5,6 +5,7 @@
 import glob
 import os
 import re
+import warnings
 
 # Third-party libraries
 import MDAnalysis as mda
@@ -25,7 +26,8 @@ class SimPaths:
 
     def __init__(self, root=None):
         """
-        Initialize a :class:`~lintf2_ether_ana_postproc.simulation.Path`
+        Initialize a
+        :class:`~lintf2_ether_ana_postproc.simulation.SimPaths`
         instance.
 
         Parameters
@@ -52,7 +54,7 @@ class SimPaths:
         :type: dict
         """
 
-        for path in ("bulk", "walls"):
+        for path in ("bulk", "walls", "transfer_Li", "flux_Li"):
             self.PATHS[path] = os.path.normpath(os.path.join(root, path))
         for path in ("q0", "q0.25", "q0.5", "q0.75", "q1"):
             self.PATHS[path] = os.path.normpath(
@@ -122,6 +124,28 @@ class Simulation:
     change them after initialization.
     """
 
+    sys_prefix = "lintf2_"
+    """
+    Prefix of all system names.
+
+    :type: str
+    """
+
+    bulk_sys_suffix = "_sc80"
+    """
+    Suffix of the system name of all bulk simulations.
+
+    :type: str
+    """
+
+    elctrd_regex = r"_gra_q[0-9][0-9\.]*[0-9]*"
+    """
+    Regular expression string to match the part describing the electrode
+    in a system name.
+
+    :type: str
+    """
+
     def __init__(self, path):
         """
         Initialize an instance of the
@@ -141,11 +165,11 @@ class Simulation:
             character).
 
             The name of the system must follow the pattern
-            "lintf2_solvent_EO-Li-ratio(_charge-scaling)" (e.g.
-            lintf2_g1_20-1_sc80) or
-            "lintf2_solvent_EO-Li-ratio_electrode_surface-charge(_charge-scaling)"
+            "lintf2_solvent_EO-Li-ratio_sc80(_additional_description)"
+            (e.g. lintf2_g1_20-1_sc80) or
+            "lintf2_solvent_EO-Li-ratio_gra_surface-charge_sc80(_additional_description)"
             (e.g. lintf2_peo15_20-1_gra_q0.5_sc80), where
-            "_charge-scaling" can be omitted.
+            "_additional_description" is optional.
 
             The toplevel directory of the given simulation directory
             must be named after the system: ``system``.
@@ -325,8 +349,8 @@ class Simulation:
 
         self._O_Li_ratio_sys = None
         """
-        Ratio of ether oxygen atoms to lithium ions  as inferred
-        from :attr:`self.system`.
+        Ratio of ether oxygen atoms to lithium ions as inferred from
+        :attr:`self.system`.
 
         See Also
         --------
@@ -444,7 +468,20 @@ class Simulation:
                 "No such directory: '{}'".format(self.path)
             )
 
-        self.system = os.path.basename(os.path.dirname(self.path))
+        self.system = os.path.basename(self.path)
+        if self.sys_prefix not in self.system:
+            raise ValueError(
+                "Could not infer the system name from the path basename ('{}')"
+                " because the path basename does not contain the common system"
+                " prefix ('{}')".format(self.system, self.sys_prefix)
+            )
+        ix = self.system.find(self.sys_prefix)
+        self.system = self.system[ix:]
+        if len(self.system) == 0:
+            raise ValueError(
+                "Unexpected error: Could not infer the system name from the"
+                " path ('{}')".format(self.path)
+            )
         return self.system
 
     def get_settings(self):
@@ -480,9 +517,14 @@ class Simulation:
         self.settings = self.settings.split(self.system)[0]
         if self.system in self.settings:
             raise ValueError(
-                "The last part of `path` ({}) must contain the system name"
-                " ({}) at the end but nowhere"
+                "The path basename ({}) must contain the system name ({}) at"
+                " the end but nowhere"
                 " else".format(os.path.basename(self.path), self.system)
+            )
+        if len(self.settings) < 4:
+            raise ValueError(
+                "Unexpected error: Could not infer the settings string from"
+                " the path ('{}')".format(self.path)
             )
         # Remove preceding number and trailing underscore.
         self.settings = self.settings[3:-1]
@@ -570,13 +612,13 @@ class Simulation:
         if self.system is None:
             self.get_system()
 
-        if re.search("_gra_q[0-9].*_", self.system) is None:
+        if re.search(self.elctrd_regex, self.system) is None:
             self.is_bulk = True
         else:
             self.is_bulk = False
         return self.is_bulk
 
-    def _get_BulkSim_path(self):
+    def _get_BulkSim_path(self, root=None):
         """
         Get the path to the corresponding bulk simulation (only relevant
         for surface simulations).
@@ -585,6 +627,12 @@ class Simulation:
         :attr:`self._bulk_sim_path` is ``None``, assemble the path from
         :attr:`self.path`, :attr:`self.system`, and
         :attr:`self.settings`.
+
+        Parameters
+        ----------
+        root : str or bytes or os.PathLike or None, optional
+            Path of the root directory that contains all Gromacs MD
+            simulations.  See :meth:`SimPaths.__init__`.
 
         Returns
         -------
@@ -612,29 +660,63 @@ class Simulation:
             self._bulk_sim_path = self.path
             return self._bulk_sim_path
 
-        bulk_sys = re.sub("_gra_q[0-9].*_", "_", self.system)
-        bulk_sys_path = "../../../../bulk/" + bulk_sys
-        bulk_sys_path = os.path.join(self.path, bulk_sys_path)
-        bulk_sys_path = os.path.normpath(bulk_sys_path)
-        if not os.path.isdir(bulk_sys_path):
-            raise FileNotFoundError(
-                "Could not find the corresponding bulk simulation.  No such"
-                " directory: '{}'".format(bulk_sys_path)
+        SimPaths = leap.simulation.SimPaths(root=root)
+        bulk_sys = re.sub(self.elctrd_regex, "", self.system)
+        if self.bulk_sys_suffix not in bulk_sys:
+            warnings.warn(
+                "Could not find the corresponding bulk simulation.  The system"
+                " name ('{}') does not contain the bulk system suffix"
+                " ('{}')".format(self.system, self.bulk_sys_suffix),
+                UserWarning,
+                stacklevel=2,
             )
+            self._bulk_sim_path = None
+            return self._bulk_sim_path
+        elif not bulk_sys.endswith(self.bulk_sys_suffix):
+            # Allow "_additional_description" (like "Li104_transferred"
+            # or "flux") at the end of the system name which is not
+            # present in the bulk simulation.
+            ix = bulk_sys.rfind(self.bulk_sys_suffix)
+            bulk_sys = bulk_sys[: ix + len(self.bulk_sys_suffix)]
+        bulk_sys_path = os.path.join(SimPaths.PATHS["bulk"], bulk_sys)
+        if not os.path.isdir(bulk_sys_path):
+            warnings.warn(
+                "Could not find the corresponding bulk simulation.  No such"
+                " directory: '{}'".format(bulk_sys_path),
+                UserWarning,
+                stacklevel=2,
+            )
+            self._bulk_sim_path = None
+            return self._bulk_sim_path
 
-        glob_pattern = bulk_sys_path + "/*" + self.settings + "*"
+        glob_pattern = os.path.join(
+            bulk_sys_path, "[0-9][0-9]_" + self.settings + "_" + bulk_sys
+        )
         bulk_sim_path = glob.glob(glob_pattern)
         if len(bulk_sim_path) == 0:
-            raise FileNotFoundError(
+            warnings.warn(
                 "Could not find the corresponding bulk simulation.  The glob"
-                " pattern '{}' does not match anything".format(glob_pattern)
+                " pattern '{}' does not match anything".format(glob_pattern),
+                UserWarning,
+                stacklevel=2,
+            )
+            self._bulk_sim_path = None
+            return self._bulk_sim_path
+        elif len(bulk_sim_path) > 1:
+            raise ValueError(
+                "Found multiple bulk simulations matching the glob pattern"
+                " '{}'".format(glob_pattern)
             )
         bulk_sim_path = bulk_sim_path[0]
         if not os.path.isdir(bulk_sim_path):
-            raise FileNotFoundError(
+            warnings.warn(
                 "Could not find the corresponding bulk simulation.  No such"
-                " directory: '{}'".format(bulk_sim_path)
+                " directory: '{}'".format(bulk_sim_path),
+                UserWarning,
+                stacklevel=2,
             )
+            self._bulk_sim_path = None
+            return self._bulk_sim_path
 
         self._bulk_sim_path = bulk_sim_path
         return self._bulk_sim_path
@@ -668,6 +750,9 @@ class Simulation:
 
         if self.is_bulk:
             # This simulation is already a bulk simulation.
+            self._BulkSim = None
+        elif self._bulk_sim_path is None:
+            # This simulation has no corresponding bulk simulation.
             self._BulkSim = None
         else:
             self._BulkSim = leap.simulation.Simulation(self._bulk_sim_path)
@@ -887,22 +972,19 @@ class Simulation:
         if self.system is None:
             self.get_system()
 
-        _counts = list(range(2, 6))
-        if self.system.count("_") not in _counts or not self.system.startswith(
-            "lintf2"
+        if (
+            not self.system.startswith(self.sys_prefix)
+            or self.system.count("_") < 2
         ):
             raise ValueError(
-                "The system name ({}) must follow the pattern"
-                " 'lintf2_solvent_EO-Li-ratio_charge-scaling' or"
-                " 'lintf2_solvent_EO-Li-ratio_electrode_surface-charge"
-                "_charge-scaling' (`_charge-scaling' can be"
-                " omitted)".format(self.system)
+                "The system name ('{}') must start with"
+                " '{}<solvent>_'".format(self.system, self.sys_prefix)
             )
         salt = self.system.split("_")[0]
+        solvent = self.system.split("_")[1]
         self.res_names = {}
         self.res_names["cation"] = salt[:2]
         self.res_names["anion"] = salt[2:]
-        solvent = self.system.split("_")[1]
         self._res_name_solvent = solvent
         if "peo" in solvent:
             # Remove digits from the solvent name, because in my
@@ -1231,14 +1313,12 @@ class Simulation:
         if self.system is None:
             self.get_system()
 
-        _counts = list(range(2, 6))
-        if self.system.count("_") not in _counts:
+        if self.system.count("_") < 2:
             raise ValueError(
-                "The system name ({}) must follow the pattern"
-                " 'lintf2_solvent_EO-Li-ratio_charge-scaling' or"
-                " 'lintf2_solvent_EO-Li-ratio_electrode_surface-charge"
-                "_charge-scaling' (`_charge-scaling' can be"
-                " omitted)".format(self.system)
+                "The system name ('{}') must start with"
+                " '{}<solvent>_<EO-Li-ratio>'".format(
+                    self.system, self.sys_prefix
+                )
             )
         O_Li_ratio = self.system.split("_")[2]
         n_O, n_Li = O_Li_ratio.split("-")
@@ -1530,7 +1610,7 @@ class Simulations:
 
         Parameters
         ----------
-        path : str or bytes or os.PathLike
+        paths : str or bytes or os.PathLike
             Relative or absolute paths to the directories containing the
             input and output files of the Gromacs MD simulations you
             want to use.  See
@@ -1716,6 +1796,10 @@ class Simulations:
         """
 
         self.paths = []
+        if len(paths) == 0:
+            raise ValueError(
+                "No paths provided (`paths` = '{}')".format(paths)
+            )
         for path in paths:
             path = os.path.expandvars(os.path.expanduser(path))
             if not os.path.isdir(path):
