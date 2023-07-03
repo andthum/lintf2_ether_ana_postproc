@@ -146,6 +146,26 @@ class Simulation:
     :type: str
     """
 
+    dens_file_cmp2col = {
+        "elctrlyt": 1,
+        "Li": 2,
+        "ntf2": 3,
+        "sol": 4,
+        "NBT": 5,
+        "OBT": 6,
+        "OE": 7,
+        "graB": 8,
+        "graT": 9,
+        "elctrd": 10,
+        "system": 11,
+    }
+    """
+    Dictionary containing for each compound the corresponding column
+    number of the density profile files produced by :bash:`gmx density`.
+
+    :type: dict
+    """
+
     def __init__(self, path):
         """
         Initialize an instance of the
