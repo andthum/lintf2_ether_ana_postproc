@@ -133,10 +133,11 @@ ana_dens = "density-z"
 file_suffix = ana_dens + "_number.xvg.gz"
 infile_dens = leap.simulation.get_ana_file(Sim, ana_dens, "gmx", file_suffix)
 cols_dens = (0, Sim.dens_file_cmp2col[args.cmp])
-xdata, ydata = np.loadtxt(
+x_dens, y_dens = np.loadtxt(
     infile_dens, comments=["#", "@"], usecols=cols_dens, unpack=True
 )
-ydata = leap.misc.dens2free_energy(xdata, ydata, bulk_region=None)
+free_en = leap.misc.dens2free_energy(x_dens, y_dens, bulk_region=None)
+del y_dens
 
 # Read bin edges.
 file_suffix_common = analysis + "_" + args.cmp
@@ -149,8 +150,8 @@ bins /= 10  # A -> nm
 file_suffix = file_suffix_common + "_state_lifetime_discrete" + con + ".txt.gz"
 infile_rp = leap.simulation.get_ana_file(Sim, analysis, tool, file_suffix)
 remain_props = np.loadtxt(infile_rp)
-states = remain_props[0:, 1]  # State/Bin numbers
-times = remain_props[1:, 0] * 2e-3  # Trajectory step width -> ns.
+states = remain_props[0:, 1]  # State/Bin indices.
+times = remain_props[1:, 0] * 2e-3  # Trajectory step widths -> ns.
 remain_props = remain_props[1:, 1:]  # Remain probability functions.
 if np.any(remain_props < 0) or np.any(remain_props > 1):
     raise ValueError(
@@ -169,7 +170,11 @@ ix_thresh = np.argmax(remain_props <= thresh, axis=0)
 lifetimes_e = np.full(len(states), np.nan, dtype=np.float64)
 for i, rp in enumerate(remain_props.T):
     if rp[ix_thresh[i]] > thresh:
+        # The remain probability never falls below the threshold.
         lifetimes_e[i] = np.nan
+    elif ix_thresh[i] < 1:
+        # The remain probability immediately falls below the threshold.
+        lifetimes_e[i] = 0
     elif rp[ix_thresh[i] - 1] < thresh:
         raise ValueError(
             "The threshold ({}) does not lie within the remain probability"
@@ -182,8 +187,6 @@ for i, rp in enumerate(remain_props.T):
                 ix_thresh[i] - 1,
             )
         )
-    elif ix_thresh[i] < 1:
-        lifetimes_e[i] = 0
     else:
         lifetimes_e[i] = leap.misc.line_inv(
             y=thresh,
@@ -209,12 +212,15 @@ for i, rp in enumerate(remain_props.T):
             )
 
 # Method 2: Directly calculate the integral of the remain probability.
-lifetimes_int = np.trapz(y=remain_props, x=times, axis=0)
-lifetimes_int_sd = np.trapz(y=remain_props * times, x=times, axis=0)
-lifetimes_int_sd = np.sqrt(lifetimes_int_sd - lifetimes_int**2)
+lifetimes_int_mom1 = np.trapz(y=remain_props, x=times, axis=0)
+lifetimes_int_mom2 = np.trapz(y=remain_props * times[:, None], x=times, axis=0)
+lifetimes_int_mom3 = (
+    np.trapz(y=remain_props * times[:, None] ** 2, x=times, axis=0) / 2
+)
 invalid = np.all(remain_props > args.int_thresh, axis=0)
-lifetimes_int[invalid] = np.nan
-lifetimes_int_sd[invalid] = np.nan
+lifetimes_int_mom1[invalid] = np.nan
+lifetimes_int_mom2[invalid] = np.nan
+lifetimes_int_mom3[invalid] = np.nan
 
 # Method 3: Fit the remain probability with a stretched exponential and
 # calculate the lifetime as the integral of this stretched exponential.
@@ -223,12 +229,12 @@ if args.end_fit is None:
 else:
     _, end_fit = mdt.nph.find_nearest(times, args.end_fit, return_index=True)
 end_fit += 1  # Make `end_fit` inclusive.
-fit_start = np.zeros(len(states), dtype=np.uint32)  # inclusive
+fit_start = np.zeros(len(states), dtype=np.uint32)  # Inclusive.
 fit_stop = np.zeros(len(states), dtype=np.uint32)  # Exclusive.
 
-# Initial guesses for `tau` and `beta`.
-init_guess = np.column_stack([lifetimes_int, np.ones(len(states))])
-init_guess[np.isnan(init_guess)] = times[-1]
+# Initial guesses for `tau0` and `beta`.
+init_guess = np.column_stack([lifetimes_e, np.ones(len(states))])
+init_guess[np.isnan(init_guess)] = 1.5 * times[-1]
 
 popt = np.full((len(states), 2), np.nan, dtype=np.float64)
 perr = np.full((len(states), 2), np.nan, dtype=np.float64)
@@ -245,22 +251,17 @@ for i, rp in enumerate(remain_props.T):
         p0=init_guess[i],
     )
 del remain_props
-tau, beta = popt.T
-tau_sd, beta_sd = perr.T
-lifetimes_exp = tau / beta * gamma(1 / beta)
-# TODO: lifetimes_exp_sd = ??
+tau0, beta = popt.T
+tau0_sd, beta_sd = perr.T
+lifetimes_exp_mom1 = tau0 / beta * gamma(1 / beta)
+lifetimes_exp_mom2 = tau0**2 / beta * gamma(2 / beta)
+lifetimes_exp_mom3 = tau0**3 / beta * gamma(3 / beta) / 2
 
 
 print("Creating output file(s)...")
 Elctrd = leap.simulation.Electrode()
 elctrd_thk = Elctrd.ELCTRD_THK
 box_z = Sim.box[2]
-
-bins_low = bins[states]  # Lower bin edges.
-bins_up = bins[states + 1]  # Upper bin edges.
-# Distance of the bins to the left/right electrode surface.
-bins_low_el = bins_low - elctrd_thk
-bins_up_el = box_z - elctrd_thk - bins_up
 
 header = (
     "Bin residence times.\n"
@@ -286,6 +287,7 @@ header = (
     + "1) The residence time <tau_e> is set to the lag time at which p(t)\n"
     + "   crosses 1/e.  If this never happens, the <tau_e> is set to NaN.\n"
     + "\n"
+    # TODO
     + "2) According to Equation (12) of Reference [1], the residence time\n"
     + "   <tau_int> is calculated as the integral of p(t):\n"
     + "     <tau_int> = int_0^inf p(t) dt\n"
@@ -334,30 +336,66 @@ header = (
     + "\n"
     + "\n"
     + "The columns contain:\n"
-    + "  1 Lower bin edges / A\n"
-    + "  2 Upper bin edges / A\n"
-    + "  3 Distance of the lower bin edges to the left electrode surface / A\n"
-    + "  4 Distance of the lower bin edges to the right electrode surface / A"
+    + "  1 State/Bin indices (zero based)\n"
+    + "  2 Lower bin edges / A\n"
+    + "  3 Upper bin edges / A\n"
+    + "  4 Distance of the lower bin edges to the left electrode surface / A\n"
+    + "  5 Distance of the lower bin edges to the right electrode surface / A"
     + "\n"
-    + "  5 Distance of the upper bin edges to the left electrode surface / A\n"
-    + "  6 Distance of the upper bin edges to the right electrode surface / A"
+    + "  6 Distance of the upper bin edges to the left electrode surface / A\n"
+    + "  7 Distance of the upper bin edges to the right electrode surface / A"
     + "\n"
     + "\n"
-    + "  7 Residence times <tau_e> by the 1/e criterion / ns\n"
+    + "  Residence times from Method 1 (1/e criterion)\n"
+    + "  8 <tau_e> / ns\n"
     + "\n"
-    + "  8 Residence times <tau_int> by directly integrating the remain\n"
-    + "    probability / ns\n"
-    + "  9 Standard deviation of <tau_int> / ns\n"
+    + "  Residence times from Method 2 (direct integral)\n"
+    + "  9 1st moment <tau_int> / ns\n"
+    + " 10 2nd moment <tau_int^2> / ns^2\n"
+    + " 11 3rd moment <tau_int^3> / ns^3\n"
     + "\n"
-    + " 10 Residence times <tau_kww> by integrating the KWW fit / ns\n"
-    + " 11 Standard deviation <tau_kww> / ns\n"
-    + " 12 Fit parameter tau0 / ns\n"
-    + " 13 Standard deviation of tau0 / ns\n"
-    + " 14 Fit parameter beta\n"
-    + " 15 Standard deviation of beta\n"
+    + "  Residence times from Method 3 (integral of the fit)\n"
+    + " 12 1st moment <tau_exp> / ns\n"
+    + " 13 2nd moment <tau_exp^2> / ns^2\n"
+    + " 14 3rd moment <tau_exp^3> / ns^3\n"
+    + " 15 Fit parameter tau0 / ns\n"
+    + " 16 Standard deviation of tau0 / ns\n"
+    + " 17 Fit parameter beta\n"
+    + " 18 Standard deviation of beta\n"
     + "\n"
     + "Column number:\n"
 )
+bins_low = bins[states]  # Lower bin edges.
+bins_up = bins[states + 1]  # Upper bin edges.
+# Distance of the bins to the left/right electrode surface.
+bins_low_el = bins_low - elctrd_thk
+bins_up_el = box_z - elctrd_thk - bins_up
+data = np.column_stack(
+    [
+        states,  # 1
+        bins_low,  # 2
+        bins_up,  # 3
+        bins_low - elctrd_thk,  # 4
+        box_z - elctrd_thk - bins_low,  # 5
+        bins_up - elctrd_thk,  # 6
+        box_z - elctrd_thk - bins_up,  # 7
+        #
+        lifetimes_e,  # 8
+        #
+        lifetimes_int_mom1,  # 9
+        lifetimes_int_mom2,  # 10
+        lifetimes_int_mom3,  # 11
+        #
+        lifetimes_exp_mom1,  # 12
+        lifetimes_exp_mom2,  # 13
+        lifetimes_exp_mom3,  # 14
+        tau0,  # 15
+        tau0_sd,  # 16
+        beta,  # 17
+        beta_sd,  # 18
+    ]
+)
+leap.io_handler.savetxt(outfile, data)
 print("Created {}".format(outfile))
 
 print("Done")
