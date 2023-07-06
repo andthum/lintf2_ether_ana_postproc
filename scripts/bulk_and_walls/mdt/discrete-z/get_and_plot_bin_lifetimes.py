@@ -51,7 +51,7 @@ parser.add_argument(
     type=str,
     required=False,
     default="Li",
-    choices=("Li"),  # ("Li", "NBT", "OBT", "OE"),
+    choices=("Li",),  # ("Li", "NBT", "OBT", "OE"),
     help="Compound.  Default: %(default)s",
 )
 parser.add_argument(
@@ -101,6 +101,8 @@ else:
     con = ""
 
 analysis = "discrete-z"  # Analysis name.
+# Common file suffix of analysis input files.
+file_suffix_common = analysis + "_" + args.cmp
 tool = "mdt"  # Analysis software.
 outfile = (
     args.settings
@@ -110,10 +112,12 @@ outfile = (
     + analysis
     + "_"
     + args.cmp
-    + "_state_lifetimes"
+    + "_lifetimes"
     + con
     + ".txt.gz"
 )
+
+time_conv = 2e-3  # Trajectory steps -> ns.
 
 
 print("Creating Simulation instance(s)...")
@@ -127,43 +131,50 @@ set_pat = "[0-9][0-9]_" + args.settings + "_" + args.system
 Sim = leap.simulation.get_sim(args.system, set_pat, path_key)
 
 
-print("Reading data...")
-# Read density profile.
-ana_dens = "density-z"
-file_suffix = ana_dens + "_number.xvg.gz"
-infile_dens = leap.simulation.get_ana_file(Sim, ana_dens, "gmx", file_suffix)
-cols_dens = (0, Sim.dens_file_cmp2col[args.cmp])
-x_dens, y_dens = np.loadtxt(
-    infile_dens, comments=["#", "@"], usecols=cols_dens, unpack=True
+print("Reading data and calculating lifetimes (Method 1)...")
+# Discrete trajectory.
+file_suffix = file_suffix_common + "_dtrj.npz"
+infile_dtrj = leap.simulation.get_ana_file(Sim, analysis, tool, file_suffix)
+dtrj = mdt.fh.load_dtrj(infile_dtrj)
+
+# Method 1: Calculate the average lifetime by simply counting the number
+# of frames that a given compound stays in a given state.
+lifetimes_cnt, states_cnt = mdt.dtrj.lifetimes_per_state(
+    dtrj, return_states=True
 )
-free_en = leap.misc.dens2free_energy(x_dens, y_dens, bulk_region=None)
-del y_dens
+lifetimes_cnt = [lts * time_conv for lts in lifetimes_cnt]
+lifetimes_cnt_mom1 = np.array([np.mean(lts) for lts in lifetimes_cnt])
+lifetimes_cnt_mom2 = np.array([np.mean(lts**2) for lts in lifetimes_cnt])
+lifetimes_cnt_mom3 = np.array([np.mean(lts**3) for lts in lifetimes_cnt])
+del dtrj, lifetimes_cnt
 
-# Read bin edges.
-file_suffix_common = analysis + "_" + args.cmp
-file_suffix = file_suffix_common + "_bins" + ".txt.gz"
-infile_bins = leap.simulation.get_ana_file(Sim, analysis, tool, file_suffix)
-bins = np.loadtxt(infile_bins)
-bins /= 10  # A -> nm
 
+print("Reading data and calculating lifetimes (Method 2-4)...")
 # Read remain probability functions (one for each bin).
 file_suffix = file_suffix_common + "_state_lifetime_discrete" + con + ".txt.gz"
 infile_rp = leap.simulation.get_ana_file(Sim, analysis, tool, file_suffix)
 remain_props = np.loadtxt(infile_rp)
-states = remain_props[0:, 1]  # State/Bin indices.
-times = remain_props[1:, 0] * 2e-3  # Trajectory step widths -> ns.
+states = remain_props[0, 1:]  # State/Bin indices.
+times = remain_props[1:, 0] * time_conv  # Trajectory step widths -> ns.
 remain_props = remain_props[1:, 1:]  # Remain probability functions.
 if np.any(remain_props < 0) or np.any(remain_props > 1):
     raise ValueError(
         "Some values of the remain probability lie outside the interval [0, 1]"
     )
 if np.any(np.modf(states)[0] != 0):
-    raise ValueError("Some state indices are not integers but floats")
+    raise ValueError(
+        "Some state indices are not integers but floats.  states ="
+        " {}".format(states)
+    )
+if not np.array_equal(states, states_cnt):
+    raise ValueError(
+        "`states` ({}) != `states_cnt` ({})".format(states, states_cnt)
+    )
+del states_cnt
 states = states.astype(np.int32)
 
 
-print("Calculating lifetimes...")
-# Method 1: Set the lifetime to the lag time at which the remain
+# Method 2: Set the lifetime to the lag time at which the remain
 # probability crosses 1/e.
 thresh = 1 / np.e
 ix_thresh = np.argmax(remain_props <= thresh, axis=0)
@@ -211,7 +222,8 @@ for i, rp in enumerate(remain_props.T):
                 )
             )
 
-# Method 2: Directly calculate the integral of the remain probability.
+# Method 3: Calculate the lifetime as the integral of the remain
+# probability.
 lifetimes_int_mom1 = np.trapz(y=remain_props, x=times, axis=0)
 lifetimes_int_mom2 = np.trapz(y=remain_props * times[:, None], x=times, axis=0)
 lifetimes_int_mom3 = (
@@ -222,7 +234,7 @@ lifetimes_int_mom1[invalid] = np.nan
 lifetimes_int_mom2[invalid] = np.nan
 lifetimes_int_mom3[invalid] = np.nan
 
-# Method 3: Fit the remain probability with a stretched exponential and
+# Method 4: Fit the remain probability with a stretched exponential and
 # calculate the lifetime as the integral of this stretched exponential.
 if args.end_fit is None:
     end_fit = int(0.9 * len(times))
@@ -238,6 +250,8 @@ init_guess[np.isnan(init_guess)] = 1.5 * times[-1]
 
 popt = np.full((len(states), 2), np.nan, dtype=np.float64)
 perr = np.full((len(states), 2), np.nan, dtype=np.float64)
+fit_r2 = np.full(len(states), np.nan, dtype=np.float64)
+fit_mse = np.full(len(states), np.nan, dtype=np.float64)
 for i, rp in enumerate(remain_props.T):
     stop_fit = np.argmax(rp < args.stop_fit)
     if stop_fit == 0 and rp[stop_fit] >= args.stop_fit:
@@ -245,20 +259,47 @@ for i, rp in enumerate(remain_props.T):
     elif stop_fit < 2:
         stop_fit = 2
     fit_stop[i] = min(end_fit, stop_fit)
+    times_fit = times[fit_start[i] : fit_stop[i]]
+    rp_fit = rp[fit_start[i] : fit_stop[i]]
     popt[i], perr[i] = mdt.func.fit_kww(
-        xdata=times[fit_start[i] : fit_stop[i]],
-        ydata=rp[fit_start[i] : fit_stop[i]],
-        p0=init_guess[i],
+        xdata=times_fit, ydata=rp_fit, p0=init_guess[i], method="trf"
     )
-del remain_props
+    # Calculate coefficient of determination (R^2).
+    # https://www.r-bloggers.com/2021/03/the-r-squared-and-nonlinear-regression-a-difficult-marriage/
+    fit = mdt.func.kww(times_fit, *popt[i])
+    rp_mean = np.mean(rp)
+    ss_reg = np.sum((fit - rp_mean) ** 2)  # Regression sum of squares.
+    ss_tot = np.sum((rp_fit - rp_mean) ** 2)  # Total sum of squares.
+    fit_r2[i] = ss_reg / ss_tot
+    # Calculate mean squared error (or mean squared residuals).
+    fit_mse[i] = np.mean((rp_fit - fit) ** 2)
 tau0, beta = popt.T
 tau0_sd, beta_sd = perr.T
 lifetimes_exp_mom1 = tau0 / beta * gamma(1 / beta)
 lifetimes_exp_mom2 = tau0**2 / beta * gamma(2 / beta)
 lifetimes_exp_mom3 = tau0**3 / beta * gamma(3 / beta) / 2
+fit_start = fit_start * time_conv
+fit_stop = fit_stop * time_conv
 
 
 print("Creating output file(s)...")
+# # Read density profile.
+# ana_dens = "density-z"
+# file_suffix = ana_dens + "_number.xvg.gz"
+# infile_dens = leap.simulation.get_ana_file(Sim, ana_dens, "gmx", file_suffix)
+# cols_dens = (0, Sim.dens_file_cmp2col[args.cmp])
+# x_dens, y_dens = np.loadtxt(
+#     infile_dens, comments=["#", "@"], usecols=cols_dens, unpack=True
+# )
+# free_en = leap.misc.dens2free_energy(x_dens, y_dens, bulk_region=None)
+# del y_dens
+
+# Read bin edges.
+file_suffix = file_suffix_common + "_bins" + ".txt.gz"
+infile_bins = leap.simulation.get_ana_file(Sim, analysis, tool, file_suffix)
+bins = np.loadtxt(infile_bins)
+bins /= 10  # A -> nm
+
 Elctrd = leap.simulation.Electrode()
 elctrd_thk = Elctrd.ELCTRD_THK
 box_z = Sim.box[2]
@@ -268,12 +309,11 @@ header = (
     + "Average time that a given compound stays in a given bin calculated\n"
     + "from the corresponding remain probability function.\n"
     + "\n"
-    + "System:             {:s}\n".format(args.system)
-    + "Settings:           {:s}\n".format(args.settings)
-    + "Density profile:    {:s}\n".format(infile_dens)
-    + "Read Column(s):     {}\n".format(np.array(cols_dens) + 1)
-    + "Bin edges:          {:s}\n".format(infile_bins)
-    + "Remain probability: {:s}\n".format(infile_rp)
+    + "System:              {:s}\n".format(args.system)
+    + "Settings:            {:s}\n".format(args.settings)
+    + "Bin edges:           {:s}\n".format(infile_bins)
+    + "Discrete trajectory: {:s}\n".format(infile_dtrj)
+    + "Remain probability:  {:s}\n".format(infile_rp)
     + "\n"
     + "Compound:                      {:s}\n".format(args.cmp)
     + "Surface charge:                {:.2f} e/nm^2\n".format(surfq)
@@ -281,58 +321,57 @@ header = (
     + "Ether oxygens per PEO chain:   {:d}\n".format(Sim.O_per_chain)
     + "\n"
     + "\n"
-    + "Residence times are calculated from the remain probability function\n"
-    + "p(t) using three different methods:\n"
+    + "Residence times are calculated using four different methods:\n"
     + "\n"
-    + "1) The residence time <tau_e> is set to the lag time at which p(t)\n"
-    + "   crosses 1/e.  If this never happens, the <tau_e> is set to NaN.\n"
+    + "1) The residence time <tau_cnt> is calculated by simply counting how\n"
+    + "   many frames a given compound stays in a given bin.  Note that\n"
+    + "   residence times calculated in this way can at maximum be as long\n"
+    + "   as the trajectory and are usually biased to lower values because\n"
+    + "   of edge effects.\n"
     + "\n"
-    # TODO
-    + "2) According to Equation (12) of Reference [1], the residence time\n"
-    + "   <tau_int> is calculated as the integral of p(t):\n"
-    + "     <tau_int> = int_0^inf p(t) dt\n"
-    + "   However, if p(t) does not decay below the given threshold of\n"
-    + "   {:.4f}, the residence time is set to NaN.  The standard\n".format(
-        args.int_thresh
-    )
-    + "   deviation of the underlying distribution of residence times is\n"
-    + "   estimated using Equation (14) of Reference [1] for the second\n"
-    + "   moment:\n"
-    + "     <tau_int^2> = int_0^infty t * I(t) dt\n"
-    + "     tau_int_sd = <tau_int^2> - <tau_int>^2\n"
+    + "2) The residence time <tau_e> is set to the lag time at which the\n"
+    + "   remain probability function p(t) crosses 1/e.  If this never\n"
+    + "   happens, <tau_e> is set to NaN.\n"
     + "\n"
-    + "3) p(t) is fitted by a stretched exponential function:\n"
+    + "3) According to Equations (12) and (14) of Reference [1], the n-th\n"
+    + "   moment of the residence time <tau_int^n> is calculated as the\n"
+    + "   integral of the remain probability function p(t) times t^{n-1}:\n"
+    + "     <tau_int^n> = 1/(n-1)! int_0^inf t^{n-1} p(t) dt\n"
+    + "   If p(t) does not decay below the given threshold of\n"
+    + "   {:.4f}, <tau_int^n> is set to NaN.\n".format(args.int_thresh)
+    + "\n"
+    + "4) The remain probability function p(t) is fitted by a stretched\n"
+    + "   exponential function using the 'Trust Region Reflective' method of\n"
+    + "   scipy.optimize.curve_fit:\n"
     + "     f(t) = exp[-(t/tau0)^beta]\n"
     + "   Thereby, tau0 is confined to positive values and beta is confined\n"
     + "   to the interval [0, 1].  The remain probability is fitted until it\n"
-    + "   decays below {:.4f}\n or until a lag time of {:.4f} ns is\n".format(
-        args.stop_fit, args.end_fit
-    )
-    + "   reached (whatever happens earlier).  The residence time <tau_exp>\n"
-    + "   is calculated according to Equation (29) of Reference [1] as the\n"
-    + "   integral of the stretched exponential fit function:\n"
-    + "     <tau_exp> = int_0^infty f(t) dt = tau0/beta * Gamma(1/beta)\n"
-    + "   where Gamma(x) is the gamma function.  Again, the standard\n"
-    + "   deviation of the underlying distribution of residence times is\n"
-    + "   estimated using Equation (14) of Reference [1] for the second\n"
-    + "   moment:\n"
-    + "     <tau_exp^2> = int_0^infty t * f(t) dt\n"
-    + "     tau_exp_sd = <tau_exp^2> - <tau_exp>^2\n"
+    + "   decays below a given threshold or until a given lag time is\n"
+    + "   reached (whatever happens earlier).  The n-th moment of the\n"
+    + "   residence time <tau_exp^n> is calculated according to Equations\n"
+    + "   (12) and (14) of Reference [1] and Equation (16) of Reference [2]\n"
+    + "   as the integral of f(t) times t^{n-1}:\n"
+    + "     <tau_exp^n> = 1/(n-1)! int_0^infty t^{n-1} f(t) dt\n"
+    + "                 = tau0^n/beta * Gamma(1/beta)/Gamma(n)\n"
+    + "   where Gamma(x) is the gamma function.\n"
     + "\n"
     + "Reference [1]:\n"
     + "  M. N. Berberan-Santos, E. N. Bodunov, B. Valeur,\n"
     + "  Mathematical functions for the analysis of luminescence decays with\n"
     + "  underlying distributions 1. Kohlrausch decay function (stretched\n"
     + "  exponential),\n"
-    + "  Chemical Physics, 2005, 315, 171-182\n"
+    + "  Chemical Physics, 2005, 315, 171-182.\n"
+    + "Reference [2]:\n"
+    + "  D. C. Johnston,\n"
+    + "  Stretched exponential relaxation arising from a continuous sum of\n"
+    + "  exponential decays,\n"
+    + "  Physical Review B, 2006, 74, 184430.\n"
     + "\n"
     + "Box edges:          {:>16.9e}, {:>16.9e} A\n".format(0, box_z)
     + "Electrode surfaces: {:>16.9e}, {:>16.9e} A\n".format(
         elctrd_thk, box_z - elctrd_thk
     )
     + "int_thresh = {:.4f}\n".format(args.int_thresh)
-    + "end_fit    = {:.4f} ns\n".format(args.end_fit)
-    + "stop_fit   = {:.4f}\n".format(args.stop_fit)
     + "\n"
     + "\n"
     + "The columns contain:\n"
@@ -346,25 +385,38 @@ header = (
     + "  7 Distance of the upper bin edges to the right electrode surface / A"
     + "\n"
     + "\n"
-    + "  Residence times from Method 1 (1/e criterion)\n"
-    + "  8 <tau_e> / ns\n"
+    + "  Residence times from Method 1 (Counting)\n"
+    + "  8 1st moment <tau_cnt> / ns\n"
+    + "  9 2nd moment <tau_cnt^2> / ns^2\n"
+    + " 10 3rd moment <tau_cnt^3> / ns^3\n"
     + "\n"
-    + "  Residence times from Method 2 (direct integral)\n"
-    + "  9 1st moment <tau_int> / ns\n"
-    + " 10 2nd moment <tau_int^2> / ns^2\n"
-    + " 11 3rd moment <tau_int^3> / ns^3\n"
+    + "  Residence times from Method 2 (1/e criterion)\n"
+    + " 11 <tau_e> / ns\n"
     + "\n"
-    + "  Residence times from Method 3 (integral of the fit)\n"
-    + " 12 1st moment <tau_exp> / ns\n"
-    + " 13 2nd moment <tau_exp^2> / ns^2\n"
-    + " 14 3rd moment <tau_exp^3> / ns^3\n"
-    + " 15 Fit parameter tau0 / ns\n"
-    + " 16 Standard deviation of tau0 / ns\n"
-    + " 17 Fit parameter beta\n"
-    + " 18 Standard deviation of beta\n"
+    + "  Residence times from Method 3 (direct integral)\n"
+    + " 12 1st moment <tau_int> / ns\n"
+    + " 13 2nd moment <tau_int^2> / ns^2\n"
+    + " 14 3rd moment <tau_int^3> / ns^3\n"
+    + "\n"
+    + "  Residence times from Method 4 (integral of the fit)\n"
+    + " 15 1st moment <tau_exp> / ns\n"
+    + " 16 2nd moment <tau_exp^2> / ns^2\n"
+    + " 17 3rd moment <tau_exp^3> / ns^3\n"
+    + " 18 Fit parameter tau0 / ns\n"
+    + " 19 Standard deviation of tau0 / ns\n"
+    + " 20 Fit parameter beta\n"
+    + " 21 Standard deviation of beta\n"
+    + " 22 coefficient of determination of the fit (R^2 value)\n"
+    + " 23 Mean squared error of the fit (mean squared residuals) / ns^2\n"
+    + " 24 Start of fit region (inclusive) / ns\n"
+    + " 25 End of fit region (exclusive) / ns\n"
     + "\n"
     + "Column number:\n"
 )
+header += "{:>14d}".format(1)
+for i in range(2, 26):
+    header += " {:>16d}".format(i)
+
 bins_low = bins[states]  # Lower bin edges.
 bins_up = bins[states + 1]  # Upper bin edges.
 # Distance of the bins to the left/right electrode surface.
@@ -380,22 +432,30 @@ data = np.column_stack(
         bins_up - elctrd_thk,  # 6
         box_z - elctrd_thk - bins_up,  # 7
         #
-        lifetimes_e,  # 8
+        lifetimes_cnt_mom1,  # 8
+        lifetimes_cnt_mom2,  # 9
+        lifetimes_cnt_mom3,  # 10
         #
-        lifetimes_int_mom1,  # 9
-        lifetimes_int_mom2,  # 10
-        lifetimes_int_mom3,  # 11
+        lifetimes_e,  # 11
         #
-        lifetimes_exp_mom1,  # 12
-        lifetimes_exp_mom2,  # 13
-        lifetimes_exp_mom3,  # 14
-        tau0,  # 15
-        tau0_sd,  # 16
-        beta,  # 17
-        beta_sd,  # 18
+        lifetimes_int_mom1,  # 12
+        lifetimes_int_mom2,  # 13
+        lifetimes_int_mom3,  # 14
+        #
+        lifetimes_exp_mom1,  # 15
+        lifetimes_exp_mom2,  # 16
+        lifetimes_exp_mom3,  # 17
+        tau0,  # 18
+        tau0_sd,  # 19
+        beta,  # 20
+        beta_sd,  # 21
+        fit_r2,  # 22
+        fit_mse,  # 23
+        fit_start,  # 24
+        fit_stop,  # 25
     ]
 )
-leap.io_handler.savetxt(outfile, data)
+leap.io_handler.savetxt(outfile, data, header=header)
 print("Created {}".format(outfile))
 
 print("Done")
