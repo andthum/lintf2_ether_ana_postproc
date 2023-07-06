@@ -14,8 +14,12 @@ function.
 import argparse
 
 # Third-party libraries
+import matplotlib.pyplot as plt
 import mdtools as mdt
+import mdtools.plot as mdtplt  # Load MDTools plot style  # noqa: F401
 import numpy as np
+from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.ticker import MaxNLocator
 from scipy.special import gamma
 
 # First-party libraries
@@ -104,7 +108,7 @@ analysis = "discrete-z"  # Analysis name.
 # Common file suffix of analysis input files.
 file_suffix_common = analysis + "_" + args.cmp
 tool = "mdt"  # Analysis software.
-outfile = (
+outfile_base = (
     args.settings
     + "_"
     + args.system
@@ -114,8 +118,9 @@ outfile = (
     + args.cmp
     + "_lifetimes"
     + con
-    + ".txt.gz"
 )
+outfile_txt = outfile_base + ".txt.gz"
+outfile_pdf = outfile_base + ".pdf"
 
 time_conv = 2e-3  # Trajectory steps -> ns.
 
@@ -264,15 +269,14 @@ for i, rp in enumerate(remain_props.T):
     popt[i], perr[i] = mdt.func.fit_kww(
         xdata=times_fit, ydata=rp_fit, p0=init_guess[i], method="trf"
     )
-    # Calculate coefficient of determination (R^2).
-    # https://www.r-bloggers.com/2021/03/the-r-squared-and-nonlinear-regression-a-difficult-marriage/
-    fit = mdt.func.kww(times_fit, *popt[i])
-    rp_mean = np.mean(rp)
-    ss_reg = np.sum((fit - rp_mean) ** 2)  # Regression sum of squares.
-    ss_tot = np.sum((rp_fit - rp_mean) ** 2)  # Total sum of squares.
-    fit_r2[i] = ss_reg / ss_tot
     # Calculate mean squared error (or mean squared residuals).
-    fit_mse[i] = np.mean((rp_fit - fit) ** 2)
+    fit = mdt.func.kww(times_fit, *popt[i])
+    ss_res = np.sum((rp_fit - fit) ** 2)  # Residual sum of squares.
+    fit_mse[i] = ss_res / len(fit)  # Mean squared error.
+    # Calculate (pseudo) coefficient of determination (R^2).
+    # https://www.r-bloggers.com/2021/03/the-r-squared-and-nonlinear-regression-a-difficult-marriage/
+    ss_tot = np.sum((rp_fit - np.mean(rp)) ** 2)  # Total sum of squares
+    fit_r2[i] = 1 - (ss_res / ss_tot)
 tau0, beta = popt.T
 tau0_sd, beta_sd = perr.T
 lifetimes_exp_mom1 = tau0 / beta * gamma(1 / beta)
@@ -298,7 +302,6 @@ print("Creating output file(s)...")
 file_suffix = file_suffix_common + "_bins" + ".txt.gz"
 infile_bins = leap.simulation.get_ana_file(Sim, analysis, tool, file_suffix)
 bins = np.loadtxt(infile_bins)
-bins /= 10  # A -> nm
 
 Elctrd = leap.simulation.Electrode()
 elctrd_thk = Elctrd.ELCTRD_THK
@@ -385,7 +388,7 @@ header = (
     + "  7 Distance of the upper bin edges to the right electrode surface / A"
     + "\n"
     + "\n"
-    + "  Residence times from Method 1 (Counting)\n"
+    + "  Residence times from Method 1 (counting)\n"
     + "  8 1st moment <tau_cnt> / ns\n"
     + "  9 2nd moment <tau_cnt^2> / ns^2\n"
     + " 10 3rd moment <tau_cnt^3> / ns^3\n"
@@ -406,7 +409,7 @@ header = (
     + " 19 Standard deviation of tau0 / ns\n"
     + " 20 Fit parameter beta\n"
     + " 21 Standard deviation of beta\n"
-    + " 22 coefficient of determination of the fit (R^2 value)\n"
+    + " 22 Coefficient of determination of the fit (R^2 value)\n"
     + " 23 Mean squared error of the fit (mean squared residuals) / ns^2\n"
     + " 24 Start of fit region (inclusive) / ns\n"
     + " 25 End of fit region (exclusive) / ns\n"
@@ -455,7 +458,155 @@ data = np.column_stack(
         fit_stop,  # 25
     ]
 )
-leap.io_handler.savetxt(outfile, data, header=header)
-print("Created {}".format(outfile))
+leap.io_handler.savetxt(outfile_txt, data, header=header)
+print("Created {}".format(outfile_txt))
 
+
+print("Creating plot(s)...")
+elctrd_thk /= 10  # A -> nm.
+box_z /= 10  # A -> nm.
+bins /= 10  # A -> nm.
+bin_mids = bins_up - (bins_up - bins_low) / 2
+bin_mids /= 10  # A -> nm.
+
+xlabel = r"$z$ / nm"
+xlim = (0, box_z)
+
+mdt.fh.backup(outfile_pdf)
+with PdfPages(outfile_pdf) as pdf:
+    # Plot residence times vs. bins.
+    fig, ax = plt.subplots(clear=True)
+    leap.plot.elctrds(
+        ax, offset_left=elctrd_thk, offset_right=box_z - elctrd_thk
+    )
+
+    # Method 1 (counting)
+    ydata_min = np.nanmin(lifetimes_cnt_mom1)
+    # Standard deviation of the mean.
+    yerr = lifetimes_cnt_mom2 - lifetimes_cnt_mom1**2
+    yerr /= len(lifetimes_cnt_mom1)
+    yerr = np.sqrt(yerr, out=yerr)
+    ax.errorbar(
+        bin_mids,
+        lifetimes_cnt_mom1,
+        yerr=yerr,
+        label="Count",
+        marker="1",
+        alpha=leap.plot.ALPHA,
+    )
+
+    # Method 2 (1/e criterion)
+    ydata_min = np.nanmin([ydata_min, np.nanmin(lifetimes_e)])
+    ax.plot(
+        bin_mids,
+        lifetimes_e,
+        label=r"$1/e$",
+        marker="2",
+        alpha=leap.plot.ALPHA,
+    )
+
+    # Method 3 (direct integral)
+    ydata_min = np.nanmin([ydata_min, np.nanmin(lifetimes_int_mom1)])
+    # Standard deviation of the underlying lifetime distribution.
+    yerr = np.sqrt(lifetimes_int_mom2 - lifetimes_int_mom1**2)
+    ax.errorbar(
+        bin_mids,
+        lifetimes_int_mom1,
+        yerr=yerr,
+        label="Area",
+        marker="3",
+        alpha=leap.plot.ALPHA,
+    )
+
+    # Method 4 (integral of the fit)
+    ydata_min = np.nanmin([ydata_min, np.nanmin(lifetimes_exp_mom1)])
+    # Standard deviation of the underlying lifetime distribution.
+    yerr = np.sqrt(lifetimes_exp_mom2 - lifetimes_exp_mom1**2)
+    ax.errorbar(
+        bin_mids,
+        lifetimes_exp_mom1,
+        yerr=yerr,
+        label="Fit",
+        marker="4",
+        alpha=leap.plot.ALPHA,
+    )
+
+    ax.set(xlabel=xlabel, ylabel="Residence Time / ns", xlim=xlim)
+    ylim = ax.get_ylim()
+    if ylim[0] < 0:
+        ax.set_ylim(0, ylim[1])
+    ax.vlines(
+        x=bins,
+        ymin=ax.get_ylim()[0],
+        ymax=ax.get_ylim()[1],
+        colors="black",
+        linestyles="dotted",
+    )
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+    legend = ax.legend(
+        loc="upper center", ncol=2, **mdtplt.LEGEND_KWARGS_XSMALL
+    )
+    pdf.savefig()
+
+    # Set y axis to log scale.
+    ylim = ax.get_ylim()
+    if ylim[0] <= 0:
+        # Round to next lower power of ten.
+        ymin = 10 ** np.floor(np.log10(ydata_min))
+        ax.set_ylim(ymin, ylim[1])
+    ax.set_yscale("log", base=10, subs=np.arange(2, 10))
+    pdf.savefig()
+    plt.close()
+
+    # Plot R^2 value of the fits.
+    fig, ax = plt.subplots(clear=True)
+    leap.plot.elctrds(
+        ax, offset_left=elctrd_thk, offset_right=box_z - elctrd_thk
+    )
+    ax.plot(bin_mids, fit_r2, marker=".")
+    ax.set(
+        xlabel=xlabel,
+        ylabel=r"Coeff. of Determ. $R^2$",
+        xlim=xlim,
+        ylim=(0, 1.05),
+    )
+    ax.vlines(
+        x=bins,
+        ymin=ax.get_ylim()[0],
+        ymax=ax.get_ylim()[1],
+        colors="black",
+        linestyles="dotted",
+    )
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+    pdf.savefig()
+    plt.close()
+
+    # Plot root mean squared error.
+    fig, ax = plt.subplots(clear=True)
+    leap.plot.elctrds(
+        ax, offset_left=elctrd_thk, offset_right=box_z - elctrd_thk
+    )
+    ax.plot(bin_mids, fit_mse, marker=".")
+    ax.set(xlabel=xlabel, ylabel=r"Mean Squared Error / ns$^2$", xlim=xlim)
+    ax.vlines(
+        x=bins,
+        ymin=ax.get_ylim()[0],
+        ymax=ax.get_ylim()[1],
+        colors="black",
+        linestyles="dotted",
+    )
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+    pdf.savefig()
+
+    # Set y axis to log scale.
+    ylim = ax.get_ylim()
+    if ylim[0] <= 0:
+        # Round to next lower power of ten.
+        ymin = 10 ** np.floor(np.log10(ydata_min))
+        ax.set_ylim(ymin, ylim[1])
+    ax.set_yscale("log", base=10, subs=np.arange(2, 10))
+    pdf.savefig()
+    plt.close()
+
+print("Created {}".format(outfile_pdf))
 print("Done")
