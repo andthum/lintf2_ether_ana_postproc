@@ -2626,7 +2626,7 @@ def get_ana_file(Sim, ana_name, ana_tool, file_suffix):
         instance.
     ana_name : str
         The analysis name.
-    ana_tool : {"gmx", "mdtools"}
+    ana_tool : {"gmx", "mdt"}
         The software/tool used to generate the analysis file.
     file_suffix : str
         The suffix of the analysis file without the simulation settings
@@ -2646,7 +2646,7 @@ def get_ana_file(Sim, ana_name, ana_tool, file_suffix):
         given :class:`~lintf2_ether_ana_postproc.simulation.Simulations`
         instance.
     """
-    if ana_tool not in ("gmx", "mdtools"):
+    if ana_tool not in ("gmx", "mdt"):
         raise ValueError("Unknown `ana_tool`: '{}'".format(ana_tool))
 
     fname = Sim.fname_ana_base + file_suffix
@@ -2669,7 +2669,7 @@ def get_ana_files(Sims, ana_name, ana_tool, file_suffix):
         instance.
     ana_name : str
         The analysis name.
-    ana_tool : {"gmx", "mdtools"}
+    ana_tool : {"gmx", "mdt"}
         The software/tool used to generate the analysis file.
     file_suffix : str
         The suffix of the analysis file without the simulation settings
@@ -2688,7 +2688,7 @@ def get_ana_files(Sims, ana_name, ana_tool, file_suffix):
         :class:`~lintf2_ether_ana_postproc.simulation.Simulation`
         instance.
     """
-    if ana_tool not in ("gmx", "mdtools"):
+    if ana_tool not in ("gmx", "mdt"):
         raise ValueError("Unknown `ana_tool`: '{}'".format(ana_tool))
 
     ana_files = []
