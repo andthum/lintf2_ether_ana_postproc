@@ -219,7 +219,6 @@ if not np.array_equal(states, states_cnt):
 del states_cnt
 states = states.astype(np.int32)
 
-
 # Method 3: Set the lifetime to the lag time at which the remain
 # probability crosses 1/e.
 thresh = 1 / np.e
@@ -270,11 +269,13 @@ for i, rp in enumerate(remain_props.T):
 
 # Method 4: Calculate the lifetime as the integral of the remain
 # probability.
-lifetimes_int_mom1 = nantrapz(y=remain_props, x=times, axis=0)
-lifetimes_int_mom2 = nantrapz(y=remain_props * times[:, None], x=times, axis=0)
-lifetimes_int_mom3 = (
-    nantrapz(y=remain_props * times[:, None] ** 2, x=times, axis=0) / 2
-)
+lifetimes_int_mom1 = np.full(len(states), np.nan, dtype=np.float64)
+lifetimes_int_mom2 = np.full(len(states), np.nan, dtype=np.float64)
+lifetimes_int_mom3 = np.full(len(states), np.nan, dtype=np.float64)
+for i, rp in enumerate(remain_props.T):
+    lifetimes_int_mom1[i] = nantrapz(y=rp, x=times, axis=0)
+    lifetimes_int_mom2[i] = nantrapz(y=rp * times, x=times, axis=0)
+    lifetimes_int_mom3[i] = nantrapz(y=rp * times**2, x=times, axis=0) / 2
 invalid = np.all(remain_props > args.int_thresh, axis=0)
 lifetimes_int_mom1[invalid] = np.nan
 lifetimes_int_mom2[invalid] = np.nan
@@ -375,8 +376,8 @@ header = (
     + "   effects.\n"
     + "\n"
     + "2) The average transition rate <k> is calculated as the number of\n"
-    + "   transitions leading out of a given state divided by the number of\n"
-    + "   frames that compounds have spent in this state.  The average\n"
+    + "   transitions leading out of a given bin divided by the number of\n"
+    + "   frames that compounds have spent in this bin.  The average\n"
     + "   lifetime <tau_k> is calculated as the inverse transition rate:\n"
     + "     <tau_k> = 1 / <k>"
     + "\n"
@@ -441,26 +442,29 @@ header = (
     + "  9 2nd moment <tau_cnt^2> / ns^2\n"
     + " 10 3rd moment <tau_cnt^3> / ns^3\n"
     + "\n"
-    + "  Residence times from Method 2 (1/e criterion)\n"
-    + " 11 <tau_e> / ns\n"
+    + "  Residence times from Method 2 (inverse transition rate)\n"
+    + " 11 <tau_k> / ns\n"
     + "\n"
-    + "  Residence times from Method 3 (direct integral)\n"
-    + " 12 1st moment <tau_int> / ns\n"
-    + " 13 2nd moment <tau_int^2> / ns^2\n"
-    + " 14 3rd moment <tau_int^3> / ns^3\n"
+    + "  Residence times from Method 3 (1/e criterion)\n"
+    + " 12 <tau_e> / ns\n"
     + "\n"
-    + "  Residence times from Method 4 (integral of the fit)\n"
-    + " 15 1st moment <tau_exp> / ns\n"
-    + " 16 2nd moment <tau_exp^2> / ns^2\n"
-    + " 17 3rd moment <tau_exp^3> / ns^3\n"
-    + " 18 Fit parameter tau0 / ns\n"
-    + " 19 Standard deviation of tau0 / ns\n"
-    + " 20 Fit parameter beta\n"
-    + " 21 Standard deviation of beta\n"
-    + " 22 Coefficient of determination of the fit (R^2 value)\n"
-    + " 23 Mean squared error of the fit (mean squared residuals) / ns^2\n"
-    + " 24 Start of fit region (inclusive) / ns\n"
-    + " 25 End of fit region (exclusive) / ns\n"
+    + "  Residence times from Method 4 (direct integral)\n"
+    + " 13 1st moment <tau_int> / ns\n"
+    + " 14 2nd moment <tau_int^2> / ns^2\n"
+    + " 15 3rd moment <tau_int^3> / ns^3\n"
+    + "\n"
+    + "  Residence times from Method 5 (integral of the fit)\n"
+    + " 16 1st moment <tau_exp> / ns\n"
+    + " 17 2nd moment <tau_exp^2> / ns^2\n"
+    + " 18 3rd moment <tau_exp^3> / ns^3\n"
+    + " 19 Fit parameter tau0 / ns\n"
+    + " 20 Standard deviation of tau0 / ns\n"
+    + " 21 Fit parameter beta\n"
+    + " 22 Standard deviation of beta\n"
+    + " 23 Coefficient of determination of the fit (R^2 value)\n"
+    + " 24 Mean squared error of the fit (mean squared residuals) / ns^2\n"
+    + " 25 Start of fit region (inclusive) / ns\n"
+    + " 26 End of fit region (exclusive) / ns\n"
     + "\n"
     + "Column number:\n"
 )
@@ -487,23 +491,25 @@ data = np.column_stack(
         lifetimes_cnt_mom2,  # 9
         lifetimes_cnt_mom3,  # 10
         #
-        lifetimes_e,  # 11
+        lifetimes_k,  # 11
         #
-        lifetimes_int_mom1,  # 12
-        lifetimes_int_mom2,  # 13
-        lifetimes_int_mom3,  # 14
+        lifetimes_e,  # 12
         #
-        lifetimes_exp_mom1,  # 15
-        lifetimes_exp_mom2,  # 16
-        lifetimes_exp_mom3,  # 17
-        tau0,  # 18
-        tau0_sd,  # 19
-        beta,  # 20
-        beta_sd,  # 21
-        fit_r2,  # 22
-        fit_mse,  # 23
-        fit_start,  # 24
-        fit_stop,  # 25
+        lifetimes_int_mom1,  # 13
+        lifetimes_int_mom2,  # 14
+        lifetimes_int_mom3,  # 15
+        #
+        lifetimes_exp_mom1,  # 16
+        lifetimes_exp_mom2,  # 17
+        lifetimes_exp_mom3,  # 18
+        tau0,  # 19
+        tau0_sd,  # 20
+        beta,  # 21
+        beta_sd,  # 22
+        fit_r2,  # 23
+        fit_mse,  # 24
+        fit_start,  # 25
+        fit_stop,  # 26
     ]
 )
 leap.io_handler.savetxt(outfile_txt, data, header=header)
@@ -530,30 +536,40 @@ with PdfPages(outfile_pdf) as pdf:
 
     # Method 1 (counting)
     ydata_min = np.nanmin(lifetimes_cnt_mom1)
-    # Standard deviation of the mean.
-    yerr = lifetimes_cnt_mom2 - lifetimes_cnt_mom1**2
-    yerr /= len(lifetimes_cnt_mom1)
-    yerr = np.sqrt(yerr, out=yerr)
+    # # Standard deviation of the mean.
+    # yerr = lifetimes_cnt_mom2 - lifetimes_cnt_mom1**2
+    # yerr /= len(lifetimes_cnt_mom1)
+    # yerr = np.sqrt(yerr, out=yerr)
     ax.errorbar(
         bin_mids,
         lifetimes_cnt_mom1,
-        yerr=yerr,
+        yerr=np.sqrt(lifetimes_cnt_mom2 - lifetimes_cnt_mom1**2),
         label="Count",
-        marker="1",
+        marker="H",  # Alternative: "1"
         alpha=leap.plot.ALPHA,
     )
 
-    # Method 2 (1/e criterion)
+    # Method 2 (inverse transition rate)
+    ydata_min = np.nanmin([ydata_min, np.nanmin(lifetimes_k)])
+    ax.plot(
+        bin_mids,
+        lifetimes_k,
+        label="Rate",
+        marker="h",  # Alternative: "2"
+        alpha=leap.plot.ALPHA,
+    )
+
+    # Method 3 (1/e criterion)
     ydata_min = np.nanmin([ydata_min, np.nanmin(lifetimes_e)])
     ax.plot(
         bin_mids,
         lifetimes_e,
         label=r"$1/e$",
-        marker="2",
+        marker="s",  # Alternative: "3"
         alpha=leap.plot.ALPHA,
     )
 
-    # Method 3 (direct integral)
+    # Method 4 (direct integral)
     ydata_min = np.nanmin([ydata_min, np.nanmin(lifetimes_int_mom1)])
     # Standard deviation of the underlying lifetime distribution.
     yerr = np.sqrt(lifetimes_int_mom2 - lifetimes_int_mom1**2)
@@ -562,11 +578,11 @@ with PdfPages(outfile_pdf) as pdf:
         lifetimes_int_mom1,
         yerr=yerr,
         label="Area",
-        marker="3",
+        marker="D",  # Alternative: "4"
         alpha=leap.plot.ALPHA,
     )
 
-    # Method 4 (integral of the fit)
+    # Method 5 (integral of the fit)
     ydata_min = np.nanmin([ydata_min, np.nanmin(lifetimes_exp_mom1)])
     # Standard deviation of the underlying lifetime distribution.
     yerr = np.sqrt(lifetimes_exp_mom2 - lifetimes_exp_mom1**2)
@@ -575,7 +591,7 @@ with PdfPages(outfile_pdf) as pdf:
         lifetimes_exp_mom1,
         yerr=yerr,
         label="Fit",
-        marker="4",
+        marker="d",  # Alternative: "x"
         alpha=leap.plot.ALPHA,
     )
 
@@ -583,13 +599,7 @@ with PdfPages(outfile_pdf) as pdf:
     ylim = ax.get_ylim()
     if ylim[0] < 0:
         ax.set_ylim(0, ylim[1])
-    ax.vlines(
-        x=bins,
-        ymin=ax.get_ylim()[0],
-        ymax=ax.get_ylim()[1],
-        colors="black",
-        linestyles="dotted",
-    )
+    leap.plot.bins(ax, bins=bins)
     ax.xaxis.set_major_locator(MaxNLocator(integer=True))
     legend = ax.legend(
         loc="upper center", ncol=2, **mdtplt.LEGEND_KWARGS_XSMALL
