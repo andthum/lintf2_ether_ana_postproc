@@ -26,6 +26,35 @@ from scipy.special import gamma
 import lintf2_ether_ana_postproc as leap
 
 
+def nantrapz(y, x, *args, **kwargs):
+    """
+    Integrate along the given axis using the composite trapezoidal rule,
+    ignoring NaNs
+
+    Parameters
+    ----------
+    y, x : array_like
+        See :func:`numpy.trapz`.
+    args, kwargs : dict
+        Additional (keyword) arguments to parse to :func:`numpy.trapz`.
+        See there for possible options.
+
+    Returns
+    -------
+    trapz : float or numpy.ndarray
+        See :func:`numpy.trapz`.
+
+    Notes
+    -----
+    This function simply calls :func:`numpy.trapz` after removing NaNs
+    from the input arrays.
+    """
+    invalid = np.isnan(x)
+    invalid &= np.isnan(y)
+    valid = ~invalid
+    return np.trapz(y[valid], x[valid], *args, **kwargs)
+
+
 # Input parameters.
 parser = argparse.ArgumentParser(
     description=(
@@ -136,25 +165,37 @@ set_pat = "[0-9][0-9]_" + args.settings + "_" + args.system
 Sim = leap.simulation.get_sim(args.system, set_pat, path_key)
 
 
-print("Reading data and calculating lifetimes (Method 1)...")
+print("Reading data and calculating lifetimes (Method 1-2)...")
 # Discrete trajectory.
 file_suffix = file_suffix_common + "_dtrj.npz"
 infile_dtrj = leap.simulation.get_ana_file(Sim, analysis, tool, file_suffix)
 dtrj = mdt.fh.load_dtrj(infile_dtrj)
 
-# Method 1: Calculate the average lifetime by simply counting the number
-# of frames that a given compound stays in a given state.
+# Method 1: Calculate the average lifetime by counting the number of
+# frames that a given compound stays in a given state.
 lifetimes_cnt, states_cnt = mdt.dtrj.lifetimes_per_state(
     dtrj, return_states=True
 )
 lifetimes_cnt = [lts * time_conv for lts in lifetimes_cnt]
-lifetimes_cnt_mom1 = np.array([np.mean(lts) for lts in lifetimes_cnt])
-lifetimes_cnt_mom2 = np.array([np.mean(lts**2) for lts in lifetimes_cnt])
-lifetimes_cnt_mom3 = np.array([np.mean(lts**3) for lts in lifetimes_cnt])
-del dtrj, lifetimes_cnt
+lifetimes_cnt_mom1 = np.array([np.nanmean(lts) for lts in lifetimes_cnt])
+lifetimes_cnt_mom2 = np.array([np.nanmean(lts**2) for lts in lifetimes_cnt])
+lifetimes_cnt_mom3 = np.array([np.nanmean(lts**3) for lts in lifetimes_cnt])
+del lifetimes_cnt
+
+# Method 2: Calculate the transition rate as the number of transitions
+# leading out of a given state divided by the number of frames that
+# compounds have spent in this state.  The average lifetime is
+# calculated as the inverse transition rate.
+rates, states_k = mdt.dtrj.trans_rate_per_state(dtrj, return_states=True)
+lifetimes_k = 1 / rates
+if not np.array_equal(states_k, states_cnt):
+    raise ValueError(
+        "`states_k` ({}) != `states_cnt` ({})".format(states_k, states_cnt)
+    )
+del dtrj, rates, states_k
 
 
-print("Reading data and calculating lifetimes (Method 2-4)...")
+print("Reading data and calculating lifetimes (Method 5-6)...")
 # Read remain probability functions (one for each bin).
 file_suffix = file_suffix_common + "_state_lifetime_discrete" + con + ".txt.gz"
 infile_rp = leap.simulation.get_ana_file(Sim, analysis, tool, file_suffix)
@@ -179,10 +220,10 @@ del states_cnt
 states = states.astype(np.int32)
 
 
-# Method 2: Set the lifetime to the lag time at which the remain
+# Method 3: Set the lifetime to the lag time at which the remain
 # probability crosses 1/e.
 thresh = 1 / np.e
-ix_thresh = np.argmax(remain_props <= thresh, axis=0)
+ix_thresh = np.nanargmax(remain_props <= thresh, axis=0)
 lifetimes_e = np.full(len(states), np.nan, dtype=np.float64)
 for i, rp in enumerate(remain_props.T):
     if rp[ix_thresh[i]] > thresh:
@@ -227,19 +268,19 @@ for i, rp in enumerate(remain_props.T):
                 )
             )
 
-# Method 3: Calculate the lifetime as the integral of the remain
+# Method 4: Calculate the lifetime as the integral of the remain
 # probability.
-lifetimes_int_mom1 = np.trapz(y=remain_props, x=times, axis=0)
-lifetimes_int_mom2 = np.trapz(y=remain_props * times[:, None], x=times, axis=0)
+lifetimes_int_mom1 = nantrapz(y=remain_props, x=times, axis=0)
+lifetimes_int_mom2 = nantrapz(y=remain_props * times[:, None], x=times, axis=0)
 lifetimes_int_mom3 = (
-    np.trapz(y=remain_props * times[:, None] ** 2, x=times, axis=0) / 2
+    nantrapz(y=remain_props * times[:, None] ** 2, x=times, axis=0) / 2
 )
 invalid = np.all(remain_props > args.int_thresh, axis=0)
 lifetimes_int_mom1[invalid] = np.nan
 lifetimes_int_mom2[invalid] = np.nan
 lifetimes_int_mom3[invalid] = np.nan
 
-# Method 4: Fit the remain probability with a stretched exponential and
+# Method 5: Fit the remain probability with a stretched exponential and
 # calculate the lifetime as the integral of this stretched exponential.
 if args.end_fit is None:
     end_fit = int(0.9 * len(times))
@@ -258,7 +299,7 @@ perr = np.full((len(states), 2), np.nan, dtype=np.float64)
 fit_r2 = np.full(len(states), np.nan, dtype=np.float64)
 fit_mse = np.full(len(states), np.nan, dtype=np.float64)
 for i, rp in enumerate(remain_props.T):
-    stop_fit = np.argmax(rp < args.stop_fit)
+    stop_fit = np.nanargmax(rp < args.stop_fit)
     if stop_fit == 0 and rp[stop_fit] >= args.stop_fit:
         stop_fit = len(rp)
     elif stop_fit < 2:
@@ -271,11 +312,12 @@ for i, rp in enumerate(remain_props.T):
     )
     # Calculate mean squared error (or mean squared residuals).
     fit = mdt.func.kww(times_fit, *popt[i])
-    ss_res = np.sum((rp_fit - fit) ** 2)  # Residual sum of squares.
+    ss_res = np.nansum((rp_fit - fit) ** 2)  # Residual sum of squares.
     fit_mse[i] = ss_res / len(fit)  # Mean squared error.
     # Calculate (pseudo) coefficient of determination (R^2).
     # https://www.r-bloggers.com/2021/03/the-r-squared-and-nonlinear-regression-a-difficult-marriage/
-    ss_tot = np.sum((rp_fit - np.mean(rp)) ** 2)  # Total sum of squares
+    # Total sum of squares
+    ss_tot = np.nansum((rp_fit - np.nanmean(rp)) ** 2)
     fit_r2[i] = 1 - (ss_res / ss_tot)
 tau0, beta = popt.T
 tau0_sd, beta_sd = perr.T
@@ -324,26 +366,32 @@ header = (
     + "Ether oxygens per PEO chain:   {:d}\n".format(Sim.O_per_chain)
     + "\n"
     + "\n"
-    + "Residence times are calculated using four different methods:\n"
+    + "Residence times are calculated using five different methods:\n"
     + "\n"
-    + "1) The residence time <tau_cnt> is calculated by simply counting how\n"
-    + "   many frames a given compound stays in a given bin.  Note that\n"
-    + "   residence times calculated in this way can at maximum be as long\n"
-    + "   as the trajectory and are usually biased to lower values because\n"
-    + "   of edge effects.\n"
+    + "1) The residence time <tau_cnt> is calculated by counting how many\n"
+    + "   frames a given compound stays in a given bin.  Note that residence\n"
+    + "   times calculated in this way can at maximum be as long as the\n"
+    + "   trajectory and are usually biased to lower values because of edge\n"
+    + "   effects.\n"
     + "\n"
-    + "2) The residence time <tau_e> is set to the lag time at which the\n"
+    + "2) The average transition rate <k> is calculated as the number of\n"
+    + "   transitions leading out of a given state divided by the number of\n"
+    + "   frames that compounds have spent in this state.  The average\n"
+    + "   lifetime <tau_k> is calculated as the inverse transition rate:\n"
+    + "     <tau_k> = 1 / <k>"
+    + "\n"
+    + "3) The residence time <tau_e> is set to the lag time at which the\n"
     + "   remain probability function p(t) crosses 1/e.  If this never\n"
     + "   happens, <tau_e> is set to NaN.\n"
     + "\n"
-    + "3) According to Equations (12) and (14) of Reference [1], the n-th\n"
+    + "4) According to Equations (12) and (14) of Reference [1], the n-th\n"
     + "   moment of the residence time <tau_int^n> is calculated as the\n"
     + "   integral of the remain probability function p(t) times t^{n-1}:\n"
     + "     <tau_int^n> = 1/(n-1)! int_0^inf t^{n-1} p(t) dt\n"
     + "   If p(t) does not decay below the given threshold of\n"
     + "   {:.4f}, <tau_int^n> is set to NaN.\n".format(args.int_thresh)
     + "\n"
-    + "4) The remain probability function p(t) is fitted by a stretched\n"
+    + "5) The remain probability function p(t) is fitted by a stretched\n"
     + "   exponential function using the 'Trust Region Reflective' method of\n"
     + "   scipy.optimize.curve_fit:\n"
     + "     f(t) = exp[-(t/tau0)^beta]\n"
