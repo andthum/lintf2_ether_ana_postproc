@@ -101,6 +101,69 @@ def elctrds(ax, offset_right, offset_left=0, **kwargs):
     leap.plot.elctrd_right(ax, offset_right, **kwargs)
 
 
+def bins(
+    ax, bins=None, Sim=None, infile=None, conv=1, kwargs_txt=None, **kwargs
+):
+    """
+    Plot the position of the given bin edges as vertical lines into an
+    :class:`matplotlib.axes.Axes`.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        The :class:`~matplotlib.axes.Axes` into which to plot the
+        bin edges
+    bins : array_like, optional
+        1-dimensional array of bin edges.
+    Sim : lintf2_ether_ana_postproc.simulation.Simulation
+        :class:`~lintf2_ether_ana_postproc.simulation.Simulation`
+        instance.  If provided, the bin edges will be read from the
+        first column of
+        ``Sim.settings + "_" + Sim.system +
+        "_density-z_number_Li_binsA.txt.gz"``.
+    infile : str, optional
+        If provided, the bin edges will be read from the given file.
+    conv : float, optional
+        Conversion factor for the bin edges (e.g. to convert from
+        Angstroms to nm).
+    kwargs_txt : None or dict, optional
+        Keyword arguments to parse to :func:`numpy.loadtxt` when reading
+        the bin edges from `infile`.  See there for possible options.
+    kwargs : dict
+        Keyword arguments to parse to
+        :func:`matplotlib.axes.Axes.axvline`.  See there for possible
+        options.  By default, `color` is set to ``"black"`` and
+        `linestyle` is set to ``"dotted"``.
+
+    Notes
+    -----
+    If multiple of `bins`, `Sim` or `infile` are provided, `bins` takes
+    precedence over `Sim` and `Sim` takes precedence over `infile`.
+    """
+    kwargs.setdefault("color", "black")
+    kwargs.setdefault("linestyle", "dotted")
+
+    if bins is not None:
+        bins = np.array(bins, copy=True)
+    elif Sim is not None:
+        analysis = "density-z"  # Analysis name.
+        analysis_suffix = "_number"  # Analysis name specification.
+        tool = "gmx"  # Analysis software.
+        file_suffix = analysis + analysis_suffix + "_Li_binsA.txt.gz"
+        infile = leap.simulation.get_ana_file(Sim, analysis, tool, file_suffix)
+        bins = np.loadtxt(infile, usecols=0)
+    elif infile is not None:
+        if kwargs_txt is None:
+            kwargs_txt = {}
+        bins = np.loadtxt(infile, **kwargs_txt)
+    else:
+        raise ValueError("Either `bins`, `Sim` or `infile` must be provided.")
+
+    bins *= conv
+    for bn in bins:
+        ax.axvline(x=bn, **kwargs)
+
+
 def peak_proms(ax, x, y, peaks, properties, peak_type=None, **kwargs):
     """
     Plot the peak prominences as calculated by
