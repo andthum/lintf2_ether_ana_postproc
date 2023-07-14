@@ -5,8 +5,9 @@
 Calculate bin residence times / lifetimes.
 
 For a single simulation, calculate the average time that a given
-compound stays in a given bin from the corresponding remain probability
-function.
+compound stays in a given bin directly from the discrete trajectory
+(Method 1-2) and from the corresponding remain probability function
+(Method 3-4).
 """
 
 
@@ -29,7 +30,7 @@ import lintf2_ether_ana_postproc as leap
 def nantrapz(y, x, *args, **kwargs):
     """
     Integrate along the given axis using the composite trapezoidal rule,
-    ignoring NaNs
+    ignoring NaNs.
 
     Parameters
     ----------
@@ -59,8 +60,7 @@ def nantrapz(y, x, *args, **kwargs):
 parser = argparse.ArgumentParser(
     description=(
         "For a single simulation, calculate the average time that a given"
-        " compound stays in a given bin from the corresponding autocorrelation"
-        " function."
+        " compound stays in a given bin."
     )
 )
 parser.add_argument(
@@ -187,7 +187,7 @@ del lifetimes_cnt
 # compounds have spent in this state.  The average lifetime is
 # calculated as the inverse transition rate.
 rates, states_k = mdt.dtrj.trans_rate_per_state(dtrj, return_states=True)
-lifetimes_k = 1 / rates
+lifetimes_k = time_conv / rates
 if not np.array_equal(states_k, states_cnt):
     raise ValueError(
         "`states_k` ({}) != `states_cnt` ({})".format(states_k, states_cnt)
@@ -195,7 +195,7 @@ if not np.array_equal(states_k, states_cnt):
 del dtrj, rates, states_k
 
 
-print("Reading data and calculating lifetimes (Method 5-6)...")
+print("Reading data and calculating lifetimes (Method 3-5)...")
 # Read remain probability functions (one for each bin).
 file_suffix = file_suffix_common + "_state_lifetime_discrete" + con + ".txt.gz"
 infile_rp = leap.simulation.get_ana_file(Sim, analysis, tool, file_suffix)
@@ -280,6 +280,7 @@ invalid = np.all(remain_props > args.int_thresh, axis=0)
 lifetimes_int_mom1[invalid] = np.nan
 lifetimes_int_mom2[invalid] = np.nan
 lifetimes_int_mom3[invalid] = np.nan
+del invalid
 
 # Method 5: Fit the remain probability with a stretched exponential and
 # calculate the lifetime as the integral of this stretched exponential.
@@ -311,36 +312,28 @@ for i, rp in enumerate(remain_props.T):
     popt[i], perr[i] = mdt.func.fit_kww(
         xdata=times_fit, ydata=rp_fit, p0=init_guess[i], method="trf"
     )
-    # Calculate mean squared error (or mean squared residuals).
-    fit = mdt.func.kww(times_fit, *popt[i])
-    ss_res = np.nansum((rp_fit - fit) ** 2)  # Residual sum of squares.
-    fit_mse[i] = ss_res / len(fit)  # Mean squared error.
-    # Calculate (pseudo) coefficient of determination (R^2).
-    # https://www.r-bloggers.com/2021/03/the-r-squared-and-nonlinear-regression-a-difficult-marriage/
-    # Total sum of squares
-    ss_tot = np.nansum((rp_fit - np.nanmean(rp)) ** 2)
-    fit_r2[i] = 1 - (ss_res / ss_tot)
+    if np.any(np.isnan(popt[i])):
+        fit_mse[i] = np.nan
+        fit_r2[i] = np.nan
+    else:
+        fit = mdt.func.kww(times_fit, *popt[i])
+        # Residual sum of squares.
+        ss_res = np.nansum((rp_fit - fit) ** 2)
+        # Mean squared error / mean squared residuals.
+        fit_mse[i] = ss_res / len(fit)
+        # Total sum of squares
+        ss_tot = np.nansum((rp_fit - np.nanmean(rp)) ** 2)
+        # (Pseudo) coefficient of determination (R^2).
+        # https://www.r-bloggers.com/2021/03/the-r-squared-and-nonlinear-regression-a-difficult-marriage/
+        fit_r2[i] = 1 - (ss_res / ss_tot)
 tau0, beta = popt.T
 tau0_sd, beta_sd = perr.T
 lifetimes_exp_mom1 = tau0 / beta * gamma(1 / beta)
 lifetimes_exp_mom2 = tau0**2 / beta * gamma(2 / beta)
 lifetimes_exp_mom3 = tau0**3 / beta * gamma(3 / beta) / 2
-fit_start = fit_start * time_conv
-fit_stop = fit_stop * time_conv
 
 
 print("Creating output file(s)...")
-# # Read density profile.
-# ana_dens = "density-z"
-# file_suffix = ana_dens + "_number.xvg.gz"
-# infile_dens = leap.simulation.get_ana_file(Sim, ana_dens, "gmx", file_suffix)
-# cols_dens = (0, Sim.dens_file_cmp2col[args.cmp])
-# x_dens, y_dens = np.loadtxt(
-#     infile_dens, comments=["#", "@"], usecols=cols_dens, unpack=True
-# )
-# free_en = leap.misc.dens2free_energy(x_dens, y_dens, bulk_region=None)
-# del y_dens
-
 # Read bin edges.
 file_suffix = file_suffix_common + "_bins" + ".txt.gz"
 infile_bins = leap.simulation.get_ana_file(Sim, analysis, tool, file_suffix)
@@ -353,7 +346,8 @@ box_z = Sim.box[2]
 header = (
     "Bin residence times.\n"
     + "Average time that a given compound stays in a given bin calculated\n"
-    + "from the corresponding remain probability function.\n"
+    + "either directly from the discrete trajectory (Method 1-2) or from the\n"
+    + "corresponding remain probability function (Method 3-4).\n"
     + "\n"
     + "System:              {:s}\n".format(args.system)
     + "Settings:            {:s}\n".format(args.settings)
@@ -362,8 +356,11 @@ header = (
     + "Remain probability:  {:s}\n".format(infile_rp)
     + "\n"
     + "Compound:                      {:s}\n".format(args.cmp)
-    + "Surface charge:                {:.2f} e/nm^2\n".format(surfq)
-    + "Lithium-to-ether-oxygen ratio: {:.4f}\n".format(Sim.Li_O_ratio)
+)
+if surfq is not None:
+    header += "Surface charge:                {:.2f} e/nm^2\n".format(surfq)
+header += (
+    "Lithium-to-ether-oxygen ratio: {:.4f}\n".format(Sim.Li_O_ratio)
     + "Ether oxygens per PEO chain:   {:d}\n".format(Sim.O_per_chain)
     + "\n"
     + "\n"
@@ -379,7 +376,7 @@ header = (
     + "   transitions leading out of a given bin divided by the number of\n"
     + "   frames that compounds have spent in this bin.  The average\n"
     + "   lifetime <tau_k> is calculated as the inverse transition rate:\n"
-    + "     <tau_k> = 1 / <k>"
+    + "     <tau_k> = 1 / <k>\n"
     + "\n"
     + "3) The residence time <tau_e> is set to the lag time at which the\n"
     + "   remain probability function p(t) crosses 1/e.  If this never\n"
@@ -406,6 +403,13 @@ header = (
     + "     <tau_exp^n> = 1/(n-1)! int_0^infty t^{n-1} f(t) dt\n"
     + "                 = tau0^n/beta * Gamma(1/beta)/Gamma(n)\n"
     + "   where Gamma(x) is the gamma function.\n"
+    + "\n"
+    + "Note that the moments calculated by method 4 and 5 are the moments of\n"
+    + "an assumed underlying, continuous distribution of time constants tau.\n"
+    + "They are related to the moments of the underlying distribution of\n"
+    + "decay times t by\n"
+    + "  <t^n> = n! * <tau^{n+1}> / <tau>\n"
+    + "Compare Equation (14) of Reference [1].\n"
     + "\n"
     + "Reference [1]:\n"
     + "  M. N. Berberan-Santos, E. N. Bodunov, B. Valeur,\n"
@@ -469,7 +473,7 @@ header = (
     + "Column number:\n"
 )
 header += "{:>14d}".format(1)
-for i in range(2, 26):
+for i in range(2, 27):
     header += " {:>16d}".format(i)
 
 bins_low = bins[states]  # Lower bin edges.
@@ -508,8 +512,8 @@ data = np.column_stack(
         beta_sd,  # 22
         fit_r2,  # 23
         fit_mse,  # 24
-        fit_start,  # 25
-        fit_stop,  # 26
+        fit_start * time_conv,  # 25
+        fit_stop * time_conv,  # 26
     ]
 )
 leap.io_handler.savetxt(outfile_txt, data, header=header)
@@ -526,143 +530,426 @@ bin_mids /= 10  # A -> nm.
 xlabel = r"$z$ / nm"
 xlim = (0, box_z)
 
+if surfq is None:
+    legend_title = ""
+else:
+    legend_title = r"$\sigma_s = \pm %.2f$ $e$/nm$^2$" % surfq + "\n"
+legend_title = (
+    legend_title
+    + r"$n_{EO} = %d$, " % Sim.O_per_chain
+    + r"$r = %.4f$" % Sim.Li_O_ratio
+)
+
+height_ratios = (0.2, 1)
+
+lifetime_min = np.nanmin(
+    [
+        lifetimes_cnt_mom1,
+        lifetimes_k,
+        lifetimes_e,
+        lifetimes_int_mom1,
+        lifetimes_exp_mom1,
+    ]
+)
+
+cmap = plt.get_cmap()
+c_vals = np.arange(len(states))
+c_norm = len(states) - 1
+c_vals_normed = c_vals / c_norm
+colors = cmap(c_vals_normed)
+
 mdt.fh.backup(outfile_pdf)
 with PdfPages(outfile_pdf) as pdf:
-    # Plot residence times vs. bins.
-    fig, ax = plt.subplots(clear=True)
-    leap.plot.elctrds(
-        ax, offset_left=elctrd_thk, offset_right=box_z - elctrd_thk
+    # Plot residence times vs. bins ("ensemble average").
+    fig, axs = plt.subplots(
+        clear=True,
+        nrows=2,
+        sharex=True,
+        gridspec_kw={"height_ratios": height_ratios},
     )
-
-    # Method 1 (counting)
-    ydata_min = np.nanmin(lifetimes_cnt_mom1)
-    # # Standard deviation of the mean.
-    # yerr = lifetimes_cnt_mom2 - lifetimes_cnt_mom1**2
-    # yerr /= len(lifetimes_cnt_mom1)
-    # yerr = np.sqrt(yerr, out=yerr)
+    fig.set_figheight(fig.get_figheight() * sum(height_ratios))
+    ax_profile, ax = axs
+    leap.plot.profile(ax_profile, Sim=Sim, free_en=True)
+    if surfq is not None:
+        leap.plot.elctrds(
+            ax, offset_left=elctrd_thk, offset_right=box_z - elctrd_thk
+        )
+    # Method 5 (integral of the fit).
+    ax.errorbar(
+        bin_mids,
+        lifetimes_exp_mom1,
+        yerr=np.sqrt(lifetimes_exp_mom2 - lifetimes_exp_mom1**2),
+        label="Fit",
+        color="tab:cyan",
+        marker="D",
+        alpha=leap.plot.ALPHA,
+    )
+    # Method 4 (direct integral)
+    ax.errorbar(
+        bin_mids,
+        lifetimes_int_mom1,
+        yerr=np.sqrt(lifetimes_int_mom2 - lifetimes_int_mom1**2),
+        label="Area",
+        color="tab:blue",
+        marker="d",
+        alpha=leap.plot.ALPHA,
+    )
+    # Method 3 (1/e criterion).
+    ax.plot(
+        bin_mids,
+        lifetimes_e,
+        label=r"$1/e$",
+        color="tab:purple",
+        marker="s",
+        alpha=leap.plot.ALPHA,
+    )
+    # Method 2 (inverse transition rate).
+    ax.plot(
+        bin_mids,
+        lifetimes_k,
+        label="Rate",
+        color="tab:red",
+        marker="h",
+        alpha=leap.plot.ALPHA,
+    )
+    # Method 1 (counting).
     ax.errorbar(
         bin_mids,
         lifetimes_cnt_mom1,
         yerr=np.sqrt(lifetimes_cnt_mom2 - lifetimes_cnt_mom1**2),
         label="Count",
-        marker="H",  # Alternative: "1"
+        color="tab:orange",
+        marker="H",
         alpha=leap.plot.ALPHA,
     )
-
-    # Method 2 (inverse transition rate)
-    ydata_min = np.nanmin([ydata_min, np.nanmin(lifetimes_k)])
-    ax.plot(
-        bin_mids,
-        lifetimes_k,
-        label="Rate",
-        marker="h",  # Alternative: "2"
-        alpha=leap.plot.ALPHA,
+    ax.set(
+        xlabel=xlabel,
+        ylabel=r"Residence Time $\langle \tau \rangle$ / ns",
+        xlim=xlim,
     )
-
-    # Method 3 (1/e criterion)
-    ydata_min = np.nanmin([ydata_min, np.nanmin(lifetimes_e)])
-    ax.plot(
-        bin_mids,
-        lifetimes_e,
-        label=r"$1/e$",
-        marker="s",  # Alternative: "3"
-        alpha=leap.plot.ALPHA,
-    )
-
-    # Method 4 (direct integral)
-    ydata_min = np.nanmin([ydata_min, np.nanmin(lifetimes_int_mom1)])
-    # Standard deviation of the underlying lifetime distribution.
-    yerr = np.sqrt(lifetimes_int_mom2 - lifetimes_int_mom1**2)
-    ax.errorbar(
-        bin_mids,
-        lifetimes_int_mom1,
-        yerr=yerr,
-        label="Area",
-        marker="D",  # Alternative: "4"
-        alpha=leap.plot.ALPHA,
-    )
-
-    # Method 5 (integral of the fit)
-    ydata_min = np.nanmin([ydata_min, np.nanmin(lifetimes_exp_mom1)])
-    # Standard deviation of the underlying lifetime distribution.
-    yerr = np.sqrt(lifetimes_exp_mom2 - lifetimes_exp_mom1**2)
-    ax.errorbar(
-        bin_mids,
-        lifetimes_exp_mom1,
-        yerr=yerr,
-        label="Fit",
-        marker="d",  # Alternative: "x"
-        alpha=leap.plot.ALPHA,
-    )
-
-    ax.set(xlabel=xlabel, ylabel="Residence Time / ns", xlim=xlim)
     ylim = ax.get_ylim()
     if ylim[0] < 0:
         ax.set_ylim(0, ylim[1])
     leap.plot.bins(ax, bins=bins)
     ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+    # Sort legend entries.  By default, lines plotted with `ax.plot`
+    # come before lines plotted with `ax.errorbar`.
+    handles, labels = ax.get_legend_handles_labels()
+    legend_order = (2, 3, 0, 1, 4)
+    handles = [handles[leg_ord] for leg_ord in legend_order]
+    labels = [labels[leg_ord] for leg_ord in legend_order]
     legend = ax.legend(
-        loc="upper center", ncol=2, **mdtplt.LEGEND_KWARGS_XSMALL
+        handles,
+        labels,
+        title=legend_title,
+        loc="upper center",
+        ncol=2,
+        **mdtplt.LEGEND_KWARGS_XSMALL,
     )
+    legend.get_title().set_multialignment("center")
     pdf.savefig()
-
-    # Set y axis to log scale.
+    # Set y axis to log scale
+    # (residence times vs. bins, "ensemble average").
+    # Round y limits to next lower and higher power of ten.
     ylim = ax.get_ylim()
-    if ylim[0] <= 0:
-        # Round to next lower power of ten.
-        ymin = 10 ** np.floor(np.log10(ydata_min))
-        ax.set_ylim(ymin, ylim[1])
+    ymin = 10 ** np.floor(np.log10(lifetime_min))
+    ymax = 10 ** np.ceil(np.log10(ylim[1]))
+    ax.set_ylim(ymin if not np.isnan(ymin) else None, ymax)
     ax.set_yscale("log", base=10, subs=np.arange(2, 10))
     pdf.savefig()
     plt.close()
 
-    # Plot R^2 value of the fits.
-    fig, ax = plt.subplots(clear=True)
-    leap.plot.elctrds(
-        ax, offset_left=elctrd_thk, offset_right=box_z - elctrd_thk
+    # Plot residence times vs. bins ("time average").
+    fig, axs = plt.subplots(
+        clear=True,
+        nrows=2,
+        sharex=True,
+        gridspec_kw={"height_ratios": height_ratios},
     )
-    ax.plot(bin_mids, fit_r2, marker=".")
+    fig.set_figheight(fig.get_figheight() * sum(height_ratios))
+    ax_profile, ax = axs
+    leap.plot.profile(ax_profile, Sim=Sim, free_en=True)
+    if surfq is not None:
+        leap.plot.elctrds(
+            ax, offset_left=elctrd_thk, offset_right=box_z - elctrd_thk
+        )
+    # Method 5 (integral of the fit).
+    ax.errorbar(
+        bin_mids,
+        lifetimes_exp_mom2 / lifetimes_exp_mom1,
+        yerr=np.sqrt(2 * lifetimes_exp_mom3 / lifetimes_exp_mom1),
+        label="Fit",
+        color="tab:cyan",
+        marker="D",
+        alpha=leap.plot.ALPHA,
+    )
+    # Method 4 (direct integral).
+    ax.errorbar(
+        bin_mids,
+        lifetimes_int_mom2 / lifetimes_int_mom1,
+        yerr=np.sqrt(2 * lifetimes_int_mom3 / lifetimes_int_mom1),
+        label="Area",
+        color="tab:blue",
+        marker="d",
+        alpha=leap.plot.ALPHA,
+    )
+    # Method 3 (1/e criterion).
+    ax.plot(
+        bin_mids,
+        lifetimes_e,
+        label=r"$1/e$",
+        color="tab:purple",
+        marker="s",
+        alpha=leap.plot.ALPHA,
+    )
+    # Method 2 (inverse transition rate).
+    ax.plot(
+        bin_mids,
+        lifetimes_k,
+        label="Rate",
+        color="tab:red",
+        marker="h",
+        alpha=leap.plot.ALPHA,
+    )
+    # Method 1 (counting).
+    ax.errorbar(
+        bin_mids,
+        lifetimes_cnt_mom1,
+        yerr=np.sqrt(lifetimes_cnt_mom2 - lifetimes_cnt_mom1**2),
+        label="Count",
+        color="tab:orange",
+        marker="H",
+        alpha=leap.plot.ALPHA,
+    )
+    ax.set(
+        xlabel=xlabel,
+        ylabel=r"Residence Time $\bar{\tau}$ / ns",
+        xlim=xlim,
+    )
+    ylim = ax.get_ylim()
+    if ylim[0] < 0:
+        ax.set_ylim(0, ylim[1])
+    leap.plot.bins(ax, bins=bins)
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+    # Sort legend entries.  By default, lines plotted with `ax.plot`
+    # come before lines plotted with `ax.errorbar`.
+    handles, labels = ax.get_legend_handles_labels()
+    legend_order = (2, 3, 0, 1, 4)
+    handles = [handles[leg_ord] for leg_ord in legend_order]
+    labels = [labels[leg_ord] for leg_ord in legend_order]
+    legend = ax.legend(
+        handles,
+        labels,
+        title=legend_title,
+        loc="upper center",
+        ncol=2,
+        **mdtplt.LEGEND_KWARGS_XSMALL,
+    )
+    legend.get_title().set_multialignment("center")
+    pdf.savefig()
+    # Set y axis to log scale
+    # (residence times vs. bins, "time average").
+    # Round y limits to next lower and higher power of ten.
+    ylim = ax.get_ylim()
+    ymin = 10 ** np.floor(np.log10(lifetime_min))
+    ymax = 10 ** np.ceil(np.log10(ylim[1]))
+    ax.set_ylim(ymin if not np.isnan(ymin) else None, ymax)
+    ax.set_yscale("log", base=10, subs=np.arange(2, 10))
+    pdf.savefig()
+    plt.close()
+
+    # Plot fit parameter tau0.
+    fig, axs = plt.subplots(
+        clear=True,
+        nrows=2,
+        sharex=True,
+        gridspec_kw={"height_ratios": height_ratios},
+    )
+    fig.set_figheight(fig.get_figheight() * sum(height_ratios))
+    ax_profile, ax = axs
+    leap.plot.profile(ax_profile, Sim=Sim, free_en=True)
+    if surfq is not None:
+        leap.plot.elctrds(
+            ax, offset_left=elctrd_thk, offset_right=box_z - elctrd_thk
+        )
+    ax.errorbar(bin_mids, tau0, yerr=tau0_sd, marker="o")
+    ax.set(xlabel=xlabel, ylabel=r"Fit Parameter $\tau_0$ / ns", xlim=xlim)
+    leap.plot.bins(ax, bins=bins)
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+    legend = ax.legend(title=legend_title, loc="upper center")
+    legend.get_title().set_multialignment("center")
+    pdf.savefig()
+    if not np.all(np.isnan(tau0)):
+        # Set y axis to log scale (fit parameter tau0).
+        # Round y limits to next lower and higher power of ten.
+        ylim = ax.get_ylim()
+        ymin = 10 ** np.floor(np.log10(np.nanmin(tau0)))
+        ymax = 10 ** np.ceil(np.log10(ylim[1]))
+        ax.set_ylim(ymin if not np.isnan(ymin) else None, ymax)
+        ax.set_yscale("log", base=10, subs=np.arange(2, 10))
+        pdf.savefig()
+    plt.close()
+
+    # Plot fit parameter beta.
+    fig, axs = plt.subplots(
+        clear=True,
+        nrows=2,
+        sharex=True,
+        gridspec_kw={"height_ratios": height_ratios},
+    )
+    fig.set_figheight(fig.get_figheight() * sum(height_ratios))
+    ax_profile, ax = axs
+    leap.plot.profile(ax_profile, Sim=Sim, free_en=True)
+    if surfq is not None:
+        leap.plot.elctrds(
+            ax, offset_left=elctrd_thk, offset_right=box_z - elctrd_thk
+        )
+    ax.errorbar(bin_mids, beta, yerr=beta_sd, marker="o")
+    ax.set(
+        xlabel=xlabel,
+        ylabel=r"Fit Parameter $\beta$",
+        xlim=xlim,
+        ylim=(0, 1.05),
+    )
+    leap.plot.bins(ax, bins=bins)
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+    legend = ax.legend(title=legend_title, loc="upper center")
+    legend.get_title().set_multialignment("center")
+    pdf.savefig()
+    plt.close()
+
+    # Plot R^2 value of the fits.
+    fig, axs = plt.subplots(
+        clear=True,
+        nrows=2,
+        sharex=True,
+        gridspec_kw={"height_ratios": height_ratios},
+    )
+    fig.set_figheight(fig.get_figheight() * sum(height_ratios))
+    ax_profile, ax = axs
+    leap.plot.profile(ax_profile, Sim=Sim, free_en=True)
+    if surfq is not None:
+        leap.plot.elctrds(
+            ax, offset_left=elctrd_thk, offset_right=box_z - elctrd_thk
+        )
+    ax.plot(bin_mids, fit_r2, marker="o")
     ax.set(
         xlabel=xlabel,
         ylabel=r"Coeff. of Determ. $R^2$",
         xlim=xlim,
         ylim=(0, 1.05),
     )
-    ax.vlines(
-        x=bins,
-        ymin=ax.get_ylim()[0],
-        ymax=ax.get_ylim()[1],
-        colors="black",
-        linestyles="dotted",
-    )
+    leap.plot.bins(ax, bins=bins)
     ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+    legend = ax.legend(title=legend_title, loc="lower center")
+    legend.get_title().set_multialignment("center")
     pdf.savefig()
     plt.close()
 
-    # Plot root mean squared error.
-    fig, ax = plt.subplots(clear=True)
-    leap.plot.elctrds(
-        ax, offset_left=elctrd_thk, offset_right=box_z - elctrd_thk
+    # Plot mean squared error.
+    fig, axs = plt.subplots(
+        clear=True,
+        nrows=2,
+        sharex=True,
+        gridspec_kw={"height_ratios": height_ratios},
     )
-    ax.plot(bin_mids, fit_mse, marker=".")
+    fig.set_figheight(fig.get_figheight() * sum(height_ratios))
+    ax_profile, ax = axs
+    leap.plot.profile(ax_profile, Sim=Sim, free_en=True)
+    if surfq is not None:
+        leap.plot.elctrds(
+            ax, offset_left=elctrd_thk, offset_right=box_z - elctrd_thk
+        )
+    ax.plot(bin_mids, fit_mse, marker="o")
     ax.set(xlabel=xlabel, ylabel=r"Mean Squared Error / ns$^2$", xlim=xlim)
-    ax.vlines(
-        x=bins,
-        ymin=ax.get_ylim()[0],
-        ymax=ax.get_ylim()[1],
-        colors="black",
-        linestyles="dotted",
-    )
+    leap.plot.bins(ax, bins=bins)
     ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+    legend = ax.legend(title=legend_title, loc="lower center")
+    legend.get_title().set_multialignment("center")
     pdf.savefig()
+    if not np.all(np.isnan(fit_mse)):
+        # Set y axis to log scale (mean squared error).
+        # Round y limits to next lower and higher power of ten.
+        ylim = ax.get_ylim()
+        ymin = 10 ** np.floor(np.log10(np.nanmin(fit_mse[fit_mse > 0])))
+        ymax = 10 ** np.ceil(np.log10(ylim[1]))
+        ax.set_ylim(ymin if not np.isnan(ymin) else None, ymax)
+        ax.set_yscale("log", base=10, subs=np.arange(2, 10))
+        pdf.savefig()
+    plt.close()
 
-    # Set y axis to log scale.
-    ylim = ax.get_ylim()
-    if ylim[0] <= 0:
-        # Round to next lower power of ten.
-        ymin = 10 ** np.floor(np.log10(ydata_min))
-        ax.set_ylim(ymin, ylim[1])
-    ax.set_yscale("log", base=10, subs=np.arange(2, 10))
+    # Plot fitted region.
+    fig, axs = plt.subplots(
+        clear=True,
+        nrows=2,
+        sharex=True,
+        gridspec_kw={"height_ratios": height_ratios},
+    )
+    fig.set_figheight(fig.get_figheight() * sum(height_ratios))
+    ax_profile, ax = axs
+    leap.plot.profile(ax_profile, Sim=Sim, free_en=True)
+    if surfq is not None:
+        leap.plot.elctrds(
+            ax, offset_left=elctrd_thk, offset_right=box_z - elctrd_thk
+        )
+    ax.plot(bin_mids, fit_start * time_conv, label="Start", marker="^")
+    ax.plot(bin_mids, fit_stop * time_conv, label="End", marker="v")
+    ax.set(xlabel=xlabel, ylabel="Fitted Region / ns", xlim=xlim)
+    leap.plot.bins(ax, bins=bins)
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+    legend = ax.legend(title=legend_title, loc="upper center", ncol=2)
+    legend.get_title().set_multialignment("center")
+    pdf.savefig()
+    plt.close()
+
+    # Plot remain probabilities and fits for each bin.
+    fig, ax = plt.subplots(clear=True)
+    ax.set_prop_cycle(color=colors)
+    for i, rp in enumerate(remain_props.T):
+        times_fit = times[fit_start[i] : fit_stop[i]]
+        fit = mdt.func.kww(times_fit, *popt[i])
+        lines = ax.plot(
+            times, rp, label=r"$%d$" % (states[i] + 1), linewidth=1
+        )
+        ax.plot(times_fit, fit, linestyle="dashed", color=lines[0].get_color())
+    ax.set(
+        xlabel="Lag Time / ns",
+        ylabel="Decay Law",
+        xlim=(times[1], times[-1]),
+        ylim=(0, 1),
+    )
+    ax.set_xscale("log", base=10, subs=np.arange(2, 10))
+    legend = ax.legend(
+        title=legend_title + "\nBin Number",
+        loc="upper right",
+        ncol=3,
+        **mdtplt.LEGEND_KWARGS_XSMALL,
+    )
+    legend.get_title().set_multialignment("center")
+    pdf.savefig()
+    plt.close()
+
+    # Plot fit residuals for each bin.
+    fig, ax = plt.subplots(clear=True)
+    ax.set_prop_cycle(color=colors)
+    for i, rp in enumerate(remain_props.T):
+        times_fit = times[fit_start[i] : fit_stop[i]]
+        fit = mdt.func.kww(times_fit, *popt[i])
+        res = rp[fit_start[i] : fit_stop[i]] - fit
+        ax.plot(times_fit, res, label=r"$%d$" % (states[i] + 1))
+    ax.set(
+        xlabel="Lag Time / ns",
+        ylabel="Fit Residuals",
+        xlim=(times[1], times[-1]),
+    )
+    ax.set_xscale("log", base=10, subs=np.arange(2, 10))
+    legend = ax.legend(
+        title=legend_title + "\nBin Number",
+        loc="lower right",
+        ncol=3,
+        **mdtplt.LEGEND_KWARGS_XSMALL,
+    )
+    legend.get_title().set_multialignment("center")
     pdf.savefig()
     plt.close()
 
