@@ -89,8 +89,10 @@ fi
 # Main Part                                                            #
 ########################################################################
 
+cwd=$(pwd) # Current working directory.
+
 script_dir=$(cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd)
-project_root=$(readlink -e "${script_dir}/../../.." || exit)
+project_root=$(readlink -e "${script_dir}/../../../.." || exit)
 py_exe=".venv/bin/python3"
 py_exe="${project_root}/${py_exe}"
 py_script_generate_bulk=$(
@@ -128,7 +130,7 @@ fi
 analysis="density-z"
 tool="gmx"
 
-bulk_dir="bulk"
+bulk_dir="${top_path}/bulk"
 if [[ ! -d ${bulk_dir} ]]; then
     echo "ERROR: No such directory '${bulk_dir}'"
 fi
@@ -184,9 +186,9 @@ for system in lintf2_[gp]*[0-9]*_[0-9]*-[0-9]*_sc80; do
 
     cd ../../../../../ || exit
 done
-cd ../ || exit
+cd "${cwd}" || exit
 
-surface_dir="walls"
+surface_dir="${top_path}/walls"
 if [[ ! -d ${surface_dir} ]]; then
     echo "ERROR: No such directory '${surface_dir}'"
 fi
@@ -257,7 +259,7 @@ for surfq in q[0-9]*; do
     cd ../ || exit
     echo "============================================================="
 done
-cd ../ || exit
+cd "${cwd}" || exit
 
 echo
 echo "Done"
