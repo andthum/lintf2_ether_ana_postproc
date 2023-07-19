@@ -136,6 +136,7 @@
         "savetxt",
         "savgol",
         "scipy",
+        "searchsorted",
         "setuptools",
         "shellcheck",
         "shfmt",
