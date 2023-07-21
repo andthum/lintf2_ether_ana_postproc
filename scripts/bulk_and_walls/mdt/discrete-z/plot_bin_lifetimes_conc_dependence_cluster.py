@@ -489,18 +489,19 @@ xlabel = r"Li-to-EO Ratio $r$"
 xlim = (0, 0.4 + 0.0125)
 if args.common_ylim:
     if args.cmp == "Li":
+        # Only common for conc dependence.
         ylims = [
-            (None, None),  # Peak positions [nm].
-            (None, None),  # 1st moment <tau> [ns].
+            (0, 3.6),  # Peak positions [nm].
+            (4e-3, 4e4),  # 1st moment <tau> [ns].
         ]
         if args.method == "fit":
             ylims += [
-                (None, None),  # Fit parameter tau0 [ns].
+                (4e-3, 2e3),  # Fit parameter tau0 [ns].
                 (0, 1.05),  # Fit parameter beta.
-                (0, 1.05),  # Coeff. of determ. of the fit (R^2 value).
-                (None, None),  # Mean squared error of the fit [ns^2].
-                (None, None),  # Start of fit region (inclusive) [ns].
-                (None, None),  # End of fit region (exclusive) [ns].
+                (0.920, 1.005),  # R^2 value.
+                (3e-7, 6e-3),  # Mean squared error of the fit [ns^2].
+                (-0.02, 0.2),  # Start of fit region (inclusive) [ns].
+                (3e-2, 2e3),  # End of fit region (exclusive) [ns].
             ]
     else:
         raise NotImplementedError(
