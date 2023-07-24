@@ -27,35 +27,6 @@ from scipy.special import gamma
 import lintf2_ether_ana_postproc as leap
 
 
-def nantrapz(y, x, *args, **kwargs):
-    """
-    Integrate along the given axis using the composite trapezoidal rule,
-    ignoring NaNs.
-
-    Parameters
-    ----------
-    y, x : array_like
-        See :func:`numpy.trapz`.
-    args, kwargs : dict
-        Additional (keyword) arguments to parse to :func:`numpy.trapz`.
-        See there for possible options.
-
-    Returns
-    -------
-    trapz : float or numpy.ndarray
-        See :func:`numpy.trapz`.
-
-    Notes
-    -----
-    This function simply calls :func:`numpy.trapz` after removing NaNs
-    from the input arrays.
-    """
-    invalid = np.isnan(x)
-    invalid &= np.isnan(y)
-    valid = ~invalid
-    return np.trapz(y[valid], x[valid], *args, **kwargs)
-
-
 # Input parameters.
 parser = argparse.ArgumentParser(
     description=(
@@ -170,6 +141,7 @@ print("Reading data and calculating lifetimes (Method 1-2)...")
 file_suffix = file_suffix_common + "_dtrj.npz"
 infile_dtrj = leap.simulation.get_ana_file(Sim, analysis, tool, file_suffix)
 dtrj = mdt.fh.load_dtrj(infile_dtrj)
+n_frames = dtrj.shape[1]
 
 # Method 1: Calculate the average lifetime by counting the number of
 # frames that a given compound stays in a given state.
@@ -201,12 +173,18 @@ file_suffix = file_suffix_common + "_state_lifetime_discrete" + con + ".txt.gz"
 infile_rp = leap.simulation.get_ana_file(Sim, analysis, tool, file_suffix)
 remain_props = np.loadtxt(infile_rp)
 states = remain_props[0, 1:]  # State/Bin indices.
-times = remain_props[1:, 0] * time_conv  # Trajectory step widths -> ns.
+times = remain_props[1:, 0]  # Lag times in trajectory steps.
 remain_props = remain_props[1:, 1:]  # Remain probability functions.
 if np.any(remain_props < 0) or np.any(remain_props > 1):
     raise ValueError(
         "Some values of the remain probability lie outside the interval [0, 1]"
     )
+if not np.array_equal(times, np.arange(n_frames)):
+    print("`n_frames` =", n_frames)
+    print("`times` =")
+    print(times)
+    raise ValueError("`times` != `np.arange(n_frames)`")
+times *= time_conv  # Trajectory steps -> ns.
 if np.any(np.modf(states)[0] != 0):
     raise ValueError(
         "Some state indices are not integers but floats.  states ="
@@ -218,12 +196,13 @@ if not np.array_equal(states, states_cnt):
     )
 del states_cnt
 states = states.astype(np.int32)
+n_states = len(states)
 
 # Method 3: Set the lifetime to the lag time at which the remain
 # probability crosses 1/e.
 thresh = 1 / np.e
 ix_thresh = np.nanargmax(remain_props <= thresh, axis=0)
-lifetimes_e = np.full(len(states), np.nan, dtype=np.float64)
+lifetimes_e = np.full(n_states, np.nan, dtype=np.float64)
 for i, rp in enumerate(remain_props.T):
     if rp[ix_thresh[i]] > thresh:
         # The remain probability never falls below the threshold.
@@ -269,18 +248,24 @@ for i, rp in enumerate(remain_props.T):
 
 # Method 4: Calculate the lifetime as the integral of the remain
 # probability.
-lifetimes_int_mom1 = np.full(len(states), np.nan, dtype=np.float64)
-lifetimes_int_mom2 = np.full(len(states), np.nan, dtype=np.float64)
-lifetimes_int_mom3 = np.full(len(states), np.nan, dtype=np.float64)
+lifetimes_int_mom1 = np.full(n_states, np.nan, dtype=np.float64)
+lifetimes_int_mom2 = np.full(n_states, np.nan, dtype=np.float64)
+lifetimes_int_mom3 = np.full(n_states, np.nan, dtype=np.float64)
 for i, rp in enumerate(remain_props.T):
-    lifetimes_int_mom1[i] = nantrapz(y=rp, x=times, axis=0)
-    lifetimes_int_mom2[i] = nantrapz(y=rp * times, x=times, axis=0)
-    lifetimes_int_mom3[i] = nantrapz(y=rp * times**2, x=times, axis=0) / 2
+    valid = ~np.isnan(rp)
+    lifetimes_int_mom1[i] = np.trapz(y=rp[valid], x=times[valid])
+    lifetimes_int_mom2[i] = np.trapz(
+        y=rp[valid] * times[valid], x=times[valid]
+    )
+    lifetimes_int_mom3[i] = np.trapz(
+        y=rp[valid] * (times[valid] ** 2), x=times[valid]
+    )
+    lifetimes_int_mom3[i] /= 2
 invalid = np.all(remain_props > args.int_thresh, axis=0)
 lifetimes_int_mom1[invalid] = np.nan
 lifetimes_int_mom2[invalid] = np.nan
 lifetimes_int_mom3[invalid] = np.nan
-del invalid
+del valid, invalid
 
 # Method 5: Fit the remain probability with a stretched exponential and
 # calculate the lifetime as the integral of this stretched exponential.
@@ -289,17 +274,17 @@ if args.end_fit is None:
 else:
     _, end_fit = mdt.nph.find_nearest(times, args.end_fit, return_index=True)
 end_fit += 1  # Make `end_fit` inclusive.
-fit_start = np.zeros(len(states), dtype=np.uint32)  # Inclusive.
-fit_stop = np.zeros(len(states), dtype=np.uint32)  # Exclusive.
+fit_start = np.zeros(n_states, dtype=np.uint32)  # Inclusive.
+fit_stop = np.zeros(n_states, dtype=np.uint32)  # Exclusive.
 
 # Initial guesses for `tau0` and `beta`.
-init_guess = np.column_stack([lifetimes_e, np.ones(len(states))])
+init_guess = np.column_stack([lifetimes_e, np.ones(n_states)])
 init_guess[np.isnan(init_guess)] = 1.5 * times[-1]
 
-popt = np.full((len(states), 2), np.nan, dtype=np.float64)
-perr = np.full((len(states), 2), np.nan, dtype=np.float64)
-fit_r2 = np.full(len(states), np.nan, dtype=np.float64)
-fit_mse = np.full(len(states), np.nan, dtype=np.float64)
+popt = np.full((n_states, 2), np.nan, dtype=np.float64)
+perr = np.full((n_states, 2), np.nan, dtype=np.float64)
+fit_r2 = np.full(n_states, np.nan, dtype=np.float64)
+fit_mse = np.full(n_states, np.nan, dtype=np.float64)
 for i, rp in enumerate(remain_props.T):
     stop_fit = np.nanargmax(rp < args.stop_fit)
     if stop_fit == 0 and rp[stop_fit] >= args.stop_fit:
@@ -322,7 +307,7 @@ for i, rp in enumerate(remain_props.T):
         # Mean squared error / mean squared residuals.
         fit_mse[i] = ss_res / len(fit)
         # Total sum of squares
-        ss_tot = np.nansum((rp_fit - np.nanmean(rp)) ** 2)
+        ss_tot = np.nansum((rp_fit - np.nanmean(rp_fit)) ** 2)
         # (Pseudo) coefficient of determination (R^2).
         # https://www.r-bloggers.com/2021/03/the-r-squared-and-nonlinear-regression-a-difficult-marriage/
         fit_r2[i] = 1 - (ss_res / ss_tot)
@@ -553,8 +538,8 @@ lifetime_min = np.nanmin(
 )
 
 cmap = plt.get_cmap()
-c_vals = np.arange(len(states))
-c_norm = len(states) - 1
+c_vals = np.arange(n_states)
+c_norm = n_states - 1
 c_vals_normed = c_vals / c_norm
 colors = cmap(c_vals_normed)
 
