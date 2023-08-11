@@ -151,8 +151,8 @@ parser.add_argument(
     "--method",
     type=str,
     required=False,
-    default="fit",
-    choices=("area", "fit"),
+    default="rate",
+    choices=("count", "rate", "e", "area", "fit"),
     help=(
         "The method used to calculate the residence times.  Default:"
         " %(default)s"
@@ -165,7 +165,8 @@ parser.add_argument(
     action="store_true",
     help=(
         "Use the residence times calculated from the 'continuous' definition"
-        " of the remain probability function."
+        " of the remain probability function.  Only relevant for methods"
+        " 'area' and 'fit'."
     ),
 )
 parser.add_argument(
@@ -185,7 +186,7 @@ if args.n_clusters is not None and args.n_clusters <= 0:
         "--n-cluster ({}) must be a positive integer".format(args.n_clusters)
     )
 
-if args.continuous:
+if args.continuous and args.method in ("area", "fit"):
     con = "_continuous"
 else:
     con = ""
@@ -230,7 +231,27 @@ cols_lt_bins = (
     1,  # Lower bin edges [A].
     2,  # Upper bin edges [A].
 )
-if args.method == "area":
+if args.method == "count":
+    cols_lt_data = (
+        7,  # 1st moment <tau_cnt> [ns].
+        8,  # 2nd moment <tau_cnt^2> [ns^2].
+    )
+    col_lt_data_is_sd = (False, True)
+elif args.method == "rate":
+    cols_lt_data = (
+        10,  # 1st moment <tau_k> [ns].
+        # If <tau_cnt> = <tau_k> +/- 1%, use <tau_cnt^2> as estimate for
+        # <tau_k^2>.
+        8,  # 2nd moment <tau_cnt^2> [ns^2].
+        7,  # 1st moment <tau_cnt> [ns].
+        8,  # 2nd moment <tau_cnt^2> [ns^2].
+    )
+    ylabels += ("Res. Time (Count) / ns",)
+    col_lt_data_is_sd = (False, True, False, True)
+elif args.method == "e":
+    cols_lt_data = (11,)  # 1st moment <tau_e> [ns].
+    col_lt_data_is_sd = (False,)
+elif args.method == "area":
     cols_lt_data = (
         12,  # 1st moment <tau_int> [ns].
         13,  # 2nd moment <tau_int^2> [ns^2].
@@ -398,11 +419,30 @@ for sim_ix, Sim in enumerate(Sims.sims):
             )
         data_sim_valid = data_sim_valid[:, layer_ix]
 
-        # Replace the 2nd moment of the residence time with the standard
-        # deviation.
-        data_sim_valid[3] = np.sqrt(data_sim_valid[3] - data_sim_valid[2] ** 2)
         # Discard the lower and upper bin edges.
         data_sim_valid = data_sim_valid[2:]
+
+        # Get standard deviations of the residence times (if available).
+        if args.method == "rate":
+            # If <tau_cnt> = <tau_k> +/- 1%, use <tau_cnt^2> as estimate
+            # for <tau_k^2>.
+            atol = 0
+            rtol = 0.01
+            cnt_equals_k = np.isclose(
+                data_sim_valid[2], data_sim_valid[0], rtol=rtol, atol=atol
+            )
+            data_sim_valid[1][~cnt_equals_k] = np.nan
+            # Replace the 2nd moment of the residence time calculated by
+            # the count method with the standard deviation.
+            data_sim_valid[3] = np.sqrt(
+                data_sim_valid[3] - data_sim_valid[2] ** 2
+            )
+        if len(col_lt_data_is_sd) > 1 and col_lt_data_is_sd[1]:
+            # Replace the 2nd moment of the residence time with the
+            # standard deviation.
+            data_sim_valid[1] = np.sqrt(
+                data_sim_valid[1] - data_sim_valid[0] ** 2
+            )
 
         ydata[pkp_col_ix][pkt_ix][sim_ix] = pk_pos
         col_indices = np.arange(n_cols_tot)
@@ -494,7 +534,9 @@ if args.common_ylim:
             (0, 3.6),  # Peak positions [nm].
             (4e-3, 4e4),  # 1st moment <tau> [ns].
         ]
-        if args.method == "fit":
+        if args.method == "rate":
+            ylims += [(4e-3, 4e4)]  # <tau_cnt> [ns].
+        elif args.method == "fit":
             ylims += [
                 (4e-3, 2e3),  # Fit parameter tau0 [ns].
                 (0, 1.05),  # Fit parameter beta.
@@ -520,7 +562,9 @@ logy = (
     False,  # Peak positions [nm].
     True,  # 1st moment <tau> [ns].
 )
-if args.method == "fit":
+if args.method == "rate":
+    logy += (True,)  # Residence time from count method <tau_cnt> [ns].
+elif args.method == "fit":
     logy += (
         True,  # Fit parameter tau0 [ns].
         False,  # Fit parameter beta.
@@ -551,12 +595,12 @@ colors_sep = cmap(c_vals_sep_normed)
 
 mdt.fh.backup(outfile)
 with PdfPages(outfile) as pdf:
+    # Index for "real" data columns (no standard deviations).
     col_ix_data = -1
     for col_ix, yd_col in enumerate(ydata):
         if col_is_sd[col_ix]:
             # Column contains a standard deviation.
             continue
-        # Index for "real" data columns (no standard deviations).
         col_ix_data += 1
 
         # Layers at left and right electrode combined in one plot.
