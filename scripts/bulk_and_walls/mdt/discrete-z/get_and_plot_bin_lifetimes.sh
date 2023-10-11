@@ -27,7 +27,7 @@ usage() {
     echo "        simulations.  Default: '${top_path}'."
     echo "  -c    The compound for which to calculate the bin residence times."
     echo "        Default: '${cmp}'."
-    echo "  -f    Addtional options (besides --systen, --settings and --cmp)"
+    echo "  -f    Addtional options (besides --system, --settings and --cmp)"
     echo "        to parse to 'get_and_plot_bin_lifetimes.py' as one long,"
     echo "        enquoted string.  See there for possible options.  Default:"
     echo "        '${flags[*]}'"
