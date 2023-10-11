@@ -3,7 +3,7 @@
 
 """
 Plot the bin residence times of a given compound as function of the
-electrode surface charge
+electrode surface charge.
 
 Only bins that correspond to actual layers (i.e. free-energy minima) at
 the electrode interface are taken into account.
@@ -113,8 +113,16 @@ parser.add_argument(
     "--method",
     type=str,
     required=False,
-    default="rate",
-    choices=("count", "rate", "e", "area", "fit"),
+    default="count_censored",
+    choices=(
+        "count_censored",
+        "count_uncensored",
+        "rate",
+        "e",
+        "area",
+        "fit_kohlrausch",
+        "fit_burr",
+    ),
     help=(
         "The method used to calculate the residence times.  Default:"
         " %(default)s"
@@ -127,8 +135,8 @@ parser.add_argument(
     action="store_true",
     help=(
         "Use the residence times calculated from the 'continuous' definition"
-        " of the remain probability function.  Only relevant for methods"
-        " 'area' and 'fit'."
+        " of the remain probability function.  Meaningless for the methods"
+        " 'count_censored', 'count_uncensored' and 'rate'."
     ),
 )
 parser.add_argument(
@@ -148,7 +156,11 @@ if args.n_clusters is not None and args.n_clusters <= 0:
         "--n-cluster ({}) must be a positive integer".format(args.n_clusters)
     )
 
-if args.continuous and args.method in ("area", "fit"):
+if args.continuous and args.method not in (
+    "count_censored",
+    "count_uncensored",
+    "rate",
+):
     con = "_continuous"
 else:
     con = ""
@@ -186,72 +198,101 @@ pkp_col_ix = cols_fe.index(pkp_col)
 col_fe_is_sd = (False,)
 
 # Columns to read from the file containing the bin residence times.
-ylabels += ("Residence Time / ns",)
 cols_lt_bins = (
     1,  # Lower bin edges [A].
     2,  # Upper bin edges [A].
 )
-if args.method == "count":
-    cols_lt_data = (
-        7,  # 1st moment <tau_cnt> [ns].
-        8,  # 2nd moment <tau_cnt^2> [ns^2].
+ylabels += ("Residence Time / ns",)
+if args.method not in ("rate", "e"):
+    ylabels += (
+        "Std. Dev. / ns",
+        "Skewness",
+        "Excess Kurtosis",
+        "Median / ns",
     )
-    col_lt_data_is_sd = (False, True)
+if args.method in ("count_censored", "count_uncensored"):
+    ylabels += (
+        "Min. Lifetime / ns",
+        "Max. Lifetime / ns",
+        "No. of Samples",
+        "Res. Time (Rate) / ns",
+    )
+    cols_lt_data = (
+        7,  # Sample mean <t_cnt> [ns].
+        8,  # Uncertainty of the sample mean (standard error) [ns^2].
+        9,  # Corrected sample standard deviation [ns].
+        10,  # Unbiased sample skewness.
+        11,  # Unbiased sample excess kurtosis (Fisher).
+        12,  # Sample median [ns].
+        13,  # Sample minimum [ns].
+        14,  # Sample maximum [ns].
+        15,  # Number of observations/samples.
+    )
+    if args.method == "count_uncensored":
+        cols_lt_data = np.array(cols_lt_data)
+        cols_lt_data += len(cols_lt_data)
+        cols_lt_data = tuple(cols_lt_data)
+    # Below we will check whether <t_cnt> is equal to <tau_k> within the
+    # standard error.
+    cols_lt_data += (25,)  # Mean <tau_k> [ns].
+    col_lt_data_is_sd = [False for col in cols_lt_data]
+    col_lt_data_is_sd[1] = True
 elif args.method == "rate":
-    cols_lt_data = (
-        10,  # 1st moment <tau_k> [ns].
-        # If <tau_cnt> = <tau_k> +/- 1%, use <tau_cnt^2> as estimate for
-        # <tau_k^2>.
-        8,  # 2nd moment <tau_cnt^2> [ns^2].
-        7,  # 1st moment <tau_cnt> [ns].
-        8,  # 2nd moment <tau_cnt^2> [ns^2].
-    )
-    ylabels += ("Res. Time (Count) / ns",)
-    col_lt_data_is_sd = (False, True, False, True)
+    cols_lt_data = (25,)  # Mean <tau_k> [ns].
+    col_lt_data_is_sd = (False,)
 elif args.method == "e":
-    cols_lt_data = (11,)  # 1st moment <tau_e> [ns].
+    cols_lt_data = (26,)  # Mean <tau_e> [ns].
     col_lt_data_is_sd = (False,)
 elif args.method == "area":
     cols_lt_data = (
-        12,  # 1st moment <tau_int> [ns].
-        13,  # 2nd moment <tau_int^2> [ns^2].
+        27,  # Mean <t_int> [ns].
+        28,  # Standard deviation [ns].
+        29,  # Skewness.
+        30,  # Excess kurtosis (Fisher).
+        31,  # Median [ns].
     )
-    col_lt_data_is_sd = (False, True)
-elif args.method == "fit":
+    col_lt_data_is_sd = [False for col in cols_lt_data]
+elif args.method in ("fit_kohlrausch", "fit_burr"):
     ylabels += (
         r"Fit Parameter $\tau_0$ / ns",
         r"Fit Parameter $\beta$",
-        r"Coeff. of Determ. $R^2$",
-        r"Mean Squared Error / ns$^2$",
-        "Fit Start / ns",
-        "Fit End / ns",
     )
     cols_lt_data = (
-        15,  # 1st moment <tau_exp> [ns].
-        16,  # 2nd moment <tau_exp^2> [ns^2].
-        18,  # Fit parameter tau0 [ns].
-        19,  # Standard deviation of tau0 [ns].
-        20,  # Fit parameter beta.
-        21,  # Standard deviation of beta.
-        22,  # Coefficient of determination of the fit (R^2 value).
-        23,  # Mean squared error of the fit [ns^2].
-        24,  # Start of fit region (inclusive) [ns].
-        25,  # End of fit region (exclusive) [ns].
+        32,  # Mean <t_fit> [ns].
+        33,  # Standard deviation [ns].
+        34,  # Skewness.
+        35,  # Excess kurtosis (Fisher).
+        36,  # Median [ns].
+        37,  # Fit parameter tau0 [ns].
+        38,  # Standard deviation of tau0 [ns].
+        39,  # Fit parameter beta.
+        40,  # Standard deviation of beta.
+        41,  # Coefficient of determination of the fit (R^2 value).
+        42,  # Root-mean-square error (RMSE) of the fit.
     )
-    col_lt_data_is_sd = (
-        False,
-        True,
-        False,
-        True,
-        False,
-        True,
-        False,
-        False,
-        False,
-        False,
+    col_lt_data_is_sd_ix = [6, 8]
+    if args.method == "fit_burr":
+        cols_lt_data = np.array(cols_lt_data)
+        cols_lt_data += len(cols_lt_data)
+        cols_lt_data = tuple(cols_lt_data)
+        cols_lt_data += (
+            54,  # Coefficient of determination of the fit (R^2 value).
+            55,  # Root-mean-square error (RMSE) of the fit.
+        )
+        col_lt_data_is_sd_ix = [6, 8, 10]
+        ylabels += (r"Fit Parameter $\delta$",)
+    cols_lt_data += (57,)  # End of fit region [ns].
+    col_lt_data_is_sd = np.array([False for col in cols_lt_data])
+    col_lt_data_is_sd[col_lt_data_is_sd_ix] = True
+    ylabels += (
+        r"Coeff. of Determ. $R^2$",
+        "RMSE",
+        "End of Fit Region / ns",
     )
 else:
     raise ValueError("Invalid --method ({})".format(args.method))
+cols_lt_data = tuple(cols_lt_data)
+col_lt_data_is_sd = tuple(col_lt_data_is_sd)
 if len(col_lt_data_is_sd) != len(cols_lt_data):
     raise ValueError(
         "`len(col_lt_data_is_sd)` ({}) != `len(cols_lt_data)`"
@@ -371,36 +412,44 @@ for sim_ix, Sim in enumerate(Sims.sims):
         layer_ix = ix[ix < len(pk_pos)]
         if not np.array_equal(layer_ix, np.arange(len(pk_pos))):
             raise ValueError(
+                "Simulation: '{}'.\n"
+                "Peak-position type: '{}'.\n"
                 "Could not match each layer/free-energy minimum to exactly one"
-                " bin.  Bin edges: {}.  Free-energy minima: {}."
-                "  Assignment: {}".format(bin_edges_valid, pk_pos, layer_ix)
+                " bin.  Bin edges: {}.  Free-energy minima: {}.  Assignment:"
+                " {}".format(
+                    Sim.path, pkp_type, bin_edges_valid, pk_pos, layer_ix
+                )
             )
         data_sim_valid = data_sim_valid[:, layer_ix]
 
         # Discard the lower and upper bin edges.
         data_sim_valid = data_sim_valid[2:]
 
-        # Get standard deviations of the residence times (if available).
-        if args.method == "rate":
-            # If <tau_cnt> = <tau_k> +/- 1%, use <tau_cnt^2> as estimate
-            # for <tau_k^2>.
-            atol = 0
-            rtol = 0.01
-            cnt_equals_k = np.isclose(
-                data_sim_valid[2], data_sim_valid[0], rtol=rtol, atol=atol
-            )
-            data_sim_valid[1][~cnt_equals_k] = np.nan
-            # Replace the 2nd moment of the residence time calculated by
-            # the count method with the standard deviation.
-            data_sim_valid[3] = np.sqrt(
-                data_sim_valid[3] - data_sim_valid[2] ** 2
-            )
-        if len(col_lt_data_is_sd) > 1 and col_lt_data_is_sd[1]:
-            # Replace the 2nd moment of the residence time with the
-            # standard deviation.
-            data_sim_valid[1] = np.sqrt(
-                data_sim_valid[1] - data_sim_valid[0] ** 2
-            )
+        if args.method in ("count_censored", "count_uncensored"):
+            # Check whether <t_cnt> is equal to <tau_k> within the
+            # standard error.
+            atol = data_sim_valid[1]  # Uncertainty of the sample mean.
+            # The uncertainty of the rate method is set to 10% of
+            # <tau_k>.
+            atol += 0.1 * data_sim_valid[-1]
+            if not np.all(
+                np.isclose(
+                    data_sim_valid[0], data_sim_valid[-1], rtol=0, atol=atol
+                )
+            ):
+                raise ValueError(
+                    "Simulation: '{}'.\n"
+                    "Peak-position type: '{}'.\n"
+                    "The residence time determined by the count method ({})"
+                    " differs from the residence time determined by the rate"
+                    " method ({}) by more than {}".format(
+                        Sim.path,
+                        pkp_type,
+                        data_sim_valid[0],
+                        data_sim_valid[-1],
+                        atol,
+                    )
+                )
 
         ydata[pkp_col_ix][pkt_ix][sim_ix] = pk_pos
         col_indices = np.arange(n_cols_tot)
@@ -499,35 +548,34 @@ if args.common_ylim:
         # Only common for chain-length and surfq dependence.
         ylims = [
             (0, 3.6),  # Peak positions [nm].
-            (7e-3, 2e1),  # 1st moment <tau> [ns].
+            (7e-3, 2e1),  # Mean <tau> [ns].
         ]
-        if args.method == "rate":
-            ylims += [(7e-3, 2e1)]  # <tau_cnt> [ns].
-        elif args.method == "fit":
+        if args.method not in ("rate", "e"):
             ylims += [
-                (7e-3, 2e1),  # Fit parameter tau0 [ns].
-                (0, 1.05),  # Fit parameter beta.
-                (0.976, 1.001),  # R^2 value.
-                (3e-7, 6e-3),  # Mean squared error of the fit [ns^2].
-                (-0.02, 0.2),  # Start of fit region (inclusive) [ns].
-                (3e-2, 8e1),  # End of fit region (exclusive) [ns].
+                (7e-3, 2e1),  # Standard deviation [ns].
+                (1e0, 3e1),  # Skewness.
+                (4e0, 1e3),  # Excess kurtosis (Fisher).
+                (2e-3, 5e0),  # Median [ns].
             ]
-        # Common for chain-length, conc and surfq dependence.
-        # ylims = [
-        #     (0, 3.6),  # Peak positions [nm].
-        #     (4e-3, 4e4),  # 1st moment <tau> [ns].
-        # ]
-        # if args.method == "rate":
-        #     ylims += [(4e-3, 4e4)]  # <tau_cnt> [ns].
-        # elif args.method == "fit":
-        #     ylims += [
-        #         (4e-3, 2e3),  # Fit parameter tau0 [ns].
-        #         (0, 1.05),  # Fit parameter beta.
-        #         (0.920, 1.005),  # R^2 value.
-        #         (3e-7, 6e-3),  # Mean squared error of the fit [ns^2].
-        #         (-0.02, 0.2),  # Start of fit region (inclusive) [ns].
-        #         (3e-2, 2e3),  # End of fit region (exclusive) [ns].
-        #     ]
+        if args.method in ("count_censored", "count_uncensored"):
+            ylims += (
+                (1e-3, 3e-3),  # Sample minimum [ns].
+                (1e-1, 2e2),  # Sample maximum [ns].
+                (9e2, 4e5),  # Number of observations/samples.
+                (7e-3, 2e1),  # Mean <tau_k> [ns].
+            )
+        elif args.method in ("fit_kohlrausch", "fit_burr"):
+            ylims += [
+                (None, None),  # Fit parameter tau0 [ns].
+                (None, None),  # Fit parameter beta.
+            ]
+            if args.method == "fit_burr":
+                ylims += [(None, None)]  # Fit parameter delta [ns].
+            ylims += [
+                (None, None),  # Coefficient of determination (R^2).
+                (None, None),  # Root-mean-square error (RMSE).
+                (None, None),  # End of fit region [ns].
+            ]
     else:
         raise NotImplementedError(
             "Common ylim not implemented for compounds other than Li"
@@ -543,18 +591,37 @@ if len(ylims) != n_cols_data:
 # Whether to use log scale for the y-axis.
 logy = (
     False,  # Peak positions [nm].
-    True,  # 1st moment <tau> [ns].
+    True,  # Mean <tau> [ns].
 )
-if args.method == "rate":
-    logy += (True,)  # Residence time from count method <tau_cnt> [ns].
-elif args.method == "fit":
+if args.method not in ("rate", "e"):
+    logy += (
+        True,  # Standard deviation [ns].
+        True,  # Skewness.
+        True,  # Excess kurtosis (Fisher).
+        True,  # Median [ns].
+    )
+if args.method in ("count_censored", "count_uncensored"):
+    logy += (
+        False,  # Sample minimum [ns].
+        True,  # Sample maximum [ns].
+        True,  # Number of observations/samples.
+        True,  # Mean <tau_k> [ns].
+    )
+elif args.method in ("fit_kohlrausch", "fit_burr"):
     logy += (
         True,  # Fit parameter tau0 [ns].
         False,  # Fit parameter beta.
-        False,  # Coeff. of determ. of the fit (R^2 value).
-        True,  # Mean squared error of the fit [ns^2].
-        False,  # Start of fit region (inclusive) [ns].
-        True,  # End of fit region (exclusive) [ns].
+    )
+    if args.method == "fit_burr":
+        logy += (True,)  # Fit parameter delta [ns].
+    logy += (
+        False,  # Coefficient of determination of the fit (R^2 value).
+        True,  # Root-mean-square error (RMSE) of the fit.
+        True,  # End of fit region [ns].
+    )
+if len(logy) != n_cols_data:
+    raise ValueError(
+        "`len(logy)` ({}) != `n_cols_data` ({})".format(len(logy), n_cols_data)
     )
 
 linestyles_comb = ("solid", "dashed")
@@ -588,6 +655,16 @@ with PdfPages(outfile) as pdf:
 
         # Layers at left and right electrode combined in one plot.
         fig_comb, ax_comb = plt.subplots(clear=True)
+        if "skewness" in ylabels[col_ix_data].lower():
+            # Skewness of exponential distribution is 2.
+            ax_comb.axhline(
+                y=2, color="black", linestyle="dashed", label="Exp. Dist."
+            )
+        elif "kurtosis" in ylabels[col_ix_data].lower():
+            # Excess kurtosis of exponential distribution is 6
+            ax_comb.axhline(
+                y=6, color="black", linestyle="dashed", label="Exp. Dist."
+            )
 
         for pkt_ix, pkp_type in enumerate(pk_pos_types):
             yd_pkt = yd_col[pkt_ix]
@@ -602,6 +679,16 @@ with PdfPages(outfile) as pdf:
             # Layers at left and right electrode in separate plots.
             fig_sep, ax_sep = plt.subplots(clear=True)
             ax_sep.set_prop_cycle(color=colors_sep)
+            if "skewness" in ylabels[col_ix_data].lower():
+                # Skewness of exponential distribution is 2.
+                ax_sep.axhline(
+                    y=2, color="black", linestyle="dashed", label="Exp. Dist."
+                )
+            elif "kurtosis" in ylabels[col_ix_data].lower():
+                # Excess kurtosis of exponential distribution is 6
+                ax_sep.axhline(
+                    y=6, color="black", linestyle="dashed", label="Exp. Dist."
+                )
 
             c_vals_comb = c_vals_sep + 0.5 * pkt_ix
             c_norm_comb = c_norm_sep + 0.5 * (len(pk_pos_types) - 1)
