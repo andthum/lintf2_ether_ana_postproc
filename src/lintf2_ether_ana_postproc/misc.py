@@ -16,6 +16,39 @@ from scipy.stats import norm
 import lintf2_ether_ana_postproc as leap
 
 
+def line_inv(y, xp1, xp2, fp1, fp2):
+    """
+    Inverse straight line.
+
+    Return the `x` values that belong to the given `y` values for a
+    straight line that is defined by the two points (`xp1`, `fp1`) and
+    (`xp2`, `fp2`).
+
+    Parameters
+    ----------
+    y : scalar or array_like
+        `y` values for which to get the `x` values.
+    xp1, xp2 : scalar
+        The two x data points defining the straight line.
+    fp1, fp2 : scalar
+        The two y data points defining the straight line.
+
+    Returns
+    -------
+    x : scalar or array_like
+        The `x` values that belong to the given `y` values.
+
+    See Also
+    --------
+    :func:`numpy.interp` :
+        1-dimensional linear interpolation for monotonically increasing
+        sample points
+    """
+    slope = (fp2 - fp1) / (xp2 - xp1)
+    intercept = fp1 - slope * xp1
+    return (y - intercept) / slope
+
+
 def gen_equidist_bins(start, stop, bw_desired):
     """
     Generate equidistant bins.

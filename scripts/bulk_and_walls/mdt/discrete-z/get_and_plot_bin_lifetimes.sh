@@ -3,6 +3,7 @@
 settings="pr_nvt423_nh"
 top_path="${HOME}/ownCloud/WWU_Münster/Promotion/Simulationen/results/lintf2_peo"
 cmp="Li"
+flags=()
 
 ########################################################################
 # Information and Usage Functions                                      #
@@ -10,49 +11,34 @@ cmp="Li"
 
 information() {
     echo "Loop over all bulk and surface simulation directories and run"
-    echo "the Python scripts to generate and/or plot z-bins."
+    echo "the Python script get_and_plot_bin_lifetimes.py to calculate"
+    echo "bin residence times."
 }
 
 usage() {
     echo
     echo "Usage:"
     echo
-    echo "Required arguments (at least one of the following must be"
-    echo "specified):"
-    echo "  -g    Run the scripts to generate bins (i.e."
-    echo "        generate_z-bins_bulk.py for bulk simulations and"
-    echo "        generate_z-bins.py for surface simulations)."
-    echo "  -p    Run plot_z-bins.py to polt the bins together with the"
-    echo "        density and free-energy profile of the compound"
-    echo "        specifed with -c."
-    echo
     echo "Optional arguments:"
     echo "  -h    Show this help message and exit."
     echo "  -e    String describing the used simulation settings."
     echo "        Default: '${settings}'."
-    echo "  -t    Top-level simulation path containing all bulk and"
-    echo "        surface simulations.  Default: '${top_path}'."
-    echo "  -c    The compound whose density and free-energy profile to"
-    echo "        use for plotting.  For surface simulations, the"
-    echo "        maxima of the free-energy profile of this compound"
-    echo "        are used to generate the bins.  Default: '${cmp}'."
+    echo "  -t    Top-level simulation path containing all surface"
+    echo "        simulations.  Default: '${top_path}'."
+    echo "  -c    The compound for which to calculate the bin residence times."
+    echo "        Default: '${cmp}'."
+    echo "  -f    Addtional options (besides --system, --settings and --cmp)"
+    echo "        to parse to 'get_and_plot_bin_lifetimes.py' as one long,"
+    echo "        enquoted string.  See there for possible options.  Default:"
+    echo "        '${flags[*]}'"
 }
 
 ########################################################################
 # Argument Parsing                                                     #
 ########################################################################
 
-generate=false
-plot=false
-while getopts gphe:t:c: option; do
+while getopts he:t:c:f: option; do
     case ${option} in
-        # Required arguments.
-        g)
-            generate=true
-            ;;
-        p)
-            plot=true
-            ;;
         # Optional arguments.
         h)
             information
@@ -68,6 +54,12 @@ while getopts gphe:t:c: option; do
         c)
             cmp=${OPTARG}
             ;;
+        f)
+            # See https://github.com/koalaman/shellcheck/wiki/SC2086#exceptions
+            # and https://github.com/koalaman/shellcheck/wiki/SC2206
+            # shellcheck disable=SC2206
+            flags=(${OPTARG})
+            ;;
         # Handling of invalid options or missing arguments.
         *)
             usage
@@ -76,10 +68,6 @@ while getopts gphe:t:c: option; do
     esac
 done
 
-if [[ ${generate} == false ]] && [[ ${plot} == false ]]; then
-    echo "ERROR: At least one of -g or -p must be specified."
-    exit 1
-fi
 if [[ ! -d ${top_path} ]]; then
     echo "ERROR: No such directory: '${top_path}'"
     exit 1
@@ -95,13 +83,7 @@ script_dir=$(cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd)
 project_root=$(readlink -e "${script_dir}/../../../.." || exit)
 py_exe=".venv/bin/python3"
 py_exe="${project_root}/${py_exe}"
-py_script_generate_bulk=$(
-    readlink -e "${script_dir}/generate_z-bins_bulk.py" || exit
-)
-py_script_generate_surface=$(
-    readlink -e "${script_dir}/generate_z-bins.py" || exit
-)
-py_script_plot=$(readlink -e "${script_dir}/plot_z-bins.py" || exit)
+py_script=$(readlink -e "${script_dir}/get_and_plot_bin_lifetimes.py" || exit)
 if [[ ! -d ${script_dir} ]]; then
     echo "ERROR: No such directory '${script_dir}'"
     exit 1
@@ -114,21 +96,13 @@ if [[ ! -x ${py_exe} ]]; then
     echo "ERROR: No such executable '${py_exe}'"
     exit 1
 fi
-if [[ ${generate} == true ]] && [[ ! -f ${py_script_generate_bulk} ]]; then
-    echo "ERROR: No such file '${py_script_generate_bulk}'"
-    exit 1
-fi
-if [[ ${generate} == true ]] && [[ ! -f ${py_script_generate_surface} ]]; then
-    echo "ERROR: No such file '${py_script_generate_surface}'"
-    exit 1
-fi
-if [[ ${plot} == true ]] && [[ ! -f ${py_script_plot} ]]; then
-    echo "ERROR: No such file '${py_script_plot}'"
+if [[ ! -f ${py_script} ]]; then
+    echo "ERROR: No such file '${py_script}'"
     exit 1
 fi
 
-analysis="density-z"
-tool="gmx"
+analysis="discrete-z"
+tool="mdt"
 
 bulk_dir="${top_path}/bulk"
 if [[ ! -d ${bulk_dir} ]]; then
@@ -141,6 +115,11 @@ cd "${bulk_dir}" || exit
 for system in lintf2_[gp]*[0-9]*_[0-9]*-[0-9]*_sc80; do
     echo
     echo "${system}"
+    if [[ ${system} == "lintf2_g4_5-2_sc80" ]]; then
+        # This system requires more than 16 GB of RAM.
+        echo "Skipped '${system}'"
+        continue
+    fi
     if [[ ! -d ${system} ]]; then
         echo "WARNING: No such directory: '${system}'"
         continue
@@ -170,19 +149,13 @@ for system in lintf2_[gp]*[0-9]*_[0-9]*-[0-9]*_sc80; do
     fi
     cd "${ana_dir}" || exit
 
-    if [[ ${generate} == true ]]; then
-        ${py_exe} "${py_script_generate_bulk}" \
-            --system "${system}" \
-            --settings "${settings}" ||
-            exit
-    fi
-    if [[ ${plot} == true ]]; then
-        ${py_exe} "${py_script_plot}" \
-            --system "${system}" \
-            --settings "${settings}" \
-            --cmp "${cmp}" ||
-            exit
-    fi
+    # shellcheck disable=SC2048,SC2086
+    ${py_exe} "${py_script}" \
+        --system "${system}" \
+        --settings "${settings}" \
+        --cmp "${cmp}" \
+        ${flags[*]} ||
+        exit
 
     cd ../../../../../ || exit
 done
@@ -209,6 +182,11 @@ for surfq in q[0-9]*; do
     for system in lintf2_[gp]*[0-9]*_[0-9]*-[0-9]*_gra_"${surfq}"_sc80; do
         echo
         echo "${system}"
+        if [[ ${system} == "lintf2_g4_5-2_gra_${surfq}_sc80" ]]; then
+            # This system requires more than 16 GB of RAM.
+            echo "Skipped '${system}'"
+            continue
+        fi
         if [[ ! -d ${system} ]]; then
             echo "WARNING: No such directory: '${system}'"
             continue
@@ -238,20 +216,13 @@ for surfq in q[0-9]*; do
         fi
         cd "${ana_dir}" || exit
 
-        if [[ ${generate} == true ]]; then
-            ${py_exe} "${py_script_generate_surface}" \
-                --system "${system}" \
-                --settings "${settings}" \
-                --cmp "${cmp}" ||
-                exit
-        fi
-        if [[ ${plot} == true ]]; then
-            ${py_exe} "${py_script_plot}" \
-                --system "${system}" \
-                --settings "${settings}" \
-                --cmp "${cmp}" ||
-                exit
-        fi
+        # shellcheck disable=SC2048,SC2086
+        ${py_exe} "${py_script}" \
+            --system "${system}" \
+            --settings "${settings}" \
+            --cmp "${cmp}" \
+            ${flags[*]} ||
+            exit
 
         cd ../../../../../ || exit
     done

@@ -101,6 +101,183 @@ def elctrds(ax, offset_right, offset_left=0, **kwargs):
     leap.plot.elctrd_right(ax, offset_right, **kwargs)
 
 
+def bins(
+    ax, bins=None, Sim=None, infile=None, conv=1, kwargs_txt=None, **kwargs
+):
+    """
+    Plot the position of the given bin edges as vertical lines into an
+    :class:`matplotlib.axes.Axes`.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        The :class:`~matplotlib.axes.Axes` into which to plot the
+        bin edges
+    bins : array_like, optional
+        1-dimensional array of bin edges.
+    Sim : lintf2_ether_ana_postproc.simulation.Simulation
+        :class:`~lintf2_ether_ana_postproc.simulation.Simulation`
+        instance.  If provided, the bin edges will be read from the
+        first column of
+        ``Sim.settings + "_" + Sim.system +
+        "_density-z_number_Li_binsA.txt.gz"``.
+    infile : str, optional
+        If provided, the bin edges will be read from the given file.
+    conv : float, optional
+        Conversion factor for the bin edges (e.g. to convert from
+        Angstroms to nm).
+    kwargs_txt : None or dict, optional
+        Keyword arguments to parse to :func:`numpy.loadtxt` when reading
+        the bin edges from `infile`.  See there for possible options.
+    kwargs : dict
+        Keyword arguments to parse to
+        :func:`matplotlib.axes.Axes.axvline`.  See there for possible
+        options.  By default, `color` is set to ``"black"`` and
+        `linestyle` is set to ``"dotted"``.
+
+    Notes
+    -----
+    If multiple of `bins`, `Sim` or `infile` are provided, `bins` takes
+    precedence over `Sim` and `Sim` takes precedence over `infile`.
+    """
+    kwargs.setdefault("color", "black")
+    kwargs.setdefault("linestyle", "dotted")
+
+    if bins is not None:
+        bins = np.array(bins, copy=True)
+    elif Sim is not None:
+        analysis = "density-z"  # Analysis name.
+        analysis_suffix = "_number"  # Analysis name specification.
+        tool = "gmx"  # Analysis software.
+        file_suffix = analysis + analysis_suffix + "_Li_binsA.txt.gz"
+        infile = leap.simulation.get_ana_file(Sim, analysis, tool, file_suffix)
+        bins = np.loadtxt(infile, usecols=0)
+    elif infile is not None:
+        if kwargs_txt is None:
+            kwargs_txt = {}
+        bins = np.loadtxt(infile, **kwargs_txt)
+    else:
+        raise ValueError("Either `bins`, `Sim` or `infile` must be provided.")
+
+    bins *= conv
+    for bn in bins:
+        ax.axvline(x=bn, **kwargs)
+
+
+def profile(
+    ax,
+    x=None,
+    profile=None,
+    Sim=None,
+    cmp="Li",
+    infile=None,
+    conv=1,
+    free_en=False,
+    kwargs_txt=None,
+    kwargs_set=None,
+    **kwargs_plt,
+):
+    """
+    Plot the given profile (e.g. density or free energy) into an
+    :class:`matplotlib.axes.Axes`.
+
+    The axes and spines of the plot are removed so that only the profile
+    is visible.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        The :class:`~matplotlib.axes.Axes` into which to plot the
+        bin edges
+    x, profile : array_like, optional
+        x values and the corresponding profile values.
+    Sim : lintf2_ether_ana_postproc.simulation.Simulation
+        :class:`~lintf2_ether_ana_postproc.simulation.Simulation`
+        instance.  If provided, the `x` and `profile` will be read from
+        ``Sim.settings + "_" + Sim.system +
+        "_density-z_number.xvg.gz"``.  `x` will be read from the first
+        column, `profile` will be read from the column specified by
+        `cmp`.
+    cmp : str, optional
+        The compound whose profile to read from
+        ``Sim.settings + "_" + Sim.system + "_density-z_number.xvg.gz"``
+        if `Sim` is provided.
+    infile : str, optional
+        If provided, `x` and `profile` will be read from the given file.
+    conv : float, optional
+        Conversion factor for the x values (e.g. to convert from
+        Angstroms to nm).
+    free_en : bool, optional
+        If ``True``, the negative logarithm of `profile` will be
+        plotted.  If `profile` was a density profile, this means
+        conversion to a free-energy profile.
+    kwargs_txt : None or dict, optional
+        Keyword arguments to parse to :func:`numpy.loadtxt` when reading
+        the bin edges from `infile`.  See there for possible options.
+    kwargs_set : None or dict, optional
+        Keyword arguments to parse to :func:`matplotlib.axes.Axes.set`.
+        See there for possible arguments.  By default, `ylim` is set to
+        the minimum and maximum value of `profile`.
+    kwargs : dict
+        Keyword arguments to parse to
+        :func:`matplotlib.axes.Axes.plot`.  See there for possible
+        options.  By default, `color` is set to ``"black"``.
+
+    Notes
+    -----
+    If multiple of `bins`, `Sim` or `infile` are provided, `bins` takes
+    precedence over `Sim` and `Sim` takes precedence over `infile`.
+    """
+    kwargs_plt.setdefault("color", "black")
+
+    if profile is not None:
+        if x is None:
+            raise ValueError("`x` must be provided if `profile` is provided")
+        x = np.array(x, copy=True)
+        profile = np.asarray(profile)
+    elif Sim is not None:
+        analysis = "density-z"  # Analysis name.
+        analysis_suffix = "_number"  # Analysis name specification.
+        tool = "gmx"  # Analysis software.
+        file_suffix = analysis + analysis_suffix + ".xvg.gz"
+        infile = leap.simulation.get_ana_file(Sim, analysis, tool, file_suffix)
+        cols = (0, Sim.dens_file_cmp2col[cmp])
+        x, profile = np.loadtxt(
+            infile, comments=["#", "@"], usecols=cols, unpack=True
+        )
+    elif infile is not None:
+        if kwargs_txt is None:
+            kwargs_txt = {}
+        x, profile = np.loadtxt(infile, **kwargs_txt)
+    else:
+        raise ValueError(
+            "Either `profile`, `Sim` or `infile` must be provided."
+        )
+
+    if free_en:
+        profile = -np.log(profile)
+
+    if kwargs_set is None:
+        kwargs_set = {}
+    ylim = kwargs_set.pop("ylim", None)
+    if ylim is None:
+        valid = np.isfinite(profile)
+        ymin = np.min(profile[valid])
+        ymin = ymin - 0.4
+        ymax = np.max(profile[valid])
+        kwargs_set.setdefault("ylim", (ymin, ymax))
+
+    x *= conv
+    ax.plot(x, profile, **kwargs_plt)
+    ax.set(**kwargs_set)
+    ax.xaxis.set_visible(False)
+    ax.yaxis.set_visible(False)
+    ax.spines["bottom"].set_visible(False)
+    ax.spines["top"].set_visible(False)
+    ax.spines["left"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+
 def peak_proms(ax, x, y, peaks, properties, peak_type=None, **kwargs):
     """
     Plot the peak prominences as calculated by

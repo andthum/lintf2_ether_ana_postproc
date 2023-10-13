@@ -60,8 +60,10 @@ fi
 # Main Part                                                            #
 ########################################################################
 
+cwd=$(pwd) # Current working directory.
+
 script_dir=$(cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd)
-project_root=$(readlink -e "${script_dir}/../../.." || exit)
+project_root=$(readlink -e "${script_dir}/../../../.." || exit)
 py_exe=".venv/bin/python3"
 py_exe="${project_root}/${py_exe}"
 py_script=$(readlink -e "${script_dir}/get_free-energy_extrema.py" || exit)
@@ -85,6 +87,7 @@ fi
 analysis="density-z"
 tool="gmx"
 
+cd "${top_path}" || exit
 for surfq in q[0-9]*; do
     echo
     echo "============================================================="
@@ -138,6 +141,7 @@ for surfq in q[0-9]*; do
     cd ../ || exit
     echo "============================================================="
 done
+cd "${cwd}" || exit
 
 echo
 echo "Done"

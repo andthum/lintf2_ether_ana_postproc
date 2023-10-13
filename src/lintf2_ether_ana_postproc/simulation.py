@@ -146,6 +146,26 @@ class Simulation:
     :type: str
     """
 
+    dens_file_cmp2col = {
+        "elctrlyt": 1,
+        "Li": 2,
+        "ntf2": 3,
+        "sol": 4,
+        "NBT": 5,
+        "OBT": 6,
+        "OE": 7,
+        "graB": 8,
+        "graT": 9,
+        "elctrd": 10,
+        "system": 11,
+    }
+    """
+    Dictionary containing for each compound the corresponding column
+    number of the density profile files produced by :bash:`gmx density`.
+
+    :type: dict
+    """
+
     def __init__(self, path):
         """
         Initialize an instance of the
@@ -2606,7 +2626,7 @@ def get_ana_file(Sim, ana_name, ana_tool, file_suffix):
         instance.
     ana_name : str
         The analysis name.
-    ana_tool : {"gmx", "mdtools"}
+    ana_tool : {"gmx", "mdt"}
         The software/tool used to generate the analysis file.
     file_suffix : str
         The suffix of the analysis file without the simulation settings
@@ -2626,7 +2646,7 @@ def get_ana_file(Sim, ana_name, ana_tool, file_suffix):
         given :class:`~lintf2_ether_ana_postproc.simulation.Simulations`
         instance.
     """
-    if ana_tool not in ("gmx", "mdtools"):
+    if ana_tool not in ("gmx", "mdt"):
         raise ValueError("Unknown `ana_tool`: '{}'".format(ana_tool))
 
     fname = Sim.fname_ana_base + file_suffix
@@ -2649,7 +2669,7 @@ def get_ana_files(Sims, ana_name, ana_tool, file_suffix):
         instance.
     ana_name : str
         The analysis name.
-    ana_tool : {"gmx", "mdtools"}
+    ana_tool : {"gmx", "mdt"}
         The software/tool used to generate the analysis file.
     file_suffix : str
         The suffix of the analysis file without the simulation settings
@@ -2668,7 +2688,7 @@ def get_ana_files(Sims, ana_name, ana_tool, file_suffix):
         :class:`~lintf2_ether_ana_postproc.simulation.Simulation`
         instance.
     """
-    if ana_tool not in ("gmx", "mdtools"):
+    if ana_tool not in ("gmx", "mdt"):
         raise ValueError("Unknown `ana_tool`: '{}'".format(ana_tool))
 
     ana_files = []
