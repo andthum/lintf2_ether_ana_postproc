@@ -49,6 +49,34 @@ def line_inv(y, xp1, xp2, fp1, fp2):
     return (y - intercept) / slope
 
 
+def power_spectrum(data, dt):
+    """
+    Calculate the power spectrum of the data.
+
+    Parameters
+    ----------
+    data : array_like
+        The data.
+    dt : float
+        Time step between recorded data points.
+
+    Returns
+    -------
+    frequencies : numpy.ndarray
+        The frequency values.
+    amplitudes : numpy.ndarray
+        The corresponding power spectrum.
+    """
+    data = np.asarray(data)
+    # The zero-frequency term is the sum of the signal => Remove the
+    # mean to get a zero-frequency term that is zero.
+    mean = np.mean(data)
+    amplitudes = np.abs(np.fft.rfft(data - mean))
+    amplitudes **= 2
+    frequencies = np.fft.rfftfreq(len(data), dt)
+    return frequencies, amplitudes
+
+
 def gen_equidist_bins(start, stop, bw_desired):
     """
     Generate equidistant bins.
