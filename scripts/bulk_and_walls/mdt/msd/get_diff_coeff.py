@@ -109,9 +109,10 @@ proc = psutil.Process()
 proc.cpu_percent()  # Initiate monitoring of CPU usage.
 
 # Input parameters.
-infile = "pr_nvt423_nh_lintf2_peo63_20-1_sc80_msd_Li.txt.gz"
-outfile = "pr_nvt423_nh_lintf2_peo63_20-1_sc80_msd_Li.pdf"
-# Number of dimensions in which the diffusive motion takes place.
+cmp = "Li"
+infile = "pr_nvt423_nh_lintf2_peo63_20-1_sc80_msd_" + cmp + ".txt.gz"
+outfile = "pr_nvt423_nh_lintf2_peo63_20-1_sc80_msd_" + cmp + ".pdf"
+# Number of dimensions in which the diffusive process takes place.
 n_dim = 3
 # Number of frames between restarting points used for calculating the
 # MSD.
@@ -119,10 +120,18 @@ restart_interval = 500  # [frames].
 # Restarting frequency used for calculating the MSD.
 restart_frequency = 1 / (restart_interval * 2e-3)  # [ns^-1].
 # Cutoff frequency for estimating `tvgamma`.
-cutoff_frequency = restart_frequency / 2
-# Tolerance within which the calculated derivative is regarded to be
-# zero.
-deriv_tol = 2e-4
+cutoff_frequency = restart_frequency / 2  # [ns^-1].
+# Optimize the smoothing parameters using the MSD/t data between
+# `start_opt_pct` and `end_opt_pct` percent of the data.
+start_opt_pct = 0.0
+end_opt_pct = 0.9
+# Calculate the standard deviation of the derivative of MSD/t between
+# `start_deriv_sd_pct` and `end_deriv_sd_pct` percent of the data.
+start_deriv_sd_pct = 0.8
+end_deriv_sd_pct = end_opt_pct
+# Regard the derivative of MSD/t as zero if it lies within +/- the
+# calculated standard deviation times `deriv_sd_factor`.
+deriv_sd_factor = 4
 
 
 print("\n")
@@ -153,22 +162,22 @@ print("\n")
 print("Calculating optimized smoothing parameters...")
 timer = datetime.now()
 tvgamma = estimate_tvgamma(cutoff_frequency=cutoff_frequency, dt=time_diff)
-# Because the optimization is slow, only run it on the most relevant
-# part of the data, i.e. the from 70% to 90% of the MSD.
-p_start, p_end = 0.7, 0.9
 # Initial guesses of the smoothing parameters.
-params = [
+param_guesses = [
     [
         1,  # Order of the polynomial.
-        restart_interval // 2,  # Size of the sliding window.
-        restart_interval
-        // 2,  # Size of the window used for Gaussian smoothing.
+        restart_interval // 5,  # Size of the sliding window.
+        restart_interval // 5,  # Window size for Gaussian smoothing.
     ]
 ]
+# Because the optimization is slow, only run it on the most relevant
+# part of the data (from `start_opt_tot` to `end_opt_tot`).
+start_opt_tot = int(start_opt_pct * len(msd_t))
+end_opt_tot = int(end_opt_pct * len(msd_t))
 params, val = pynumdiffopt.linear_model.savgoldiff(
-    msd_t[int(p_start * len(msd_t)) : int(p_end * len(msd_t))],
+    msd_t[start_opt_tot:end_opt_tot],
     dt=time_diff,
-    params=params,
+    params=param_guesses,
     tvgamma=tvgamma,
 )
 print("tvgamma = {}".format(tvgamma))
@@ -181,7 +190,7 @@ print("Current memory usage: {:.2f} MiB".format(mdt.rti.mem_usage(proc)))
 print("\n")
 print("Smoothing data and calculating derivative...")
 timer = datetime.now()
-msd_t_smooth, msd_t_derivative = pynumdiff.linear_model.savgoldiff(
+msd_t_smooth, msd_t_deriv = pynumdiff.linear_model.savgoldiff(
     msd_t, dt=time_diff, params=params
 )
 print("Elapsed time:         {}".format(datetime.now() - timer))
@@ -191,7 +200,13 @@ print("Current memory usage: {:.2f} MiB".format(mdt.rti.mem_usage(proc)))
 print("\n")
 print("Identifying diffusive regime and calculating diffusion coefficient...")
 timer = datetime.now()
-diffusive = (msd_t_derivative > -deriv_tol) & (msd_t_derivative < deriv_tol)
+start_deriv_sd_tot = int(start_deriv_sd_pct * len(msd_t_deriv))
+end_deriv_sd_tot = int(end_deriv_sd_pct * len(msd_t_deriv))
+msd_t_deriv_sd = np.std(
+    msd_t_deriv[start_deriv_sd_tot:end_deriv_sd_tot], ddof=1
+)
+deriv_tol = deriv_sd_factor * msd_t_deriv_sd
+diffusive = (msd_t_deriv > -deriv_tol) & (msd_t_deriv < deriv_tol)
 if not np.any(diffusive):
     fit_start, fit_stop = -1, -1
     diff_coeff = np.nan
@@ -218,7 +233,7 @@ label_smooth = "Smoothed"
 label_fit = "Fit of Orig."
 color_orig = "tab:blue"
 color_smooth = "tab:orange"
-color_fit = "tab:green"
+color_fit = "black"
 color_thresh = "tab:red"
 ls_orig = "solid"
 ls_smooth = "dotted"
@@ -266,9 +281,11 @@ with PdfPages(outfile) as pdf:
     )
     ax.legend(loc="upper left")
     pdf.savefig()
+    # Log scale x.
     ax.set_xlim(times[1], times[-1])
     ax.set_xscale("log", base=10, subs=np.arange(2, 10))
     pdf.savefig()
+    # Log scale xy.
     ax.relim()
     ax.autoscale()
     ax.set_xlim(times[1], times[-1])
@@ -312,8 +329,10 @@ with PdfPages(outfile) as pdf:
     )
     ax.legend(loc="upper right")
     pdf.savefig()
+    # Log scale x.
     ax.set_xscale("log", base=10, subs=np.arange(2, 10))
     pdf.savefig()
+    # Log scale xy.
     ax.set_yscale("log", base=10, subs=np.arange(2, 10))
     pdf.savefig()
     plt.close()
@@ -322,37 +341,23 @@ with PdfPages(outfile) as pdf:
     fig, ax = plt.subplots(clear=True)
     ax.plot(
         times_t[:fit_start],
-        msd_t_derivative[:fit_start],
+        msd_t_deriv[:fit_start],
         color=color_orig,
         alpha=leap.plot.ALPHA,
     )
     ax.plot(
         times_t[fit_stop:],
-        msd_t_derivative[fit_stop:],
+        msd_t_deriv[fit_stop:],
         color=color_orig,
         alpha=leap.plot.ALPHA,
     )
     ax.plot(
         times_fit,
-        msd_t_derivative[fit_start:fit_stop],
+        msd_t_deriv[fit_start:fit_stop],
         color=color_fit,
         label="Fit Region",
         alpha=leap.plot.ALPHA,
     )
-    # ax.vlines(
-    #     x=[times_fit[0], times_fit[-1]],
-    #     ymin=-deriv_tol,
-    #     ymax=deriv_tol,
-    #     colors=color_fit,
-    #     linestyles="dashed",
-    # )
-    ax.axhline(
-        -deriv_tol,
-        label="Tolerance",
-        color=color_thresh,
-        alpha=leap.plot.ALPHA,
-    )
-    ax.axhline(deriv_tol, color=color_thresh, alpha=leap.plot.ALPHA)
     ax.set(
         xlabel=r"Diffusion Time $t$ / ns",
         ylabel=r"d$/$d$t$ MSD$(t)/t$ / nm$^2$/ns$^2$",
@@ -360,12 +365,22 @@ with PdfPages(outfile) as pdf:
     )
     ax.legend(loc="lower right")
     pdf.savefig()
+    # Log scale x.
     ax.set_xscale("log", base=10, subs=np.arange(2, 10))
     pdf.savefig()
+    # Linear scale, zoom to 0 +/- 2*tolerance.
+    ax.axhline(
+        -deriv_tol,
+        label="Tolerance",
+        color=color_thresh,
+        alpha=leap.plot.ALPHA,
+    )
+    ax.axhline(deriv_tol, color=color_thresh, alpha=leap.plot.ALPHA)
     ax.set_xscale("linear")
     ax.set_ylim(-2 * deriv_tol, 2 * deriv_tol)
     ax.legend(loc="upper left")
     pdf.savefig()
+    # Log scale x.
     ax.set_xscale("log", base=10, subs=np.arange(2, 10))
     pdf.savefig()
     plt.close()
