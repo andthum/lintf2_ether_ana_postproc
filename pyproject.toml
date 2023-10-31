@@ -61,11 +61,14 @@ classifiers = [
 ]
 requires-python = ">=3.7, <3.10"
 dependencies = [
+    "cvxpy >=1.0, <2.0",  # Optional dependency of pynumdiff.
     "matplotlib >=3.3, <4.0",
     "MDAnalysis >=2.0, <2.1",
     "mdtools @ git+https://github.com/andthum/mdtools@main",
     "numpy >=1.15, <2.0",
+    "pychebfun >=0.3, <1.0",  # Optional dependency of pynumdiff.
     "pyedr >=0.1, <1.0",
+    "pynumdiff >=0.1, <1.0",
     "scipy >=1.0, <2.0",
 ]
 
