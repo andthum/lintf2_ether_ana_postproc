@@ -276,18 +276,33 @@ if fit_start > 0 and fit_stop > 0:
     times_fit = times_t[fit_start:fit_stop]
     msd_fit = einstein_msd(times_fit, diff_coeff, n_dim)
     msd_fit_sd = einstein_msd(times_fit, diff_coeff_sd, n_dim)
+    # Fit residuals.
+    msd_fit_res = msd[fit_start + 1 : fit_stop + 1] - msd_fit
+    r2, rmse = leap.misc.fit_goodness(
+        data=msd[fit_start + 1 : fit_stop + 1], fit=msd_fit
+    )
 else:
     diff_coeff, diff_coeff_sd = np.nan, np.nan
     times_fit, msd_fit = np.array([]), np.array([])
+    msd_fit_sd, msd_fit_res = np.array([]), np.array([])
+    r2, rmse = np.nan, np.nan
 
 
 print("Creating output...")
 if fit_start > 0 and fit_stop > 0:
     data = np.array(
-        [[diff_coeff, diff_coeff_sd, times_t[fit_start], times_t[fit_stop]]]
+        [
+            diff_coeff,
+            diff_coeff_sd,
+            times_t[fit_start],
+            times_t[fit_stop],
+            r2,
+            rmse,
+        ]
     )
 else:
-    data = np.array([[diff_coeff, diff_coeff_sd, np.nan, np.nan]])
+    data = np.array([diff_coeff, diff_coeff_sd, np.nan, np.nan, r2, rmse])
+data = data.reshape(1, data.size)
 header = (
     "Diffusion coefficient\n"
     + "\n"
@@ -347,9 +362,11 @@ header = (
     + "\n"
     + "The columns contain:\n"
     + "  1 Diffusion coefficient in nm^2/ns\n"
-    + "  2 Standard error of the diffusion coefficient in nm^2/ns\n"
+    + "  2 Standard deviation of D determined from the fit in nm^2/ns\n"
     + "  3 Start of the fitting/averaging region in ns\n"
     + "  4 End of the fitting/averaging region in ns\n"
+    + "  5 Coefficient of determination of the fit\n"
+    + "  6 Root-mean-square error (RMSE) of the fit / nm^2\n"
     + "{:>14d}".format(1)
 )
 for col_num in range(2, data.shape[-1] + 1):
@@ -429,11 +446,18 @@ with PdfPages(outfile_pdf) as pdf:
     ax.set_xlim(times[1], times[-1])
     ax.set_xscale("log", base=10, subs=np.arange(2, 10))
     pdf.savefig()
-    # Log scale xy.
+    # Log scale y.
     ax.relim()
     ax.autoscale()
-    ax.set_xlim(times[1], times[-1])
+    ax.set_xscale("linear")
+    ax.set_xlim(times[0], times[-1])
     ax.set_yscale("log", base=10, subs=np.arange(2, 10))
+    legend = ax.legend(loc="lower right")
+    pdf.savefig()
+    # Log scale xy.
+    ax.set_xlim(times[1], times[-1])
+    ax.set_xscale("log", base=10, subs=np.arange(2, 10))
+    ax.legend(loc="upper left")
     pdf.savefig()
     plt.close()
 
@@ -483,7 +507,7 @@ with PdfPages(outfile_pdf) as pdf:
     )
     ax.set(
         xlabel=r"Diffusion Time $t$ / ns",
-        ylabel=r"MSD$(t)/t$ / nm$^2$/ns",
+        ylabel=r"MSD$(t)/t$ / nm$^2$ ns$^{-1}$",
         xlim=(times_t[0], times_t[-1]),
     )
     ax.legend(loc="upper right")
@@ -491,8 +515,67 @@ with PdfPages(outfile_pdf) as pdf:
     # Log scale x.
     ax.set_xscale("log", base=10, subs=np.arange(2, 10))
     pdf.savefig()
-    # Log scale xy.
+    # Log scale y.
+    ax.set_xscale("linear")
     ax.set_yscale("log", base=10, subs=np.arange(2, 10))
+    pdf.savefig()
+    # Log scale xy.
+    ax.set_xscale("log", base=10, subs=np.arange(2, 10))
+    pdf.savefig()
+    plt.close()
+
+    # Plot fit residuals vs time.
+    fig, ax = plt.subplots(clear=True)
+    ax.plot(times_fit, msd_fit_res, color=color_orig, alpha=leap.plot.ALPHA)
+    ax.set(
+        xlabel="Diffusion Time / ns",
+        ylabel=r"Fit Residuals / nm$^2$",
+        xlim=(times_fit[0], times_fit[-1]),
+    )
+    pdf.savefig()
+    # Log scale x.
+    ax.set_xlim(times_fit[1], times[-1])
+    ax.set_xscale("log", base=10, subs=np.arange(2, 10))
+    pdf.savefig()
+    plt.close()
+
+    # Plot fit residuals / t vs time.
+    fig, ax = plt.subplots(clear=True)
+    ax.plot(
+        times_fit,
+        msd_fit_res / times_fit,
+        color=color_orig,
+        alpha=leap.plot.ALPHA,
+    )
+    ax.set(
+        xlabel=r"Diffusion Time $t$ / ns",
+        ylabel=r"Fit Res. / $t$ / nm$^2$ ns$^{-1}$",
+        xlim=(times_fit[0], times_fit[-1]),
+    )
+    pdf.savefig()
+    # Log scale x.
+    ax.set_xlim(times_fit[1], times[-1])
+    ax.set_xscale("log", base=10, subs=np.arange(2, 10))
+    pdf.savefig()
+    plt.close()
+
+    # Plot fit residuals / msd vs time.
+    fig, ax = plt.subplots(clear=True)
+    ax.plot(
+        times_fit,
+        msd_fit_res / msd[fit_start + 1 : fit_stop + 1],
+        color=color_orig,
+        alpha=leap.plot.ALPHA,
+    )
+    ax.set(
+        xlabel="Diffusion Time / ns",
+        ylabel="Fit Residuals / MSD",
+        xlim=(times_fit[0], times_fit[-1]),
+    )
+    pdf.savefig()
+    # Log scale x.
+    ax.set_xlim(times_fit[1], times[-1])
+    ax.set_xscale("log", base=10, subs=np.arange(2, 10))
     pdf.savefig()
     plt.close()
 
@@ -519,7 +602,7 @@ with PdfPages(outfile_pdf) as pdf:
     )
     ax.set(
         xlabel="Diffusion Time / ns",
-        ylabel=r"SE of Mov. Avg. / nm$^2$/ns",
+        ylabel=r"SE of Mov. Avg. / nm$^2$ ns$^{-1}$",
         xlim=(times_t_movav[0], times_t_movav[-1]),
     )
     ax.legend(loc="upper right")
@@ -527,8 +610,12 @@ with PdfPages(outfile_pdf) as pdf:
     # Log scale x.
     ax.set_xscale("log", base=10, subs=np.arange(2, 10))
     pdf.savefig()
-    # Log scale xy.
+    # Log scale y.
+    ax.set_xscale("linear")
     ax.set_yscale("log", base=10, subs=np.arange(2, 10))
+    pdf.savefig()
+    # Log scale xy.
+    ax.set_xscale("log", base=10, subs=np.arange(2, 10))
     pdf.savefig()
     plt.close()
 
@@ -559,7 +646,7 @@ with PdfPages(outfile_pdf) as pdf:
     )
     ax.set(
         xlabel="Diffusion Time / ns",
-        ylabel=r"Cov. of Mov. Avg. / nm$^4$/ns$^2$",
+        ylabel=r"Cov. of Mov. Avg. / nm$^4$ ns$^{-2}$",
         xlim=(times_t_movav_grad[0], times_t_movav_grad[-1]),
     )
     ax.legend(loc="upper right")
@@ -567,8 +654,12 @@ with PdfPages(outfile_pdf) as pdf:
     # Log scale x.
     ax.set_xscale("log", base=10, subs=np.arange(2, 10))
     pdf.savefig()
-    # Log scale xy.
+    # Log scale y.
+    ax.set_xscale("linear")
     ax.set_yscale("log", base=10, subs=np.arange(2, 10))
+    pdf.savefig()
+    # Log scale xy.
+    ax.set_xscale("log", base=10, subs=np.arange(2, 10))
     pdf.savefig()
     plt.close()
 
@@ -609,7 +700,7 @@ with PdfPages(outfile_pdf) as pdf:
     )
     ax.set(
         xlabel="Diffusion Time / ns",
-        ylabel=r"d$/$d$t$ Mov. Avg. / nm$^2$/ns$^2$",
+        ylabel=r"d$/$d$t$ Mov. Avg. / nm$^2$ ns$^{-2}$",
         xlim=(times_t_movav_grad[0], times_t_movav_grad[-1]),
     )
     ax.axvline(
@@ -682,8 +773,12 @@ with PdfPages(outfile_pdf) as pdf:
     # Log scale x.
     ax.set_xscale("log", base=10, subs=np.arange(2, 10))
     pdf.savefig()
-    # Log scale xy.
+    # Log scale y.
+    ax.set_xscale("linear")
     ax.set_yscale("log", base=10, subs=np.arange(2, 10))
+    pdf.savefig()
+    # Log scale xy.
+    ax.set_xscale("log", base=10, subs=np.arange(2, 10))
     pdf.savefig()
     plt.close()
 
