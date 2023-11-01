@@ -8,6 +8,7 @@ extract the self-diffusion coefficient by fitting a straight line to it.
 
 # Standard libraries
 import argparse
+import warnings
 
 # Third-party libraries
 import mdtools as mdt
@@ -197,6 +198,12 @@ msd_t_movav_grad /= time_diff
 msd_t_movav_var = mdt.stats.movav(msd_t**2, wlen=movav_wsize)
 msd_t_movav_var -= msd_t_movav**2
 msd_t_movav_var /= movav_wsize - 1
+if np.any(msd_t_movav_var < 0):
+    raise ValueError(
+        "At least one element of `msd_t_movav_var` is less than zero.  This"
+        " should not have happened"
+    )
+
 
 # Calculate the uncertainty of the derivative of the moving average.
 # Propagation of uncertainty:
@@ -208,9 +215,19 @@ msd_t_movav_cov -= msd_t_movav[:-1] * msd_t_movav[1:]
 msd_t_movav_cov /= movav_wsize - 1
 msd_t_movav_grad_sd = msd_t_movav_var[:-1] + msd_t_movav_var[1:]
 msd_t_movav_grad_sd -= 2 * msd_t_movav_cov
+if np.any(msd_t_movav_grad_sd < 0):
+    warnings.warn(
+        "At least one element of `msd_t_movav_grad_sd` is less than zero."
+        "  This might happen, because the formula for the propagation of"
+        " uncertainty is just an approximation.",
+        RuntimeWarning,
+        stacklevel=2,
+    )
 msd_t_movav_grad_sd = np.sqrt(msd_t_movav_grad_sd, out=msd_t_movav_grad_sd)
 msd_t_movav_grad_sd /= time_diff
-msd_t_movav_grad_sd_min = np.min(msd_t_movav_grad_sd)
+msd_t_movav_grad_sd_min = np.min(
+    msd_t_movav_grad_sd[np.isfinite(msd_t_movav_grad_sd)]
+)
 
 # Calculate the uncertainty of the moving average.
 msd_t_movav_sd = np.sqrt(msd_t_movav_var, out=msd_t_movav_var)
