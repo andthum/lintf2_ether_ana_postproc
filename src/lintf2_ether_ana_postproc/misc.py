@@ -175,6 +175,40 @@ def extend_bins(bins, prepend=None, append=None):
     return bins
 
 
+def fit_goodness(data, fit):
+    """
+    Calculate quantities to assess the goodness of a fit.
+
+    Parameters
+    ----------
+    data : array_like
+        The true data.
+    fit : array_like
+        Array of the same shape as `data` containing the corresponding
+        fit/model values.
+
+    Returns
+    -------
+    r2 : scalar
+        Coefficient of determination.
+    rmse : scalar
+        The root-mean-square error, also known as root-mean-square
+        residuals.
+    """
+    data = np.asarray(data)
+    fit = np.asarray(fit)
+    # Residual sum of squares.
+    ss_res = np.sum((data - fit) ** 2)
+    # Root-mean-square error / root-mean-square residuals.
+    rmse = np.sqrt(ss_res / len(fit))
+    # Total sum of squares.
+    ss_tot = np.sum((data - np.mean(data)) ** 2)
+    # (Pseudo) coefficient of determination (R^2).
+    # https://www.r-bloggers.com/2021/03/the-r-squared-and-nonlinear-regression-a-difficult-marriage/
+    r2 = 1 - (ss_res / ss_tot)
+    return r2, rmse
+
+
 def find_nearest(a, vals, tol=0.01):
     """
     Get the indices of the values of an array that are closest to the
