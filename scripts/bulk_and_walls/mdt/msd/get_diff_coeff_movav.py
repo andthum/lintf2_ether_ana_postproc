@@ -115,19 +115,21 @@ elif args.msd_component == "z":
 else:
     raise ValueError("Unknown --msd-component ({})".format(args.msd_component))
 
-# Window length for calculating the moving average of MSD/t.
-# Set to the number of frames between restarting points used for
-# calculating the MSD.
-movav_wlen = 501
-if movav_wlen % 2 == 0:
-    # Ensure that `movav_wlen` is odd.
-    movav_wlen += 1
+# Number of frames between restarting points used for calculating the
+# MSD.
+restart_interval = 500
+# Window size for calculating the moving average of MSD/t.
+movav_wsize = 2 * restart_interval
+if movav_wsize % 2 == 0:
+    # Ensure that `movav_wsize` is odd.
+    movav_wsize += 1
 # Regard the derivative of the moving average of MSD/t as zero if it
 # lies within +/- the minimum uncertainty of the derivative times
 # `deriv_sd_factor`.
-# 0.674490 = 50% confidence interval of the normal distribution.
-# 1.17741 = Full width at half maximum of the normal distribution.
-# 1.644854 = 90% confidence interval of the normal distribution.
+# 0.674490 sigma = 50% confidence interval of the normal distribution.
+# 1.0 sigma = 68.2689492% confidence interval of the normal dist.
+# 1.17741 sigma = Full width at half maximum of the normal distribution
+# 1.644854 sigma = 90% confidence interval of the normal distribution.
 deriv_sd_factor = 1.0
 # Stop fitting the MSD at `fit_stop_pct` percent of the data.
 fit_stop_pct = 0.9
@@ -167,11 +169,12 @@ times_t = times[1:]
 
 
 print("Identifying diffusive regime and calculating diffusion coefficient...")
-discard = (movav_wlen - 1) // 2
-times_t_movav = times_t[discard : len(times_t) - discard]
+# Time shift of the moving average to the original times.
+movav_t_shift = (movav_wsize - 1) // 2
+times_t_movav = times_t[movav_t_shift : len(times_t) - movav_t_shift]
 
 # Calculate the moving average of MSD/t.
-msd_t_movav = mdt.stats.movav(msd_t, wlen=movav_wlen)
+msd_t_movav = mdt.stats.movav(msd_t, wlen=movav_wsize)
 
 # Calculate the derivative of the moving average.
 # Use `np.diff` instead of `numpy.gradient`, because otherwise the
@@ -181,18 +184,18 @@ msd_t_movav_grad = np.diff(msd_t_movav)
 msd_t_movav_grad /= time_diff
 
 # Calculate the variance (squared uncertainty) of the moving average.
-msd_t_movav_var = mdt.stats.movav(msd_t**2, wlen=movav_wlen)
+msd_t_movav_var = mdt.stats.movav(msd_t**2, wlen=movav_wsize)
 msd_t_movav_var -= msd_t_movav**2
-msd_t_movav_var /= movav_wlen - 1
+msd_t_movav_var /= movav_wsize - 1
 
 # Calculate the uncertainty of the derivative of the moving average.
 # Propagation of uncertainty:
 # https://en.wikipedia.org/wiki/Propagation_of_uncertainty#Example_formulae
 # f = c * (X - Y)
 # Var[f] = c^2 * (Var[X] + Var[Y] - 2 Cov[X, Y])
-msd_t_movav_cov = mdt.stats.movav(msd_t[:-1] * msd_t[1:], wlen=movav_wlen)
+msd_t_movav_cov = mdt.stats.movav(msd_t[:-1] * msd_t[1:], wlen=movav_wsize)
 msd_t_movav_cov -= msd_t_movav[:-1] * msd_t_movav[1:]
-msd_t_movav_cov /= movav_wlen - 1
+msd_t_movav_cov /= movav_wsize - 1
 msd_t_movav_grad_sd = msd_t_movav_var[:-1] + msd_t_movav_var[1:]
 msd_t_movav_grad_sd -= 2 * msd_t_movav_cov
 msd_t_movav_grad_sd = np.sqrt(msd_t_movav_grad_sd, out=msd_t_movav_grad_sd)
@@ -210,18 +213,30 @@ diffusive &= msd_t_movav_grad <= deriv_sd_factor * msd_t_movav_grad_sd
 if not np.any(diffusive):
     fit_start, fit_stop = -1, -1
 else:
-    first_true = np.argmax(diffusive)
-    fit_start, length, sequence_value = mdt.nph.find_const_seq_long(
-        diffusive[first_true:], tol=0.5
-    )
-    while sequence_value is False:
-        fit_start, length, value = mdt.nph.find_const_seq_long(
-            diffusive[first_true:fit_start], tol=0.5
-        )
-    fit_start += first_true + discard
-    fit_stop = fit_start + length + discard
+    # Find the longest sequence of ``True`` in `diffusive`.
+    # Get the start, length and value of all consecutive sequences of
+    # ``False`` and ``True`` in `diffusive`.
+    seq_starts, seq_lengths, vals = mdt.nph.get_const_seqs(diffusive, tol=0.5)
+    # Discard all sequences of ``False``
+    valid = np.flatnonzero(vals)
+    seq_starts, seq_lengths = seq_starts[valid], seq_lengths[valid]
+    # Find the longest sequence of ``True``.
+    ix_longest = np.argmax(seq_lengths)
+    fit_start = seq_starts[ix_longest]
+    fit_stop = fit_start + seq_lengths[ix_longest]
+    # Acount for the shift of indices: The times of the moving average,
+    # `times_t_movav` (and consequently `diffusive`), are shifted to the
+    # original times `time_t` by `movav_t_shift`.
+    fit_start += movav_t_shift
+    fit_stop += movav_t_shift
+    # Reduce the fit region by half of the windows size as security
+    # buffer.
+    fit_start += (movav_wsize - 1) // 2
+    fit_stop -= (movav_wsize - 1) // 2
+    del seq_starts, seq_lengths, vals, valid
 
 fit_stop_tot = int(fit_stop_pct * len(msd_t))
+fit_stop_tot -= (movav_wsize - 1) // 2  # Security buffer.
 if fit_start >= fit_stop_tot:
     fit_start, fit_stop = -1, -1
 if fit_stop > fit_stop_tot:
@@ -385,20 +400,20 @@ with PdfPages(outfile_pdf) as pdf:
     # Plot uncertainty of the moving average.
     fig, ax = plt.subplots(clear=True)
     ax.plot(
-        times_t_movav[: fit_start - discard],
-        msd_t_movav_sd[: fit_start - discard],
+        times_t_movav[: fit_start - movav_t_shift],
+        msd_t_movav_sd[: fit_start - movav_t_shift],
         color=color_movav,
         alpha=leap.plot.ALPHA,
     )
     ax.plot(
-        times_t_movav[fit_stop - discard :],
-        msd_t_movav_sd[fit_stop - discard :],
+        times_t_movav[fit_stop - movav_t_shift :],
+        msd_t_movav_sd[fit_stop - movav_t_shift :],
         color=color_movav,
         alpha=leap.plot.ALPHA,
     )
     ax.plot(
-        times_t_movav[fit_start - discard : fit_stop - discard],
-        msd_t_movav_sd[fit_start - discard : fit_stop - discard],
+        times_t_movav[fit_start - movav_t_shift : fit_stop - movav_t_shift],
+        msd_t_movav_sd[fit_start - movav_t_shift : fit_stop - movav_t_shift],
         color=color_fit,
         label="Fit Region",
         alpha=leap.plot.ALPHA,
@@ -406,7 +421,7 @@ with PdfPages(outfile_pdf) as pdf:
     ax.set(
         xlabel="Diffusion Time / ns",
         ylabel=r"SE of Mov. Avg. / nm$^2$/ns",
-        xlim=(times_t[discard // 2], times_t[-discard // 2]),
+        xlim=(times_t_movav[0], times_t_movav[-1]),
     )
     ax.legend(loc="upper right")
     pdf.savefig()
@@ -421,20 +436,24 @@ with PdfPages(outfile_pdf) as pdf:
     # Plot covariance of moving average.
     fig, ax = plt.subplots(clear=True)
     ax.plot(
-        times_t_movav_grad[: fit_start - discard + 1],
-        msd_t_movav_cov[: fit_start - discard + 1],
+        times_t_movav_grad[: fit_start - movav_t_shift + 1],
+        msd_t_movav_cov[: fit_start - movav_t_shift + 1],
         color=color_movav,
         alpha=leap.plot.ALPHA,
     )
     ax.plot(
-        times_t_movav_grad[fit_stop - discard + 1 :],
-        msd_t_movav_cov[fit_stop - discard + 1 :],
+        times_t_movav_grad[fit_stop - movav_t_shift + 1 :],
+        msd_t_movav_cov[fit_stop - movav_t_shift + 1 :],
         color=color_movav,
         alpha=leap.plot.ALPHA,
     )
     ax.plot(
-        times_t_movav_grad[fit_start - discard + 1 : fit_stop - discard + 1],
-        msd_t_movav_cov[fit_start - discard + 1 : fit_stop - discard + 1],
+        times_t_movav_grad[
+            fit_start - movav_t_shift + 1 : fit_stop - movav_t_shift + 1
+        ],
+        msd_t_movav_cov[
+            fit_start - movav_t_shift + 1 : fit_stop - movav_t_shift + 1
+        ],
         color=color_fit,
         label="Fit Region",
         alpha=leap.plot.ALPHA,
@@ -442,7 +461,7 @@ with PdfPages(outfile_pdf) as pdf:
     ax.set(
         xlabel="Diffusion Time / ns",
         ylabel=r"Cov. of Mov. Avg. / nm$^4$/ns$^2$",
-        xlim=(times_t[discard // 2], times_t[-discard // 2]),
+        xlim=(times_t_movav_grad[0], times_t_movav_grad[-1]),
     )
     ax.legend(loc="upper right")
     pdf.savefig()
@@ -467,20 +486,24 @@ with PdfPages(outfile_pdf) as pdf:
         rasterized=True,
     )
     ax.plot(
-        times_t_movav_grad[: fit_start - discard + 1],
-        msd_t_movav_grad[: fit_start - discard + 1],
+        times_t_movav_grad[: fit_start - movav_t_shift + 1],
+        msd_t_movav_grad[: fit_start - movav_t_shift + 1],
         color=color_movav,
         alpha=leap.plot.ALPHA,
     )
     ax.plot(
-        times_t_movav_grad[fit_stop - discard + 1 :],
-        msd_t_movav_grad[fit_stop - discard + 1 :],
+        times_t_movav_grad[fit_stop - movav_t_shift + 1 :],
+        msd_t_movav_grad[fit_stop - movav_t_shift + 1 :],
         color=color_movav,
         alpha=leap.plot.ALPHA,
     )
     ax.plot(
-        times_t_movav_grad[fit_start - discard + 1 : fit_stop - discard + 1],
-        msd_t_movav_grad[fit_start - discard + 1 : fit_stop - discard + 1],
+        times_t_movav_grad[
+            fit_start - movav_t_shift + 1 : fit_stop - movav_t_shift + 1
+        ],
+        msd_t_movav_grad[
+            fit_start - movav_t_shift + 1 : fit_stop - movav_t_shift + 1
+        ],
         color=color_fit,
         label="Fit Region",
         alpha=leap.plot.ALPHA,
@@ -488,11 +511,11 @@ with PdfPages(outfile_pdf) as pdf:
     ax.set(
         xlabel="Diffusion Time / ns",
         ylabel=r"d$/$d$t$ Mov. Avg. / nm$^2$/ns$^2$",
-        xlim=(times_t[discard // 2], times_t[-discard // 2]),
+        xlim=(times_t_movav_grad[0], times_t_movav_grad[-1]),
     )
     ax.axvline(
         times_t[fit_stop_tot],
-        label="Fit Cut",
+        label="Fit Cutoff",
         color=color_fit_stop_tot,
         alpha=leap.plot.ALPHA,
     )
@@ -528,20 +551,24 @@ with PdfPages(outfile_pdf) as pdf:
     # Plot uncertainty of the derivative of the moving average.
     fig, ax = plt.subplots(clear=True)
     ax.plot(
-        times_t_movav_grad[: fit_start - discard + 1],
-        msd_t_movav_grad_sd[: fit_start - discard + 1],
+        times_t_movav_grad[: fit_start - movav_t_shift + 1],
+        msd_t_movav_grad_sd[: fit_start - movav_t_shift + 1],
         color=color_movav,
         alpha=leap.plot.ALPHA,
     )
     ax.plot(
-        times_t_movav_grad[fit_stop - discard + 1 :],
-        msd_t_movav_grad_sd[fit_stop - discard + 1 :],
+        times_t_movav_grad[fit_stop - movav_t_shift + 1 :],
+        msd_t_movav_grad_sd[fit_stop - movav_t_shift + 1 :],
         color=color_movav,
         alpha=leap.plot.ALPHA,
     )
     ax.plot(
-        times_t_movav_grad[fit_start - discard + 1 : fit_stop - discard + 1],
-        msd_t_movav_grad_sd[fit_start - discard + 1 : fit_stop - discard + 1],
+        times_t_movav_grad[
+            fit_start - movav_t_shift + 1 : fit_stop - movav_t_shift + 1
+        ],
+        msd_t_movav_grad_sd[
+            fit_start - movav_t_shift + 1 : fit_stop - movav_t_shift + 1
+        ],
         color=color_fit,
         label="Fit Region",
         alpha=leap.plot.ALPHA,
@@ -549,7 +576,7 @@ with PdfPages(outfile_pdf) as pdf:
     ax.set(
         xlabel="Diffusion Time / ns",
         ylabel="SE of Deriv. of Mov. Avg.",
-        xlim=(times_t[discard // 2], times_t[-discard // 2]),
+        xlim=(times_t_movav_grad[0], times_t_movav_grad[-1]),
     )
     ax.legend(loc="upper right")
     pdf.savefig()
