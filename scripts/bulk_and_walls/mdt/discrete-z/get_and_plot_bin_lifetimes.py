@@ -314,40 +314,6 @@ def cross(y, x, f):
         return (y - intercept) / slope
 
 
-def fit_goodness(data, fit):
-    """
-    Calculate quantities to assess the goodness of a fit.
-
-    Parameters
-    ----------
-    data : array_like
-        The true data.
-    fit : array_like
-        Array of the same shape as `data` containing the corresponding
-        fit/model values.
-
-    Returns
-    -------
-    r2 : scalar
-        Coefficient of determination.
-    rmse : scalar
-        The root-mean-square error, also known as root-mean-square
-        residuals.
-    """
-    data = np.asarray(data)
-    fit = np.asarray(fit)
-    # Residual sum of squares.
-    ss_res = np.sum((data - fit) ** 2)
-    # Root-mean-square error / root-mean-square residuals.
-    rmse = np.sqrt(ss_res / len(fit))
-    # Total sum of squares.
-    ss_tot = np.sum((data - np.mean(data)) ** 2)
-    # (Pseudo) coefficient of determination (R^2).
-    # https://www.r-bloggers.com/2021/03/the-r-squared-and-nonlinear-regression-a-difficult-marriage/
-    r2 = 1 - (ss_res / ss_tot)
-    return r2, rmse
-
-
 def get_ydata_min_max(ax):
     """
     Get the minimum and maximum y value of the data plotted in an
@@ -645,7 +611,7 @@ for i, rp in enumerate(remain_props.T):
         method=fit_method,
     )
     fit = mdt.func.kww(times_fit[valid], *popt_kww[i])
-    r2, rmse = fit_goodness(data=rp_fit[valid], fit=fit)
+    r2, rmse = leap.misc.fit_goodness(data=rp_fit[valid], fit=fit)
     lts_kww_fit_goodness[i] = np.array([r2, rmse])
     # Calculate distribution characteristics.
     raw_moms = np.full(n_moms, np.nan, dtype=np.float64)
@@ -687,7 +653,7 @@ for i, rp in enumerate(remain_props.T):
         method=fit_method,
     )
     fit = mdt.func.burr12_sf_alt(times_fit[valid], *popt_bur[i])
-    r2, rmse = fit_goodness(data=rp_fit[valid], fit=fit)
+    r2, rmse = leap.misc.fit_goodness(data=rp_fit[valid], fit=fit)
     lts_bur_fit_goodness[i] = np.array([r2, rmse])
     # Calculate distribution characteristics.
     tau0 = popt_bur[i][0]
