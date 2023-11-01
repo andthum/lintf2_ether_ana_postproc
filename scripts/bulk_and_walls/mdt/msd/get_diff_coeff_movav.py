@@ -92,9 +92,17 @@ args = parser.parse_args()
 analysis = "msd"  # Analysis name.
 tool = "mdt"  # Analysis software.
 outfile_base = (
-    args.settings + "_" + args.system + "_" + analysis + "_" + args.cmp
+    args.settings
+    + "_"
+    + args.system
+    + "_"
+    + analysis
+    + "_"
+    + args.cmp
+    + "_"
+    + args.msd_component
 )
-outfile_txt = outfile_base + ".txt.gz"
+outfile_txt = outfile_base + "_diff_coeff" + ".txt.gz"
 outfile_pdf = outfile_base + ".pdf"
 
 # Columns to read from the MSD file.
@@ -119,7 +127,7 @@ else:
 # MSD.
 restart_interval = 500
 # Window size for calculating the moving average of MSD/t.
-movav_wsize = 2 * restart_interval
+movav_wsize = 2 * restart_interval  # [data points].
 if movav_wsize % 2 == 0:
     # Ensure that `movav_wsize` is odd.
     movav_wsize += 1
@@ -170,6 +178,8 @@ times_t = times[1:]
 
 print("Identifying diffusive regime and calculating diffusion coefficient...")
 # Time shift of the moving average to the original times.
+# To get the central moving average, set the time shift to half of the
+# window size.
 movav_t_shift = (movav_wsize - 1) // 2
 times_t_movav = times_t[movav_t_shift : len(times_t) - movav_t_shift]
 
@@ -206,7 +216,7 @@ msd_t_movav_grad_sd_min = np.min(msd_t_movav_grad_sd)
 msd_t_movav_sd = np.sqrt(msd_t_movav_var, out=msd_t_movav_var)
 del msd_t_movav_var
 
-# Identify diffusive regime.
+# Identify the diffusive regime.
 diffusive = msd_t_movav_grad >= -deriv_sd_factor * msd_t_movav_grad_sd
 diffusive &= msd_t_movav_grad <= deriv_sd_factor * msd_t_movav_grad_sd
 
@@ -229,7 +239,7 @@ else:
     # original times `time_t` by `movav_t_shift`.
     fit_start += movav_t_shift
     fit_stop += movav_t_shift
-    # Reduce the fit region by half of the windows size as security
+    # Reduce the fit region by half of the window size as security
     # buffer.
     fit_start += (movav_wsize - 1) // 2
     fit_stop -= (movav_wsize - 1) // 2
@@ -255,8 +265,80 @@ else:
 
 
 print("Creating output...")
-header = ""
-# TODO
+if fit_start > 0 and fit_stop > 0:
+    data = np.array(
+        [[diff_coeff, diff_coeff_sd, times_t[fit_start], times_t[fit_stop]]]
+    )
+else:
+    data = np.array([[diff_coeff, diff_coeff_sd, np.nan, np.nan]])
+header = (
+    "Diffusion coefficient\n"
+    + "\n"
+    + "System:       {:s}\n".format(args.system)
+    + "Settings:     {:s}\n".format(args.settings)
+    + "Input file:   {:s}\n".format(infile)
+    + "Read Columns: {}\n".format(cols)
+    + "\n"
+    + "\n"
+    + "The diffusion coefficient D is calculated according to the Einstein\n"
+    + "relation\n"
+    + "  MSD(t) = 2*d * D * t\n"
+    + "by calculating the mean of MSD(t)/t within the diffusive regime and\n"
+    + "dividing it by 2*d, where d is the number of dimensions in which the\n"
+    + "diffusive process takes place.\n"
+    + "\n"
+    + "The diffusive regime is identified in the following way:\n"
+    + "\n"
+    + "1.) Calculate the function D(t) = MSD(t)/t.\n"
+    + "\n"
+    + "2.) Smooth D(t) by calculating the central moving average with a\n"
+    + "window size of {:d} data points ({:f} ns).\n".format(
+        movav_wsize, movav_wsize * time_diff
+    )
+    + "\n"
+    + "3.) Estimate the derivative of the moving average using finite\n"
+    + "differences.\n"
+    + "\n"
+    + "4.) Identify the diffusive regime as the largest continuous sequence\n"
+    + "where the derivative is zero within {:f} times of its\n".format(
+        deriv_sd_factor
+    )
+    + "uncertainty (which is calculated from the uncertainty of the moving\n"
+    + "average using standard propagation of uncertainty).\n"
+    + "\n"
+    + "6.) Reduce the diffusive regime on both sides by half of the\n"
+    + "moving-average window size as security buffer.  Furthermore, if the\n"
+    + "diffusive regime exceeds {:f} percent of the available D(t)\n".format(
+        fit_stop_pct
+    )
+    + "data minus half of the moving-average window size, cut it at this\n"
+    + "point, because D(t) tends to get quite noisy beyond it.\n"
+    + "\n"
+    + "5.) Calculate the diffusion coefficient as the mean of D(t) within\n"
+    + "the diffusive regime.\n"
+    + "\n"
+    + "movav_wsize     = {:d} data points ({:f} ns)\n".format(
+        movav_wsize, movav_wsize * time_diff
+    )
+    + "deriv_sd_factor = {:f}\n".format(deriv_sd_factor)
+    + "fit_stop_pct    = {:f}\n".format(fit_stop_pct)
+    + "\n"
+    + "\n"
+    + "Compound:       {:s}\n".format(args.cmp)
+    + "MSD component:  {:s}\n".format(args.msd_component)
+    + "No. dimensions: {:d}\n".format(n_dim)
+    + "\n"
+    + "The columns contain:\n"
+    + "  1 Diffusion coefficient in nm^2/ns\n"
+    + "  2 Standard error of the diffusion coefficient in nm^2/ns\n"
+    + "  3 Start of the fitting/averaging region in ns\n"
+    + "  4 End of the fitting/averaging region in ns\n"
+    + "{:>14d}".format(1)
+)
+for col_num in range(2, data.shape[-1] + 1):
+    header += " {:>16d}".format(col_num)
+leap.io_handler.savetxt(outfile_txt, data, header=header)
+print("Created {}".format(outfile_txt))
 
 
 print("Creating plots...")
