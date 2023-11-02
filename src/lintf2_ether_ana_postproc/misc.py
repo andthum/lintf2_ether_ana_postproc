@@ -49,6 +49,34 @@ def line_inv(y, xp1, xp2, fp1, fp2):
     return (y - intercept) / slope
 
 
+def power_spectrum(data, dt):
+    """
+    Calculate the power spectrum of the data.
+
+    Parameters
+    ----------
+    data : array_like
+        The data.
+    dt : float
+        Time step between recorded data points.
+
+    Returns
+    -------
+    frequencies : numpy.ndarray
+        The frequency values.
+    amplitudes : numpy.ndarray
+        The corresponding power spectrum.
+    """
+    data = np.asarray(data)
+    # The zero-frequency term is the sum of the signal => Remove the
+    # mean to get a zero-frequency term that is zero.
+    mean = np.mean(data)
+    amplitudes = np.abs(np.fft.rfft(data - mean))
+    amplitudes **= 2
+    frequencies = np.fft.rfftfreq(len(data), dt)
+    return frequencies, amplitudes
+
+
 def gen_equidist_bins(start, stop, bw_desired):
     """
     Generate equidistant bins.
@@ -145,6 +173,40 @@ def extend_bins(bins, prepend=None, append=None):
         bins = np.append(bins, append)
 
     return bins
+
+
+def fit_goodness(data, fit):
+    """
+    Calculate quantities to assess the goodness of a fit.
+
+    Parameters
+    ----------
+    data : array_like
+        The true data.
+    fit : array_like
+        Array of the same shape as `data` containing the corresponding
+        fit/model values.
+
+    Returns
+    -------
+    r2 : scalar
+        Coefficient of determination.
+    rmse : scalar
+        The root-mean-square error, also known as root-mean-square
+        residuals.
+    """
+    data = np.asarray(data)
+    fit = np.asarray(fit)
+    # Residual sum of squares.
+    ss_res = np.sum((data - fit) ** 2)
+    # Root-mean-square error / root-mean-square residuals.
+    rmse = np.sqrt(ss_res / len(fit))
+    # Total sum of squares.
+    ss_tot = np.sum((data - np.mean(data)) ** 2)
+    # (Pseudo) coefficient of determination (R^2).
+    # https://www.r-bloggers.com/2021/03/the-r-squared-and-nonlinear-regression-a-difficult-marriage/
+    r2 = 1 - (ss_res / ss_tot)
+    return r2, rmse
 
 
 def find_nearest(a, vals, tol=0.01):
