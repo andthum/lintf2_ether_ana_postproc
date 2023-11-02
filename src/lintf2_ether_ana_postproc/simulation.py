@@ -3071,3 +3071,91 @@ def read_free_energy_extrema(Sims, cmp, peak_type, cols, prom_min=None):
                 data[col_ix][pkt_ix][sim_ix] = dat_col_sim_valid
 
     return data, n_pks_max
+
+
+def read_time_state_matrix(
+    fname, fname_var=None, time_conv=1, amin=None, amax=None
+):
+    """
+    Read a time-state matrix from file.
+
+    Read a data matrix from file where the first column contains the
+    times, the first row contains the discrete states and the remaining
+    matrix elements contain the corresponding data.
+
+    Parameters
+    ----------
+    fname : str or bytes or os.PathLike
+        Name of the file containing the data matrix.
+    fname_var : str or bytes or os.PathLike or None, optional
+        Optional name of the file containing the variance of the data.
+        The file must have the same format as the first one.
+    time_conv : scalar, optional
+        Time conversion factor.  All times read from the input file are
+        multiplied by this factor.
+    amin : scalar, optional
+        A minimum value that the data in the matrix must not undermine.
+    amax : scalar, optional
+        A maximum value that the data in the matrix must not exceed.
+
+    Returns
+    -------
+    data : numpy.ndarray
+        Array of shape ``(t, s)`` where ``t`` is the number of times and
+        ``s`` is the number of different states.  The ij-th element of
+        `data` is the data value for state j at time i.
+    data_var : numpy.ndarray
+        Array of the same shape as `data` containing the variance of the
+        data.  Only returned if `fname_var` was provided.
+    times : numpy.ndarray
+        Array of shape ``(t,)`` containing the corresponding times.
+    states : numpy.ndarray
+        Array of shape ``(s,)`` containing the corresponding state
+        indices.
+    """
+    data = np.loadtxt(fname)
+    states = data[0, 1:]  # State indices.
+    times = data[1:, 0]
+    times *= time_conv
+    data = data[1:, 1:]
+    if amin is not None and np.any(data < amin):
+        raise ValueError(
+            "At least one value of the data is less than {}.  Input file:"
+            " {}".format(amin, fname)
+        )
+    if amax is not None and np.any(data > amax):
+        raise ValueError(
+            "At least one value of the data is greater than {}.  Input file:"
+            " {}".format(amax, fname)
+        )
+    if np.any(np.modf(states)[0] != 0):
+        raise ValueError(
+            "Some state indices are not integers but floats.  `states` ="
+            " {}.  Input file: {}".format(states, fname)
+        )
+    states = states.astype(np.int64)
+
+    if fname_var is not None:
+        data_var, times_var, states_var = read_time_state_matrix(
+            fname=fname_var,
+            fname_var=None,
+            time_conv=time_conv,
+            amin=amin,
+            amax=amax,
+        )
+        if data_var.shape != data.shape:
+            raise ValueError(
+                "`data_var.shape` ({}) != `data.shape` ({}).  Input file:"
+                " ({})".format(data_var.shape, data.shape, fname_var)
+            )
+        if not np.allclose(times_var, times, rtol=0):
+            raise ValueError(
+                "`times_var` != `times`.  Input file: {}".format(fname_var)
+            )
+        if not np.array_equal(states_var, states, rtol=0):
+            raise ValueError(
+                "`states_var` != `states`.  Input file: {}".format(fname_var)
+            )
+        return data, data_var, times, states
+    else:
+        return data, times, states
