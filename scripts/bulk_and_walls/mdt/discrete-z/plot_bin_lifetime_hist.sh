@@ -11,9 +11,8 @@ flags=()
 
 information() {
     echo "Loop over all bulk and surface simulation directories and run"
-    echo "the Python script plot_back-jump_prob.py to plot the"
-    echo "probability that a given compound jumps back to its previous"
-    echo "layer."
+    echo "the Python script plot_bin_lifetime_hist.py to plot the"
+    echo "lifetime histogram for each bin."
 }
 
 usage() {
@@ -29,7 +28,7 @@ usage() {
     echo "  -c    The compound for which to calculate the bin residence times."
     echo "        Default: '${cmp}'."
     echo "  -f    Addtional options (besides --system, --settings and --cmp)"
-    echo "        to parse to 'plot_back-jump_prob.py' as one long,"
+    echo "        to parse to 'plot_bin_lifetime_hist.py' as one long,"
     echo "        enquoted string.  See there for possible options.  Default:"
     echo "        '${flags[*]}'"
 }
@@ -84,7 +83,7 @@ script_dir=$(cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd)
 project_root=$(readlink -e "${script_dir}/../../../.." || exit)
 py_exe=".venv/bin/python3"
 py_exe="${project_root}/${py_exe}"
-py_script=$(readlink -e "${script_dir}/plot_back-jump_prob.py" || exit)
+py_script=$(readlink -e "${script_dir}/plot_bin_lifetime_hist.py" || exit)
 if [[ ! -d ${script_dir} ]]; then
     echo "ERROR: No such directory '${script_dir}'"
     exit 1
