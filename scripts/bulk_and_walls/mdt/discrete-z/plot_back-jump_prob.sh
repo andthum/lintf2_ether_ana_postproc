@@ -11,8 +11,8 @@ flags=()
 
 information() {
     echo "Loop over all bulk and surface simulation directories and run"
-    echo "the Python script plot_back-jump_prob.py to calculate the"
-    echo "probability of a given compound to jump back to its previous"
+    echo "the Python script plot_back-jump_prob.py to plot the"
+    echo "probability that a given compound jumps back to its previous"
     echo "layer."
 }
 
@@ -24,8 +24,8 @@ usage() {
     echo "  -h    Show this help message and exit."
     echo "  -e    String describing the used simulation settings."
     echo "        Default: '${settings}'."
-    echo "  -t    Top-level simulation path containing all surface"
-    echo "        simulations.  Default: '${top_path}'."
+    echo "  -t    Top-level simulation path containing all bulk and"
+    echo "        surface simulations.  Default: '${top_path}'."
     echo "  -c    The compound for which to calculate the bin residence times."
     echo "        Default: '${cmp}'."
     echo "  -f    Addtional options (besides --system, --settings and --cmp)"
