@@ -90,6 +90,9 @@ outfile = (
     + ".pdf"
 )
 
+# Time conversion factor to convert trajectory steps to ns.
+time_conv = 2e-3
+
 
 print("Creating Simulation instance(s)...")
 if "_gra_" in args.system:
@@ -108,19 +111,18 @@ file_suffix = (
 )
 infile = leap.simulation.get_ana_file(Sim, analysis, tool, file_suffix)
 bj_probs, times, states = leap.simulation.read_time_state_matrix(
-    infile,
-    time_conv=2e-3,  # trajectory steps -> ns.
-    amin=0,
-    amax=1,
+    infile, time_conv=time_conv, amin=0, amax=1
 )
 bj_probs = np.ascontiguousarray(bj_probs.T)
 n_states = len(states)
 
 
 print("Get scaling law of the back-jump probability...")
-# Select a state from the center of the simulation box
-bj_prob_fit = bj_probs[n_states // 2][1:50]
-times_fit = times[1:50]
+fit_start_ix, fit_stop_ix = 1, 50
+# Select a state from the center of the simulation box.
+state_ix = n_states // 2
+bj_prob_fit = bj_probs[state_ix][fit_start_ix:fit_stop_ix]
+times_fit = times[fit_start_ix:fit_stop_ix]  # This is a view!
 popt, pcov = curve_fit(
     f=scaling_law,
     xdata=times_fit,
@@ -132,16 +134,20 @@ bj_prob_fit = scaling_law(times_fit, *popt)
 
 
 print("Creating plots...")
+xlabel = "Lag Time / ns"
+ylabel = "Back-Jump Probability"
+xmin_xlin = times[0]
+xmin_xlog = times[1]
+ymin_ylin = 0
+ymin_ylog = np.min(bj_probs[bj_probs > 0]) / 2
+ymax_ylin = 0.5
+ymax_ylog = 0.5
 if args.continuous:
     xmax_ylin = 0.2
     xmax_ylog = 200
-    ymax = 0.5
-    ymin_ylog = np.min(bj_probs[bj_probs > 0])
 else:
     xmax_ylin = 0.2
     xmax_ylog = times[-1]
-    ymax = 0.5
-    ymin_ylog = np.min(bj_probs[bj_probs > 0])
 
 if surfq is None:
     legend_title = ""
@@ -174,10 +180,10 @@ with PdfPages(outfile) as pdf:
             rasterized=not args.continuous,
         )
     ax.set(
-        xlabel="Lag Time / ns",
-        ylabel="Back-Jump Probability",
-        xlim=(times[0], xmax_ylin),
-        ylim=(0, ymax),
+        xlabel=xlabel,
+        ylabel=ylabel,
+        xlim=(xmin_xlin, xmax_ylin),
+        ylim=(ymin_ylin, ymax_ylin),
     )
     legend = ax.legend(
         title=legend_title,
@@ -189,7 +195,7 @@ with PdfPages(outfile) as pdf:
     pdf.savefig()
 
     # Log scale x.
-    ax.set_xlim(times[1], xmax_ylin)
+    ax.set_xlim(xmin_xlog, xmax_ylin)
     ax.set_xscale("log", base=10, subs=np.arange(2, 10))
     pdf.savefig()
 
@@ -197,8 +203,8 @@ with PdfPages(outfile) as pdf:
     ax.relim()
     ax.autoscale()
     ax.set_xscale("linear")
-    ax.set_xlim(times[0], xmax_ylog)
-    ax.set_ylim(ymin_ylog, ymax)
+    ax.set_xlim(xmin_xlin, xmax_ylog)
+    ax.set_ylim(ymin_ylog, ymax_ylog)
     ax.set_yscale("log", base=10, subs=np.arange(2, 10))
     pdf.savefig()
 
@@ -214,14 +220,14 @@ with PdfPages(outfile) as pdf:
         times_fit[-1],
         bj_prob_fit[-1] * 2,
         r"$\propto t^{%.2f}$" % popt[1],
-        rotation=np.rad2deg(np.arctan(popt[1])) / 1.2,
+        rotation=np.rad2deg(np.arctan(popt[1])) / 1.3,
         rotation_mode="anchor",
         transform_rotates_text=False,
         horizontalalignment="right",
         verticalalignment="bottom",
         fontsize="small",
     )
-    ax.set_xlim(times[1], xmax_ylog)
+    ax.set_xlim(xmin_xlog, xmax_ylog)
     ax.set_xscale("log", base=10, subs=np.arange(2, 10))
     pdf.savefig()
     plt.close()
