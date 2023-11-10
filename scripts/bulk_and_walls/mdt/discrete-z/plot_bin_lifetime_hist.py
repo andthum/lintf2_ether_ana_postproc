@@ -22,11 +22,6 @@ from scipy.optimize import curve_fit
 import lintf2_ether_ana_postproc as leap
 
 
-def scaling_law(x, c, m):
-    """Scaling law fit function."""
-    return c * x**m
-
-
 # Input parameters.
 parser = argparse.ArgumentParser(
     description=(
@@ -99,11 +94,8 @@ if args.intermittency > 0:
     outfile += "_intermittency_%d" % args.intermittency
 outfile += ".pdf"
 
-# Time conversion factor to convert trajectory steps to ns.
+# Time conversion factor to convert from trajectory steps to ns.
 time_conv = 2e-3
-# Whether to plot the probability density function or the number of
-# samples in each histogram bin.
-density = True
 
 
 print("Creating Simulation instance(s)...")
@@ -138,75 +130,44 @@ lts_per_state, states = mdt.dtrj.lifetimes_per_state(
 )
 n_states = len(states)
 
-# Binning is done in trajectory steps, not in physical time units.
-# Axis limits and fit region is optimized for linear bin spacing.
-bin_spacing = "linear"
-if bin_spacing == "linear":
-    # Create bins spaced evenly on a linear scale.
-    step = max(1, args.intermittency // 10)
-    bins = np.arange(0.5, n_frames + step, step, dtype=np.float64)
-elif bin_spacing == "log":
-    # Create bins spaced evenly on a log scale.
-    # Round to second-next higher power of ten.
-    stop = 10 ** (np.ceil(np.log10(n_frames)) + 1)
-    bins = np.geomspace(1, stop, round(np.log10(stop)) + 1, dtype=np.float64)
-    bins -= 0.5
-elif bin_spacing == "logaxis":
-    # Create bins edges that correspond the the ticks on a logarithmic
-    # axis.
-    # Round to next higher power of ten.
-    stop = int(np.ceil(np.log10(n_frames)) + 1)
-    bins = np.concatenate(
-        [
-            np.arange(10**n, 10 ** (n + 1), 10**n, dtype=np.float64)
-            for n in range(stop)
-        ]
-    )
-    bins = np.append(bins, 10**stop)
-    bins -= 0.5
-else:
-    raise ValueError("Unknown bin spacing: {}".format(bin_spacing))
-
+# Binning is done in trajectory steps.
+stop = int(np.ceil(np.log2(n_frames))) + 1
+bins = np.logspace(0, stop, stop + 1, base=2, dtype=np.float64)
+bins -= 0.5
+bin_mids = bins[1:] - np.diff(bins) / 2
 hists = np.full((n_states, len(bins) - 1), np.nan, dtype=np.float32)
 for state_ix, lts_state in enumerate(lts_per_state):
     if np.any(lts_state < bins[0]) or np.any(lts_state > bins[-1]):
         raise ValueError(
             "At least one lifetime lies outside the binned region"
         )
-    hists[state_ix], _bins = np.histogram(
-        lts_state, bins=bins, density=density
-    )
+    hists[state_ix], _bins = np.histogram(lts_state, bins=bins, density=True)
     if not np.allclose(_bins, bins, rtol=0):
         raise ValueError("`_bins` != `bins`.  This should not have happened")
-    if density and not np.isclose(np.sum(hists[state_ix] * np.diff(bins)), 1):
+    if not np.isclose(np.sum(hists[state_ix] * np.diff(bins)), 1):
         raise ValueError(
             "The integral of the histogram ({}) is not close to"
             " one".format(np.sum(hists[state_ix] * np.diff(bins)))
         )
-    elif not density and np.sum(hists[state_ix]) != len(lts_state):
-        raise ValueError(
-            "The sum of the histogram ({}) differs from the number of"
-            " lifetimes ({})".format(np.sum(hists[state_ix]), len(lts_state))
-        )
 del _bins
-bin_mids = bins[1:] - np.diff(bins) / 2
 
 
 if args.intermittency == 0:
-    print("Get scaling law of the back-jump probability...")
-    fit_start_ix, fit_stop_ix = 0, 50
-    # Select a state from the center of the simulation box.
-    state_ix = n_states // 2
-    hist_fit = hists[state_ix][fit_start_ix:fit_stop_ix]
+    print("Fitting power law...")
+    state_ix_fit = n_states // 2
+    fit_start_ix = 0
+    _, fit_stop_ix = mdt.nph.find_nearest(bin_mids, 50, return_index=True)
+    fit_stop_ix += 1
+    hist_fit = hists[state_ix_fit][fit_start_ix:fit_stop_ix]
     bin_mids_fit = bin_mids[fit_start_ix:fit_stop_ix]  # This is a view!
     popt, pcov = curve_fit(
-        f=scaling_law,
-        xdata=bin_mids_fit,
-        ydata=hist_fit,
-        p0=(hist_fit[0], -1),
+        f=leap.misc.straight_line,
+        xdata=np.log(bin_mids_fit),
+        ydata=np.log(hist_fit),
+        p0=(-1.5, np.log(hist_fit[0])),
     )
-    perr = np.sqrt(np.diag(pcov))
-    hist_fit = scaling_law(bin_mids_fit, *popt)
+    # perr = np.sqrt(np.diag(pcov))
+    hist_fit = leap.misc.power_law(bin_mids_fit, popt[0], np.exp(popt[1]))
 
 
 print("Creating plots...")
@@ -216,21 +177,15 @@ bin_mids *= time_conv
 # bin_mids_fit *= time_conv
 
 xlabel = "Lifetime / ns"
+ylabel = "PDF"
 xmin_xlin = 0
 xmin_xlog = 1 * time_conv
 xmax_ylin = 0.2
 xmax_ylog = 200
 ymin_ylin = 0
-if density:
-    ylabel = "PDF"
-    ymin_ylog = np.min(hists[hists > 0]) / 2
-    ymax_ylin = 0.5
-    ymax_ylog = 0.5
-else:
-    ylabel = "Count"
-    ymin_ylog = 5e-1
-    ymax_ylin = 1.3e5
-    ymax_ylog = 2e5
+ymin_ylog = np.min(hists[hists > 0]) / 2
+ymax_ylin = 0.5
+ymax_ylog = 0.6
 
 if surfq is None:
     legend_title = ""
@@ -254,20 +209,14 @@ mdt.fh.backup(outfile)
 with PdfPages(outfile) as pdf:
     fig, ax = plt.subplots(clear=True)
     ax.set_prop_cycle(color=colors)
-    for state_ix, state in enumerate(states):
-        # ax.stairs(
-        #     hists[state_ix],
-        #     bins,
-        #     label=r"$%d$" % (state + 1),
-        #     alpha=leap.plot.ALPHA,
-        #     rasterized=True,
-        # )
-        ax.plot(
-            bin_mids,
+    for state_ix, state_num in enumerate(states):
+        ax.stairs(
             hists[state_ix],
-            label=r"$%d$" % (state + 1),
+            bins,
+            fill=False,
+            label=r"$%d$" % (state_num + 1),
             alpha=leap.plot.ALPHA,
-            rasterized=True,
+            rasterized=False,
         )
     ax.set(
         xlabel=xlabel,
@@ -278,7 +227,7 @@ with PdfPages(outfile) as pdf:
     legend = ax.legend(
         title=legend_title,
         loc="upper right",
-        ncol=1 + n_states // (4 + 1),
+        ncol=1 + n_states // (5 + 1),
         **mdtplt.LEGEND_KWARGS_XSMALL,
     )
     legend.get_title().set_multialignment("center")
@@ -302,16 +251,16 @@ with PdfPages(outfile) as pdf:
     if args.intermittency == 0:
         ax.plot(
             bin_mids_fit,
-            hist_fit * 2,
+            hist_fit,
             color="black",
             linestyle="dashed",
             alpha=leap.plot.ALPHA,
         )
         ax.text(
             bin_mids_fit[-1],
-            hist_fit[-1] * 2,
-            r"$\propto t^{%.2f}$" % popt[1],
-            rotation=np.rad2deg(np.arctan(popt[1])) / 1.3,
+            hist_fit[-1] * 1.2,
+            r"$\propto t^{%.2f}$" % popt[0],
+            rotation=np.rad2deg(np.arctan(popt[0])) / 1.6,
             rotation_mode="anchor",
             transform_rotates_text=False,
             horizontalalignment="right",
@@ -320,6 +269,14 @@ with PdfPages(outfile) as pdf:
         )
     ax.set_xlim(xmin_xlog, xmax_ylog)
     ax.set_xscale("log", base=10, subs=np.arange(2, 10))
+    legend.get_title().set_multialignment("center")
+    legend = ax.legend(
+        title=legend_title,
+        loc="lower left",
+        ncol=1 + n_states // (5 + 1),
+        **mdtplt.LEGEND_KWARGS_XSMALL,
+    )
+    legend.get_title().set_multialignment("center")
     pdf.savefig()
     plt.close()
 
