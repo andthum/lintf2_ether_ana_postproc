@@ -22,28 +22,33 @@ from scipy.optimize import curve_fit
 import lintf2_ether_ana_postproc as leap
 
 
-def diff_coeff_scaling(x, c, m):
-    """
-    Fit function to fit the chain-length dependence of the diffusion
-    coefficients.
-    """
-    return c * x**m
-
-
 def fit_diff_coeff(diff_coeffs, diff_coeffs_sd, Sims, start=0, stop=-1):
     """
-    Fit the diffusion coefficient as function of the chain length with
-    :func:`diff_coeff_scaling`.
+    Fit the logarithmic diffusion coefficient as function of the
+    logarithmic chain length with a straight line.
+
+    The obtained fit parameters are converted from the parameters of a
+    straight line to the parameters of the corresponding power law.
     """
+    # Propagation of uncertainty.  See
+    # https://en.wikipedia.org/wiki/Propagation_of_uncertainty#Example_formulae
+    # Std[ln(A)] = Std[A] / |A|
+    sd = diff_coeffs_sd[start:stop] / np.abs(diff_coeffs[start:stop])
     popt, pcov = curve_fit(
-        f=diff_coeff_scaling,
-        xdata=Sims.O_per_chain[start:stop],
-        ydata=diff_coeffs[start:stop],
-        p0=(diff_coeffs[0], 2),
-        sigma=diff_coeffs_sd[start:stop],
+        f=leap.misc.straight_line,
+        xdata=np.log(Sims.O_per_chain[start:stop]),
+        ydata=np.log(diff_coeffs[start:stop]),
+        p0=(-2, np.log(diff_coeffs[0])),
+        sigma=sd,
         absolute_sigma=True,
     )
     perr = np.sqrt(np.diag(pcov))
+    # Convert straight-line parameters to the corresponding power-law
+    # parameters.
+    popt = np.array([popt[0], np.exp(popt[1])])
+    # Propagation of uncertainty.
+    # Std[exp(A)] = |exp(A)| * Std[A]
+    perr = np.array([perr[0], np.abs(popt[1]) * perr[1]])
     return popt, perr
 
 
@@ -122,7 +127,7 @@ for cmp_ix, cmp in enumerate(compounds):
         rmses[cmp_ix].append(rmse)
 
 
-print("Get scaling laws of the diffusion coefficients...")
+print("Fitting power law...")
 # PEO
 cmp_ix = compounds.index("ether")
 fit_peo_starts = (0, np.flatnonzero(Sims.O_per_chain == 6)[0])
@@ -204,7 +209,7 @@ with PdfPages(outfile) as pdf:
         xdata = Sims.O_per_chain[
             fit_peo_starts[fit_ix] : fit_peo_stops[fit_ix]
         ]
-        fit = diff_coeff_scaling(xdata, *popt)
+        fit = leap.misc.power_law(xdata, *popt)
         # Create an offset to the real data.
         if fit_ix == 0:
             fit *= 2
@@ -221,9 +226,9 @@ with PdfPages(outfile) as pdf:
             xdata[0] if fit_ix != 1 else xdata[0] + 0.1,
             fit[0],
             # r"$D_{PEO} \propto n_{EO}^{%.2f \pm %.2f}$"
-            # % (popt[1], perr_peo[fit_ix][1]),
-            r"$D_{PEO} \propto n_{EO}^{%.2f}$" % popt[1],
-            rotation=rotation,  # np.rad2deg(np.arctan(popt[1])) / 1.8,
+            # % (popt[0], perr_peo[fit_ix][0]),
+            r"$D_{PEO} \propto n_{EO}^{%.2f}$" % popt[0],
+            rotation=rotation,  # np.rad2deg(np.arctan(popt[0])) / 1.8,
             rotation_mode="anchor",
             transform_rotates_text=False,
             horizontalalignment="left",
@@ -235,7 +240,7 @@ with PdfPages(outfile) as pdf:
         xdata = Sims.O_per_chain[
             fit_tfsi_starts[fit_ix] : fit_tfsi_stops[fit_ix]
         ]
-        fit = diff_coeff_scaling(xdata, *popt)
+        fit = leap.misc.power_law(xdata, *popt)
         if fit_ix == 0:
             fit /= 2
             rotation = -35
@@ -251,9 +256,9 @@ with PdfPages(outfile) as pdf:
             xdata[0] if fit_ix != 0 else xdata[0] - 0.1,
             fit[0],
             # r"$D_{TFSI} \propto n_{EO}^{%.2f \pm %.2f}$"
-            # % (popt[1], perr_tfsi[fit_ix][1]),
-            r"$D_{TFSI} \propto n_{EO}^{%.2f}$" % popt[1],
-            rotation=rotation,  # np.rad2deg(np.arctan(popt[1])) / 2,
+            # % (popt[0], perr_tfsi[fit_ix][0]),
+            r"$D_{TFSI} \propto n_{EO}^{%.2f}$" % popt[0],
+            rotation=rotation,  # np.rad2deg(np.arctan(popt[0])) / 2,
             rotation_mode="anchor",
             transform_rotates_text=False,
             horizontalalignment="left",
@@ -263,7 +268,7 @@ with PdfPages(outfile) as pdf:
     # Li Fit.
     for fit_ix, popt in enumerate(popt_li):
         xdata = Sims.O_per_chain[fit_li_starts[fit_ix] : fit_li_stops[fit_ix]]
-        fit = diff_coeff_scaling(xdata, *popt)
+        fit = leap.misc.power_law(xdata, *popt)
         fit /= 8  # Create an offset to the real data.
         rotation = -35
         ax.plot(
@@ -273,9 +278,9 @@ with PdfPages(outfile) as pdf:
             xdata[0],
             fit[0],
             # r"$D_{Li} \propto n_{EO}^{%.2f \pm %.2f}$"
-            # % (popt[1], perr_li[fit_ix][1]),
-            r"$D_{Li} \propto n_{EO}^{%.2f}$" % popt[1],
-            rotation=rotation,  # np.rad2deg(np.arctan(popt[1])) / 2,
+            # % (popt[0], perr_li[fit_ix][0]),
+            r"$D_{Li} \propto n_{EO}^{%.2f}$" % popt[0],
+            rotation=rotation,  # np.rad2deg(np.arctan(popt[0])) / 2,
             rotation_mode="anchor",
             transform_rotates_text=False,
             horizontalalignment="left",
