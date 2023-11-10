@@ -129,10 +129,16 @@ lts_per_state, states = mdt.dtrj.lifetimes_per_state(
     dtrj, uncensored=args.uncensored, return_states=True
 )
 n_states = len(states)
+del dtrj
 
 # Binning is done in trajectory steps.
+# Linear bins.
+# step = 1
+# bins = np.arange(1, n_frames, step, dtype=np.float64)
+# Logarithmic bins.
 stop = int(np.ceil(np.log2(n_frames))) + 1
 bins = np.logspace(0, stop, stop + 1, base=2, dtype=np.float64)
+unit_bins = True if np.allclose(np.diff(bins), 1) else False
 bins -= 0.5
 bin_mids = bins[1:] - np.diff(bins) / 2
 hists = np.full((n_states, len(bins) - 1), np.nan, dtype=np.float32)
@@ -149,7 +155,7 @@ for state_ix, lts_state in enumerate(lts_per_state):
             "The integral of the histogram ({}) is not close to"
             " one".format(np.sum(hists[state_ix] * np.diff(bins)))
         )
-del _bins
+del lts_per_state, lts_state, _bins
 
 
 if args.intermittency == 0:
@@ -198,6 +204,7 @@ legend_title = (
     + "\n"
     + "Bin Number"
 )
+n_legend_cols = 1 + n_states // (5 + 1)
 
 cmap = plt.get_cmap()
 c_vals = np.arange(n_states)
@@ -210,14 +217,23 @@ with PdfPages(outfile) as pdf:
     fig, ax = plt.subplots(clear=True)
     ax.set_prop_cycle(color=colors)
     for state_ix, state_num in enumerate(states):
-        ax.stairs(
-            hists[state_ix],
-            bins,
-            fill=False,
-            label=r"$%d$" % (state_num + 1),
-            alpha=leap.plot.ALPHA,
-            rasterized=False,
-        )
+        if not unit_bins:
+            ax.stairs(
+                hists[state_ix],
+                bins,
+                fill=False,
+                label=r"$%d$" % (state_num + 1),
+                alpha=leap.plot.ALPHA,
+                rasterized=False,
+            )
+        else:
+            ax.plot(
+                bin_mids,
+                hists[state_ix],
+                label=r"$%d$" % (state_num + 1),
+                alpha=leap.plot.ALPHA,
+                rasterized=False,
+            )
     ax.set(
         xlabel=xlabel,
         ylabel=ylabel,
@@ -227,7 +243,7 @@ with PdfPages(outfile) as pdf:
     legend = ax.legend(
         title=legend_title,
         loc="upper right",
-        ncol=1 + n_states // (5 + 1),
+        ncol=n_legend_cols,
         **mdtplt.LEGEND_KWARGS_XSMALL,
     )
     legend.get_title().set_multialignment("center")
@@ -269,11 +285,10 @@ with PdfPages(outfile) as pdf:
         )
     ax.set_xlim(xmin_xlog, xmax_ylog)
     ax.set_xscale("log", base=10, subs=np.arange(2, 10))
-    legend.get_title().set_multialignment("center")
     legend = ax.legend(
         title=legend_title,
         loc="lower left",
-        ncol=1 + n_states // (5 + 1),
+        ncol=n_legend_cols,
         **mdtplt.LEGEND_KWARGS_XSMALL,
     )
     legend.get_title().set_multialignment("center")
