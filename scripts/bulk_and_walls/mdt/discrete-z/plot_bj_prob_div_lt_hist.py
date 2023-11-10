@@ -196,16 +196,16 @@ if not unit_bins:
     print("Re-binning back-jump probabilities...")
     # Combine multiple lag times in one bin.
     # Binning is done in trajectory steps.
-    if np.any(times < bins[0]) or np.any(times >= bins[-1]):
+    if np.any(times < bins[0]) or np.any(times > bins[-1]):
         raise ValueError(
             "At least one lag time lies outside the binned region"
         )
     bin_ix = np.digitize(times, bins)
     slices = np.flatnonzero(np.diff(bin_ix, prepend=0) != 0)
     bj_probs = np.add.reduceat(bj_probs, slices, axis=-1)
-    bin_widths = np.diff(bins)
-    bj_probs /= bin_widths[: bj_probs.shape[-1]]
-    del bin_ix, slices, bin_widths
+    norm = np.diff(slices, append=len(times))
+    bj_probs /= norm
+    del bin_ix, slices, norm
     if np.any(np.nansum(bj_probs, axis=-1)) > 1:
         raise ValueError(
             "The sum of back-jump probabilities is greater than zero for at"
