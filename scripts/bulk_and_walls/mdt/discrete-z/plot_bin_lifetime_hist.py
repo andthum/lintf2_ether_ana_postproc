@@ -139,7 +139,7 @@ del dtrj
 stop = int(np.ceil(np.log2(n_frames))) + 1
 bins = np.logspace(0, stop, stop + 1, base=2, dtype=np.float64)
 unit_bins = True if np.allclose(np.diff(bins), 1) else False
-bins -= 0.5  # Shift bin edges so that they do not coincide with frames.
+bins -= 0.5
 bin_mids = bins[1:] - np.diff(bins) / 2
 hists = np.full((n_states, len(bins) - 1), np.nan, dtype=np.float32)
 for state_ix, lts_state in enumerate(lts_per_state):
@@ -177,11 +177,6 @@ if args.intermittency == 0:
 
 
 print("Creating plots...")
-# Shift bin edges so that the bars/stairs have the correct position.
-bins -= 0.5
-bin_mids -= 0.5
-# Don't do the following, because `bin_mids_fit` is a view of `bin_mids`
-# bin_mids_fit -= 0.5
 bins *= time_conv
 bin_mids *= time_conv
 # Don't do the following, because `bin_mids_fit` is a view of `bin_mids`
@@ -190,7 +185,7 @@ bin_mids *= time_conv
 xlabel = "Lifetime / ns"
 ylabel = "PDF"
 xmin_xlin = 0
-xmin_xlog = 1 * time_conv / 2
+xmin_xlog = 1 * time_conv
 xmax_ylin = 0.2
 xmax_ylog = 200
 ymin_ylin = 0
