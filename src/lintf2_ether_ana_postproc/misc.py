@@ -78,6 +78,36 @@ def line_inv(y, xp1, xp2, fp1, fp2):
     return (y - intercept) / slope
 
 
+def exp_law(x, m, c):
+    """
+    Exponential law.
+
+    Calculate the y values that belong to the given x values for a
+    exponential law with the a given exponent-pre-factor `m` and
+    pre-factor `c`.
+
+    Parameters
+    ----------
+    x : scalar or array_like
+        x values.
+    m : scalar or array_like
+        Exponent pre-factor.
+    c : scalar or array_like
+        Pre-factor.
+
+    Returns
+    -------
+    y : scalar or numpy.ndarray
+        ``y = c * exp(m * x)``.
+
+    Notes
+    -----
+    If more than one input argument is an array, all arrays must be
+    broadcastable.
+    """
+    return np.multiply(c, np.exp(np.multiply(m, x)))
+
+
 def power_law(x, m, c):
     """
     Power law.
