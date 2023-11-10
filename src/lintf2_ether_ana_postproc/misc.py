@@ -16,6 +16,35 @@ from scipy.stats import norm
 import lintf2_ether_ana_postproc as leap
 
 
+def straight_line(x, m, c):
+    """
+    Straight Line.
+
+    Calculate the y values that belong to the given x values for a
+    straight line with the a given slope `m` and intercept `c`.
+
+    Parameters
+    ----------
+    x : scalar or array_like
+        x values.
+    m : scalar or array_like
+        Slope.
+    c : scalar or array_like
+        y axis intercept.
+
+    Returns
+    -------
+    y : scalar or numpy.ndarray
+        ``y = m * x + c``.
+
+    Notes
+    -----
+    If more than one input argument is an array, all arrays must be
+    broadcastable.
+    """
+    return np.add(np.multiply(m, x), c)
+
+
 def line_inv(y, xp1, xp2, fp1, fp2):
     """
     Inverse straight line.
