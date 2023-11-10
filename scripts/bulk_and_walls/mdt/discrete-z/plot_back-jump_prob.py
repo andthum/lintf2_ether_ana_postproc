@@ -115,26 +115,37 @@ n_frames = len(times)
 n_states = len(states)
 
 
-print("Re-bin data...")
-# Combine multiple lag times in one logarithmic bin.
-# Binning is done in trajectory steps.
+# Bins for re-binning the back-jump probabilities.
+# Linear bins.
+# step = 1
+# bins = np.arange(1, n_frames, step, dtype=np.float64)
+# Logarithmic bins.
 stop = int(np.ceil(np.log2(times[-1])))
 bins = np.logspace(0, stop, stop + 1, base=2, dtype=np.float64)
-bins = np.insert(bins, 0, 0)
+bins = np.insert(bins, 0, 0)  # Insert bin for lag time 0.
+unit_bins = True if np.allclose(np.diff(bins), 1) else False
 bins -= 0.5
 bin_mids = bins[1:] - np.diff(bins) / 2  # bin_mids corresponds to times
-
-bin_ix = np.digitize(times, bins)
-slices = np.flatnonzero(np.diff(bin_ix, prepend=0) != 0)
-bj_probs = np.add.reduceat(bj_probs, slices, axis=-1)
-norm = np.diff(slices, append=len(times))
-bj_probs /= norm
+if not unit_bins:
+    print("Re-binning data...")
+    # Combine multiple lag times in one bin.
+    # Binning is done in trajectory steps.
+    if np.any(times < bins[0]) or np.any(times > bins[-1]):
+        raise ValueError(
+            "At least one lag time lies outside the binned region"
+        )
+    bin_ix = np.digitize(times, bins)
+    slices = np.flatnonzero(np.diff(bin_ix, prepend=0) != 0)
+    bj_probs = np.add.reduceat(bj_probs, slices, axis=-1)
+    norm = np.diff(slices, append=len(times))
+    bj_probs /= norm
+    del bin_ix, slices, norm
+    if np.any(np.nansum(bj_probs, axis=-1)) > 1:
+        raise ValueError(
+            "The sum of back-jump probabilities is greater than zero for at"
+            " least one state"
+        )
 del times
-if np.any(np.nansum(bj_probs, axis=0)) > 1:
-    raise ValueError(
-        "The sum of back-jump probabilities is greater than zero for at least"
-        " one state"
-    )
 
 
 print("Fitting power law...")
@@ -187,6 +198,7 @@ legend_title = (
     + "\n"
     + "Bin Number"
 )
+n_legend_cols = 1 + n_states // (5 + 1)
 
 cmap = plt.get_cmap()
 c_vals = np.arange(n_states)
@@ -199,14 +211,23 @@ with PdfPages(outfile) as pdf:
     fig, ax = plt.subplots(clear=True)
     ax.set_prop_cycle(color=colors)
     for state_ix, state_num in enumerate(states):
-        ax.stairs(
-            bj_probs[state_ix],
-            bins,
-            fill=False,
-            label=r"$%d$" % (state_num + 1),
-            alpha=leap.plot.ALPHA,
-            rasterized=False,
-        )
+        if not unit_bins:
+            ax.stairs(
+                bj_probs[state_ix],
+                bins,
+                fill=False,
+                label=r"$%d$" % (state_num + 1),
+                alpha=leap.plot.ALPHA,
+                rasterized=False,
+            )
+        else:
+            ax.plot(
+                bin_mids,
+                bj_probs[state_ix],
+                label=r"$%d$" % (state_num + 1),
+                alpha=leap.plot.ALPHA,
+                rasterized=False,
+            )
     ax.set(
         xlabel=xlabel,
         ylabel=ylabel,
@@ -216,7 +237,7 @@ with PdfPages(outfile) as pdf:
     legend = ax.legend(
         title=legend_title,
         loc="upper right",
-        ncol=1 + n_states // (5 + 1),
+        ncol=n_legend_cols,
         **mdtplt.LEGEND_KWARGS_XSMALL,
     )
     legend.get_title().set_multialignment("center")
@@ -260,7 +281,7 @@ with PdfPages(outfile) as pdf:
     legend = ax.legend(
         title=legend_title,
         loc="lower left",
-        ncol=1 + n_states // (5 + 1),
+        ncol=n_legend_cols,
         **mdtplt.LEGEND_KWARGS_XSMALL,
     )
     legend.get_title().set_multialignment("center")
