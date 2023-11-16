@@ -16,9 +16,41 @@ import mdtools as mdt
 import mdtools.plot as mdtplt  # Load MDTools plot style  # noqa: F401
 import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
+from scipy.optimize import curve_fit
 
 # First-party libraries
 import lintf2_ether_ana_postproc as leap
+
+
+def fit_diff_coeff(diff_coeffs, diff_coeffs_sd, Sims, start=0, stop=-1):
+    """
+    Fit the logarithmic diffusion coefficient as function of the linear
+    salt concentration with a straight line.
+
+    The obtained fit parameters are converted from the parameters of a
+    straight line to the parameters of the corresponding exponential
+    law.
+    """
+    # Propagation of uncertainty.  See
+    # https://en.wikipedia.org/wiki/Propagation_of_uncertainty#Example_formulae
+    # Std[ln(A)] = Std[A] / |A|
+    sd = diff_coeffs_sd[start:stop] / np.abs(diff_coeffs[start:stop])
+    popt, pcov = curve_fit(
+        f=leap.misc.straight_line,
+        xdata=Sims.Li_O_ratios[start:stop],
+        ydata=np.log(diff_coeffs[start:stop]),
+        p0=(-2, np.log(diff_coeffs[0])),
+        sigma=sd,
+        absolute_sigma=True,
+    )
+    perr = np.sqrt(np.diag(pcov))
+    # Convert straight-line parameters to the corresponding power-law
+    # parameters.
+    popt = np.array([popt[0], np.exp(popt[1])])
+    # Propagation of uncertainty.
+    # Std[exp(A)] = |exp(A)| * Std[A]
+    perr = np.array([perr[0], np.abs(popt[1]) * perr[1]])
+    return popt, perr
 
 
 def einstein_msd(times, diff_coeff, n_dim=3):
@@ -108,12 +140,95 @@ for cmp_ix, cmp in enumerate(compounds):
         rmses[cmp_ix].append(rmse)
 
 
+print("Fitting power law...")
+# PEO
+cmp_ix = compounds.index("ether")
+if args.sol == "g4":
+    fit_peo_starts = (
+        0,
+        np.flatnonzero(np.isclose(Sims.Li_O_ratios, 1 / 5))[0],
+    )
+    fit_peo_stops = (
+        np.flatnonzero(np.isclose(Sims.Li_O_ratios, 1 / 6))[0] + 1,
+        np.flatnonzero(np.isclose(Sims.Li_O_ratios, 2 / 5))[0] + 1,
+    )
+else:
+    fit_peo_starts = (np.flatnonzero(np.isclose(Sims.Li_O_ratios, 1 / 40))[0],)
+    fit_peo_stops = (
+        np.flatnonzero(np.isclose(Sims.Li_O_ratios, 1 / 6))[0] + 1,
+    )
+popt_peo = np.full((len(fit_peo_starts), 2), np.nan, dtype=np.float64)
+perr_peo = np.full_like(popt_peo, np.nan)
+for fit_ix, start in enumerate(fit_peo_starts):
+    popt_peo[fit_ix], perr_peo[fit_ix] = fit_diff_coeff(
+        diff_coeffs=diff_coeffs[cmp_ix],
+        diff_coeffs_sd=diff_coeffs_sd[cmp_ix],
+        Sims=Sims,
+        start=start,
+        stop=fit_peo_stops[fit_ix],
+    )
+
+# TFSI
+cmp_ix = compounds.index("NTf2")
+if args.sol == "g4":
+    fit_tfsi_starts = (
+        0,
+        np.flatnonzero(np.isclose(Sims.Li_O_ratios, 1 / 5))[0],
+    )
+    fit_tfsi_stops = (
+        np.flatnonzero(np.isclose(Sims.Li_O_ratios, 1 / 6))[0] + 1,
+        np.flatnonzero(np.isclose(Sims.Li_O_ratios, 2 / 5))[0] + 1,
+    )
+else:
+    fit_tfsi_starts = (
+        np.flatnonzero(np.isclose(Sims.Li_O_ratios, 1 / 40))[0],
+    )
+    fit_tfsi_stops = (
+        np.flatnonzero(np.isclose(Sims.Li_O_ratios, 1 / 6))[0] + 1,
+    )
+popt_tfsi = np.full((len(fit_tfsi_starts), 2), np.nan, dtype=np.float64)
+perr_tfsi = np.full_like(popt_tfsi, np.nan)
+for fit_ix, start in enumerate(fit_tfsi_starts):
+    popt_tfsi[fit_ix], perr_tfsi[fit_ix] = fit_diff_coeff(
+        diff_coeffs=diff_coeffs[cmp_ix],
+        diff_coeffs_sd=diff_coeffs_sd[cmp_ix],
+        Sims=Sims,
+        start=start,
+        stop=fit_tfsi_stops[fit_ix],
+    )
+
+# Li
+cmp_ix = compounds.index("Li")
+if args.sol == "g4":
+    fit_li_starts = (0, np.flatnonzero(np.isclose(Sims.Li_O_ratios, 1 / 5))[0])
+    fit_li_stops = (
+        np.flatnonzero(np.isclose(Sims.Li_O_ratios, 1 / 6))[0] + 1,
+        np.flatnonzero(np.isclose(Sims.Li_O_ratios, 2 / 5))[0] + 1,
+    )
+else:
+    fit_li_starts = (np.flatnonzero(np.isclose(Sims.Li_O_ratios, 1 / 40))[0],)
+    fit_li_stops = (
+        np.flatnonzero(np.isclose(Sims.Li_O_ratios, 1 / 6))[0] + 1,
+    )
+popt_li = np.full((len(fit_li_starts), 2), np.nan, dtype=np.float64)
+perr_li = np.full_like(popt_li, np.nan)
+for fit_ix, start in enumerate(fit_li_starts):
+    popt_li[fit_ix], perr_li[fit_ix] = fit_diff_coeff(
+        diff_coeffs=diff_coeffs[cmp_ix],
+        diff_coeffs_sd=diff_coeffs_sd[cmp_ix],
+        Sims=Sims,
+        start=start,
+        stop=fit_li_stops[fit_ix],
+    )
+
+
 print("Creating plot(s)...")
 xlabel = r"Li-to-EO Ratio $r$"
 xlim = (0, 0.4 + 0.0125)
 labels = ("PEO", "TFSI", "Li")
 colors = ("tab:blue", "tab:orange", "tab:green")
 markers = ("o", "s", "^")
+legend_title = r"$n_{EO} = %d$" % Sims.O_per_chain[0]
 
 mdt.fh.backup(outfile)
 with PdfPages(outfile) as pdf:
@@ -129,11 +244,110 @@ with PdfPages(outfile) as pdf:
             marker=markers[cmp_ix],
             alpha=leap.plot.ALPHA,
         )
-    ax.set(xlabel=xlabel, ylabel=r"Diff. Coeff. / nm$^2$ ns$^{-1}$", xlim=xlim)
-    ax.legend(loc="upper right")
-    pdf.savefig()
-    # Log scale y.
+    # PEO fit.
+    for fit_ix, popt in enumerate(popt_peo):
+        xdata = Sims.Li_O_ratios[
+            fit_peo_starts[fit_ix] : fit_peo_stops[fit_ix]
+        ]
+        fit = leap.misc.exp_law(xdata, *popt)
+        # Create an offset to the real data.
+        if args.sol == "g1":
+            fit *= 1.5
+            rotation = -45
+            verticalalignment = "bottom"
+        elif args.sol == "g4":
+            fit *= 1.5
+            rotation = np.rad2deg(np.arctan(popt[0])) / 3.4
+            verticalalignment = "bottom"
+        elif args.sol == "peo63":
+            fit /= 1.5
+            rotation = -34
+            verticalalignment = "top"
+        ax.plot(
+            xdata, fit, color=colors[labels.index("PEO")], linestyle="dashed"
+        )
+        ax.text(
+            xdata[0],
+            fit[0],
+            # r"$D_{PEO} \propto \exp[(%.2f \pm %.2f) r]$"
+            # % (popt[0], perr_peo[fit_ix][0]),
+            r"$D_{PEO} \propto \exp(%.2f r)$" % popt[0],
+            rotation=rotation,  # np.rad2deg(np.arctan(popt[0])) / 1.8,
+            rotation_mode="anchor",
+            transform_rotates_text=False,
+            horizontalalignment="left",
+            verticalalignment=verticalalignment,
+            fontsize="small",
+        )
+    # TFSI Fit.
+    for fit_ix, popt in enumerate(popt_tfsi):
+        xdata = Sims.Li_O_ratios[
+            fit_tfsi_starts[fit_ix] : fit_tfsi_stops[fit_ix]
+        ]
+        fit = leap.misc.exp_law(xdata, *popt)
+        if args.sol == "g1":
+            fit /= 1.5
+            rotation = -40
+            verticalalignment = "top"
+        elif args.sol == "g4":
+            fit /= 1.5
+            rotation = np.rad2deg(np.arctan(popt[0])) / 3.15
+            verticalalignment = "top"
+        elif args.sol == "peo63":
+            fit *= 1.5
+            rotation = -22
+            verticalalignment = "bottom"
+        ax.plot(
+            xdata, fit, color=colors[labels.index("TFSI")], linestyle="dashed"
+        )
+        ax.text(
+            xdata[0],
+            fit[0],
+            # r"$D_{TFSI} \propto \exp[(%.2f \pm %.2f) r]$"
+            # % (popt[0], perr_tfsi[fit_ix][0]),
+            r"$D_{TFSI} \propto \exp(%.2f r)$" % popt[0],
+            rotation=rotation,  # np.rad2deg(np.arctan(popt[0])) / 2,
+            rotation_mode="anchor",
+            transform_rotates_text=False,
+            horizontalalignment="left",
+            verticalalignment=verticalalignment,
+            fontsize="small",
+        )
+    # Li Fit.
+    for fit_ix, popt in enumerate(popt_li):
+        xdata = Sims.Li_O_ratios[fit_li_starts[fit_ix] : fit_li_stops[fit_ix]]
+        fit = leap.misc.exp_law(xdata, *popt)
+        if args.sol == "g1":
+            fit /= 2.5  # Create an offset to the real data.
+            rotation = -39
+            verticalalignment = "top"
+        elif args.sol == "g4":
+            fit /= 2.8  # Create an offset to the real data.
+            rotation = np.rad2deg(np.arctan(popt[0])) / 3.15
+            verticalalignment = "top"
+        elif args.sol == "peo63":
+            fit *= 1.5
+            rotation = -31
+            verticalalignment = "bottom"
+        ax.plot(
+            xdata, fit, color=colors[labels.index("Li")], linestyle="dashed"
+        )
+        ax.text(
+            xdata[0],
+            fit[0],
+            # r"$D_{Li} \propto \exp[(%.2f \pm %.2f) r}$"
+            # % (popt[0], perr_li[fit_ix][0]),
+            r"$D_{Li} \propto \exp(%.2f r)$" % popt[0],
+            rotation=rotation,  # np.rad2deg(np.arctan(popt[0])) / 2,
+            rotation_mode="anchor",
+            transform_rotates_text=False,
+            horizontalalignment="left",
+            verticalalignment=verticalalignment,
+            fontsize="small",
+        )
     ax.set_yscale("log", base=10, subs=np.arange(2, 10))
+    ax.set(xlabel=xlabel, ylabel=r"Diff. Coeff. / nm$^2$ ns$^{-1}$", xlim=xlim)
+    ax.legend(title=legend_title, loc="upper right")
     pdf.savefig()
     plt.close()
 
@@ -148,7 +362,7 @@ with PdfPages(outfile) as pdf:
             marker=markers[cmp_ix],
         )
     ax.set(xlabel=xlabel, ylabel="Fit Start / ns", xlim=xlim)
-    ax.legend()
+    ax.legend(title=legend_title)
     pdf.savefig()
     # Log scale y.
     ax.set_yscale("log", base=10, subs=np.arange(2, 10))
@@ -166,7 +380,7 @@ with PdfPages(outfile) as pdf:
             marker=markers[cmp_ix],
         )
     ax.set(xlabel=xlabel, ylabel="Fit Stop / ns", xlim=xlim)
-    ax.legend()
+    ax.legend(title=legend_title)
     pdf.savefig()
     # Log scale y.
     ax.set_yscale("log", base=10, subs=np.arange(2, 10))
@@ -184,7 +398,7 @@ with PdfPages(outfile) as pdf:
             marker=markers[cmp_ix],
         )
     ax.set(xlabel=xlabel, ylabel="Fit Stop - Start / ns", xlim=xlim)
-    ax.legend()
+    ax.legend(title=legend_title)
     pdf.savefig()
     # Log scale y.
     ax.set_yscale("log", base=10, subs=np.arange(2, 10))
@@ -202,7 +416,7 @@ with PdfPages(outfile) as pdf:
             marker=markers[cmp_ix],
         )
     ax.set(xlabel=xlabel, ylabel=r"Coeff. of Determ. $R^2$", xlim=xlim)
-    ax.legend()
+    ax.legend(title=legend_title)
     pdf.savefig()
     # Log scale y.
     ax.set_yscale("log", base=10, subs=np.arange(2, 10))
@@ -221,7 +435,7 @@ with PdfPages(outfile) as pdf:
             marker=markers[cmp_ix],
         )
     ax.set(xlabel=xlabel, ylabel=r"RMSE / nm$^2$", xlim=xlim)
-    ax.legend()
+    ax.legend(title=legend_title)
     pdf.savefig()
     # Log scale y.
     ax.set_yscale("log", base=10, subs=np.arange(2, 10))

@@ -16,6 +16,35 @@ from scipy.stats import norm
 import lintf2_ether_ana_postproc as leap
 
 
+def straight_line(x, m, c):
+    """
+    Straight Line.
+
+    Calculate the y values that belong to the given x values for a
+    straight line with the a given slope `m` and intercept `c`.
+
+    Parameters
+    ----------
+    x : scalar or array_like
+        x values.
+    m : scalar or array_like
+        Slope.
+    c : scalar or array_like
+        y axis intercept.
+
+    Returns
+    -------
+    y : scalar or numpy.ndarray
+        ``y = m * x + c``.
+
+    Notes
+    -----
+    If more than one input argument is an array, all arrays must be
+    broadcastable.
+    """
+    return np.add(np.multiply(m, x), c)
+
+
 def line_inv(y, xp1, xp2, fp1, fp2):
     """
     Inverse straight line.
@@ -47,6 +76,65 @@ def line_inv(y, xp1, xp2, fp1, fp2):
     slope = (fp2 - fp1) / (xp2 - xp1)
     intercept = fp1 - slope * xp1
     return (y - intercept) / slope
+
+
+def exp_law(x, m, c):
+    """
+    Exponential law.
+
+    Calculate the y values that belong to the given x values for a
+    exponential law with the a given exponent-pre-factor `m` and
+    pre-factor `c`.
+
+    Parameters
+    ----------
+    x : scalar or array_like
+        x values.
+    m : scalar or array_like
+        Exponent pre-factor.
+    c : scalar or array_like
+        Pre-factor.
+
+    Returns
+    -------
+    y : scalar or numpy.ndarray
+        ``y = c * exp(m * x)``.
+
+    Notes
+    -----
+    If more than one input argument is an array, all arrays must be
+    broadcastable.
+    """
+    return np.multiply(c, np.exp(np.multiply(m, x)))
+
+
+def power_law(x, m, c):
+    """
+    Power law.
+
+    Calculate the y values that belong to the given x values for a power
+    law with the a given exponent `m` and pre-factor `c`.
+
+    Parameters
+    ----------
+    x : scalar or array_like
+        x values.
+    m : scalar or array_like
+        Exponent.
+    c : scalar or array_like
+        Pre-factor.
+
+    Returns
+    -------
+    y : scalar or numpy.ndarray
+        ``y = c * x**m``.
+
+    Notes
+    -----
+    If more than one input argument is an array, all arrays must be
+    broadcastable.
+    """
+    return np.multiply(c, np.power(x, m))
 
 
 def power_spectrum(data, dt):
