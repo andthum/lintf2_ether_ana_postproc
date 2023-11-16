@@ -278,13 +278,6 @@ with PdfPages(outfile) as pdf:
     )
     ax.set_xlim(xmin_xlog, xmax_ylog)
     ax.set_xscale("log", base=10, subs=np.arange(2, 10))
-    legend = ax.legend(
-        title=legend_title,
-        loc="lower left",
-        ncol=n_legend_cols,
-        **mdtplt.LEGEND_KWARGS_XSMALL,
-    )
-    legend.get_title().set_multialignment("center")
     pdf.savefig()
     plt.close()
 
