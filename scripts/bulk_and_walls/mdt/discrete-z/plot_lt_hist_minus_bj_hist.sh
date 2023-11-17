@@ -117,6 +117,11 @@ cd "${bulk_dir}" || exit
 for system in lintf2_[gp]*[0-9]*_[0-9]*-[0-9]*_sc80; do
     echo
     echo "${system}"
+    if [[ ${system} == "lintf2_g4_5-2_sc80" ]]; then
+        # This system requires more than 16 GB of RAM.
+        echo "Skipped '${system}'"
+        continue
+    fi
     if [[ ! -d ${system} ]]; then
         echo "WARNING: No such directory: '${system}'"
         continue
@@ -179,6 +184,11 @@ for surfq in q[0-9]*; do
     for system in lintf2_[gp]*[0-9]*_[0-9]*-[0-9]*_gra_"${surfq}"_sc80; do
         echo
         echo "${system}"
+        if [[ ${system} == "lintf2_g4_5-2_gra_${surfq}_sc80" ]]; then
+            # This system requires more than 16 GB of RAM.
+            echo "Skipped '${system}'"
+            continue
+        fi
         if [[ ! -d ${system} ]]; then
             echo "WARNING: No such directory: '${system}'"
             continue
