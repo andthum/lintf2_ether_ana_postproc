@@ -11,9 +11,10 @@ from . import clstr, io_handler, misc, plot, simulation, transfer
 
 __all__ = ["clstr", "io_handler", "misc", "plot", "simulation", "transfer"]
 
-# Project metadata.  Keep in sync with `pyproject.toml`!
+# Project metadata.
+# Keep in sync with `pyproject.toml` and `CITATION.cff`!
 __title__ = "lintf2_ether_ana_postproc"
-__version__ = "0.2.0"  # Keep in sync with `pyproject.toml`!
+__version__ = "0.3.0"  # Keep in sync with `pyproject.toml`!
 __author__ = "Andreas Thum"
 __email__ = "coding.andthum@e.mail.de"
 __license__ = "MIT License"
