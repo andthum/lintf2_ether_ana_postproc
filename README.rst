@@ -3,7 +3,7 @@ LiTFSI-Ether Analysis Postprocessing
 ####################################
 
 |pre-commit| |pre-commit.ci_status| |Test_Status| |CodeQL_Status|
-|License_MIT| |Made_with_Python| |Code_style_black|
+|License_MIT| |DOI| |Made_with_Python| |Code_style_black|
 
 This is just a small helper package that contains analysis
 postprocessing utilities for my molecular dynamics simulations of
@@ -27,6 +27,9 @@ LiTFSI = Li[NTf2] = Lithium bis(trifluoromethanesulfonyl)imide
 .. |License_MIT| image:: https://img.shields.io/badge/License-MIT-blue.svg
     :alt: MIT License
     :target: https://mit-license.org/
+.. |DOI| image:: https://zenodo.org/badge/610664204.svg
+    :alt: DOI
+    :target: https://zenodo.org/doi/10.5281/zenodo.10154409
 .. |Made_with_Python| image:: https://img.shields.io/badge/Made%20with-Python-1f425f.svg
     :alt: Made with Python
     :target: https://www.python.org/
