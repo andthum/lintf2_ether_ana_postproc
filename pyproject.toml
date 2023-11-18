@@ -10,10 +10,11 @@ requires = ["setuptools >=61.0, <68.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-# Project metadata.  Keep in sync with `__init__.py`!  See
+# Project metadata.  See
 # https://packaging.python.org/en/latest/specifications/declaring-project-metadata/
+# Keep in sync with `__init__.py` and `CITATION.cff`!
 name = "lintf2_ether_ana_postproc"
-version = "0.2.0"  # Keep in sync with `__init__.py`!
+version = "0.3.0"  # Keep in sync with `__init__.py`!
 description = "Analysis postprocessing utilities for my MD simulations of LiTFSI-ether mixtures."
 readme = {file = "README.rst", content-type = "text/x-rst"}
 license = {file = "LICENSE.txt"}
