@@ -14,7 +14,7 @@ authors:
   - given-names: "Andreas"
     family-names: "Thum"
     alias: "andthum"
-    email: "andr.thum@gmail.com"
+    email: "coding.andthum@e.mail.de"
     tel: "+49 251 83-29179"
     fax: "+49 251 83-29159"
     affiliation: "University of Münster, Institute for Physical Chemistry"
@@ -27,7 +27,7 @@ authors:
 contact:
   - given-names: "Andreas"
     family-names: "Thum"
-    email: "andr.thum@gmail.com"
+    email: "coding.andthum@e.mail.de"
 # identifiers:
 #   - description: "The concept DOI of the software."
 #     type: "doi"
