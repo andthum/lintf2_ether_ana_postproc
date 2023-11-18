@@ -28,10 +28,10 @@ contact:
   - given-names: "Andreas"
     family-names: "Thum"
     email: "coding.andthum@e.mail.de"
-# identifiers:
-#   - description: "The concept DOI of the software."
-#     type: "doi"
-#     value: "10.5281/zenodo.7615177"
+identifiers:
+  - description: "The concept DOI of the software."
+    type: "doi"
+    value: "10.5281/zenodo.10154409"
 url: "https://github.com/andthum/lintf2_ether_ana_postproc"
 repository-code: "https://github.com/andthum/lintf2_ether_ana_postproc"
 license: "MIT"
