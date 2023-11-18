@@ -4,7 +4,7 @@
 cff-version: "1.2.0"
 message: "If you use this software, please cite it using these metadata."
 
-# Keep project metadata in sync with pyproject.toml.
+# Keep project metadata in sync with `__init__.py` and `pyproject.toml`!
 type: "software"
 title: "lintf2_ether_ana_postproc"
 abstract: >-
