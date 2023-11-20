@@ -732,6 +732,58 @@ def dens2free_energy(x, dens, bulk_region=None, tol=0.005):
     return free_en
 
 
+def rdf2free_energy(x, rdf, bulk_start=None, tol=0.005):
+    r"""
+    Calculate the potential of mean force (PMF, free-energy profile)
+    from a radial distribution function (RDF).
+
+    Parameters
+    ----------
+    x : array_like
+        x values at which the RDF was sampled.
+    rdf : array_like
+        RDF values.
+    bulk_start : None or 2-tuple of floats, optional
+        Start of the bulk region, i.e. the region where the RDF is one,
+        in units of `x`.  If provided, the PMF will be shifted such that
+        it is zero in the bulk region.
+    tol : float, optional
+        Tolerance value for finding the index of `x` that corresponds to
+        the value provided by `bulk_start`.  Is ignored, if `bulk_start`
+        is ``None``.  This function uses
+        :func:`lintf2_ether_ana_postproc.misc.find_nearest` to find the
+        index of the bulk region.  Good values for `tol` are 0.005 if
+        `x` is given in nanometers or 0.05 if `x` is given in Angstroms.
+
+    Returns
+    -------
+    free_en : numpy.ndarray
+        Free-energy profile :math:`F(r)` in units of :math:`k_B T`, i.e.
+        :math:`\frac{F(r)}{k_B T}`.
+
+    Notes
+    -----
+    The free-energy profile :math:`F(r)` is calculated from the RDF
+    :math:`g(r)` according to
+
+    .. math::
+
+        \frac{F(r)}{k_B T} = -\ln\left[ \frac{g(r)}{g^\circ} \right]
+
+    Here, :math:`k_B` is the Boltzmann constant and :math:`T` is the
+    temperature.  If `bulk_start` is given, :math:`g^\circ` is set to
+    the average value of the RDF in the bulk region (i.e. the free
+    energy in the bulk region is effectively set to zero).  If
+    `bulk_start` is None, :math:`g^\circ` is set to one.
+    """
+    free_en = -np.log(rdf)
+    if bulk_start is not None:
+        start = leap.misc.find_nearest(x, [bulk_start], tol=tol)[0]
+        free_en_bulk = np.mean(free_en[start:])
+        free_en -= free_en_bulk
+    return free_en
+
+
 def free_energy_barriers(
     minima, maxima, pkp_col_ix, pkh_col_ix, thresh=0, absolute_pos=False
 ):
