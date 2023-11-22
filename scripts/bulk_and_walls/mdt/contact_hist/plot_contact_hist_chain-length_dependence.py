@@ -142,6 +142,9 @@ with PdfPages(outfile) as pdf:
             if Sim.O_per_chain == 2:
                 color = "tab:red"
                 ax.plot([], [])  # Increment color cycle.
+            elif Sim.O_per_chain == 3:
+                color = "tab:brown"
+                ax.plot([], [])  # Increment color cycle.
             elif Sim.O_per_chain == 5:
                 color = "tab:orange"
                 ax.plot([], [])  # Increment color cycle.
