@@ -123,6 +123,26 @@ if len(xlim_hist) != len(cols):
         " ({})".format(len(xlim_hist), len(cols))
     )
 
+# Maximum number of contacts to consider when plotting the fraction of
+# lithium ions that have contact to N different O atoms or N different
+# PEO/TFSI molecules as function of the salt concentration.
+if args.cmp == "Li-OE":
+    n_cnt_max = (
+        7,  # Maximum number of different O atoms.
+        3,  # Maximum number of different PEO molecules.
+    )
+elif args.cmp == "Li-OBT":
+    n_cnt_max = (
+        6,  # Maximum number of different O atoms.
+        5,  # Maximum number of different TFSI molecules.
+    )
+else:
+    raise ValueError("Unknown --cmp {}".format(args.cmp))
+if len(n_cnt_max) != n_cols:
+    raise ValueError(
+        "`len(n_cnt_max)` ({}) != `n_cols` ({})".format(len(n_cnt_max), n_cols)
+    )
+
 
 print("Creating Simulation instance(s)...")
 sys_pat = "lintf2_" + args.sol + "_[0-9]*-[0-9]*_sc80"
@@ -141,18 +161,25 @@ n_infiles = len(infiles)
 cn_mom1 = np.full((n_cols, n_infiles), np.nan, dtype=np.float64)
 cn_mom2 = np.full((n_cols, n_infiles), np.nan, dtype=np.float64)
 
-legend_title = r"$n_{EO} = %d$" % Sims.O_per_chain[0]
+# Probability that a lithium ion has N contacts.
+prob_n_cnt = np.zeros(
+    (n_cols, max(n_cnt_max) + 1, n_infiles), dtype=np.float32
+)
 
-cmap = plt.get_cmap()
-c_vals = np.arange(n_infiles)
-c_norm = n_infiles - 1
-c_vals_normed = c_vals / c_norm
-colors = cmap(c_vals_normed)
+xlim = (0, 0.4 + 0.0125)
+ylim_prob = (0, 1)
+xlabel = r"Li-to-EO Ratio $r$"
+legend_title = r"$n_{EO} = %d$" % Sims.O_per_chain[0]
 
 mdt.fh.backup(outfile)
 with PdfPages(outfile) as pdf:
+    # Plot coordination number histograms.
+    cmap = plt.get_cmap()
+    c_vals = np.arange(n_infiles)
+    c_norm = max(n_infiles - 1, 1)
+    c_vals_normed = c_vals / c_norm
+    colors = cmap(c_vals_normed)
     for col_ix, col in enumerate(cols):
-        # Plot coordination number histograms.
         fig, ax = plt.subplots(clear=True)
         ax.set_prop_cycle(color=colors)
         for sim_ix, Sim in enumerate(Sims.sims):
@@ -161,9 +188,15 @@ with PdfPages(outfile) as pdf:
             # Skip last row that contains the sum of each column.
             data = data[:-1]
             n_contacts, probabilities = data.T
+            n_contacts = np.round(n_contacts, out=n_contacts).astype(np.uint16)
             # Calculate average coordination numbers.
             cn_mom1[col_ix][sim_ix] = np.sum(n_contacts * probabilities)
             cn_mom2[col_ix][sim_ix] = np.sum(n_contacts**2 * probabilities)
+            # Probability that a lithium ion has N contacts.
+            for n_cnt, prob in zip(n_contacts, probabilities):
+                if n_cnt > n_cnt_max[col_ix]:
+                    break
+                prob_n_cnt[col_ix][n_cnt][sim_ix] = prob
 
             ax.plot(
                 n_contacts,
@@ -175,13 +208,50 @@ with PdfPages(outfile) as pdf:
             xlabel="Coordination Number",
             ylabel="Probability",
             xlim=xlim_hist[col_ix],
-            ylim=(0, 1),
+            ylim=ylim_prob,
         )
         ax.xaxis.set_tick_params(which="minor", bottom=False, top=False)
         ax.xaxis.set_major_locator(MaxNLocator(integer=True))
         legend = ax.legend(
             title=col_labels[col_ix] + ", " + legend_title + "\n" + r"$r$",
             ncol=1 + n_infiles // (6 + 1),
+            **mdtplt.LEGEND_KWARGS_XSMALL,
+        )
+        legend.get_title().set_multialignment("center")
+        pdf.savefig()
+        plt.close()
+
+    # Plot the probability that a lithium ion has N contacts as function
+    # of the salt concentration.
+    markers = ("o", "|", "x", "^", "s", "p", "h", "*", "8", "v")
+    if len(markers) < max(n_cnt_max):
+        raise ValueError(
+            "`len(markers)` ({}) < `max(n_cnt_max)`"
+            " ({})".format(len(markers), max(n_cnt_max))
+        )
+    for col_ix, probabilities in enumerate(prob_n_cnt):
+        cmap = plt.get_cmap()
+        c_vals = np.arange(n_cnt_max[col_ix] + 1)
+        c_norm = max(n_cnt_max[col_ix], 1)
+        c_vals_normed = c_vals / c_norm
+        colors = cmap(c_vals_normed)
+        fig, ax = plt.subplots(clear=True)
+        ax.set_prop_cycle(color=colors)
+        for n_cnt, prob in enumerate(probabilities):
+            if n_cnt > n_cnt_max[col_ix]:
+                break
+            ax.plot(
+                Sims.Li_O_ratios,
+                prob,
+                label=r"$%d$" % n_cnt,
+                marker=markers[n_cnt],
+                alpha=leap.plot.ALPHA,
+            )
+        ax.set(xlabel=xlabel, ylabel="Probability", xlim=xlim, ylim=ylim_prob)
+        equalize_xticks(ax)
+        legend = ax.legend(
+            title=legend_title + "\n" + col_labels[col_ix] + " Coord. No.",
+            ncol=3,
             **mdtplt.LEGEND_KWARGS_XSMALL,
         )
         legend.get_title().set_multialignment("center")
@@ -211,10 +281,7 @@ with PdfPages(outfile) as pdf:
             marker=markers[col_ix],
         )
     ax.set(
-        xlabel=r"Li-to-EO Ratio $r$",
-        ylabel="Coordination Number",
-        xlim=(0, 0.4 + 0.0125),
-        ylim=ylim_cn,
+        xlabel=xlabel, ylabel="Coordination Number", xlim=xlim, ylim=ylim_cn
     )
     equalize_xticks(ax)
     equalize_yticks(ax)
