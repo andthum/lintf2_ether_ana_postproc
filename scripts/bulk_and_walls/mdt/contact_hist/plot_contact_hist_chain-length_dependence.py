@@ -237,9 +237,13 @@ with PdfPages(outfile) as pdf:
             )
         ax.set_xscale("log", base=10, subs=np.arange(2, 10))
         ax.set(xlabel=xlabel, ylabel="Probability", xlim=xlim, ylim=ylim_prob)
+        if args.cmp == "Li-OE" and col_ix == 0:
+            n_legend_cols = 4
+        else:
+            n_legend_cols = 3
         legend = ax.legend(
             title=legend_title + "\n" + col_labels[col_ix] + " Coord. No.",
-            ncol=3,
+            ncol=n_legend_cols,
             **mdtplt.LEGEND_KWARGS_XSMALL,
         )
         legend.get_title().set_multialignment("center")
