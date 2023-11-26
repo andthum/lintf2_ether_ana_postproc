@@ -54,7 +54,7 @@ parser.add_argument(
     "--cmp",
     type=str,
     required=True,
-    choices=("Li-OE", "Li-OBT"),
+    choices=("Li-OE", "Li-OBT", "Li-O"),
     help=(
         "Compounds for which to plot the coordination numbers.  Default:"
         " %(default)s"
@@ -84,6 +84,10 @@ elif args.cmp == "Li-OBT":
     col_labels = (r"$Li - O_{TFSI}$", r"$Li - TFSI$")
     xlim_hist = [(0, 8), (0, 6)]
     ylim_cn = (0, 0.42)
+elif args.cmp == "Li-O":
+    col_labels = (r"$Li - O_{tot}$", r"$Li - PEO/TFSI$")
+    xlim_hist = [(0, 8), (0, 6)]
+    ylim_cn = (0, 6.5)
 else:
     raise ValueError("Invalid --cmp: {}".format(args.cmp))
 if len(col_labels) != len(cols):
@@ -109,6 +113,11 @@ elif args.cmp == "Li-OBT":
     n_cnt_max = (
         2,  # Maximum number of different O atoms.
         2,  # Maximum number of different TFSI molecules.
+    )
+elif args.cmp == "Li-O":
+    n_cnt_max = (
+        7,  # Maximum number of different O atoms.
+        4,  # Maximum number of different molecules.
     )
 else:
     raise ValueError("Unknown --cmp {}".format(args.cmp))
@@ -238,10 +247,16 @@ with PdfPages(outfile) as pdf:
         ax.set_xscale("log", base=10, subs=np.arange(2, 10))
         ax.set(xlabel=xlabel, ylabel="Probability", xlim=xlim, ylim=ylim_prob)
         if args.cmp == "Li-OE" and col_ix == 0:
+            legend_loc = "best"
+            n_legend_cols = 4
+        if args.cmp == "Li-O" and col_ix == 0:
+            legend_loc = "center right"
             n_legend_cols = 4
         else:
+            legend_loc = "best"
             n_legend_cols = 3
         legend = ax.legend(
+            loc=legend_loc,
             title=legend_title + "\n" + col_labels[col_ix] + " Coord. No.",
             ncol=n_legend_cols,
             **mdtplt.LEGEND_KWARGS_XSMALL,

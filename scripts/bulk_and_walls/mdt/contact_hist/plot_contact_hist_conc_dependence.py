@@ -74,7 +74,7 @@ parser.add_argument(
     "--cmp",
     type=str,
     required=True,
-    choices=("Li-OE", "Li-OBT"),
+    choices=("Li-OE", "Li-OBT", "Li-O"),
     help=(
         "Compounds for which to plot the coordination numbers.  Default:"
         " %(default)s"
@@ -110,6 +110,10 @@ elif args.cmp == "Li-OBT":
     col_labels = (r"$Li - O_{TFSI}$", r"$Li - TFSI$")
     xlim_hist = [(0, 8), (0, 6)]
     ylim_cn = (0, 2.9)
+elif args.cmp == "Li-O":
+    col_labels = (r"$Li - O_{tot}$", r"$Li - PEO/TFSI$")
+    xlim_hist = [(0, 8), (0, 6)]
+    ylim_cn = (0, 6.5)
 else:
     raise ValueError("Invalid --cmp: {}".format(args.cmp))
 if len(col_labels) != len(cols):
@@ -135,6 +139,11 @@ elif args.cmp == "Li-OBT":
     n_cnt_max = (
         6,  # Maximum number of different O atoms.
         5,  # Maximum number of different TFSI molecules.
+    )
+elif args.cmp == "Li-O":
+    n_cnt_max = (
+        7,  # Maximum number of different O atoms.
+        5,  # Maximum number of different molecules.
     )
 else:
     raise ValueError("Unknown --cmp {}".format(args.cmp))
