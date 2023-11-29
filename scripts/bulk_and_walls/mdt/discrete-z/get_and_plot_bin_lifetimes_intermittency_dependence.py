@@ -239,6 +239,9 @@ outfile = (
 time_conv = 2e-3
 # Number of moments to calculate.
 n_moms = 1
+# Minimum and maximum intermittency value to consider
+int_min = 0  # [Trajectory steps]
+int_max = 512  # [Trajectory steps]
 
 
 print("Creating Simulation instance(s)...")
@@ -276,9 +279,13 @@ for i, infile in enumerate(infiles):
 sort_ix = np.argsort(intermittencies)
 intermittencies, infiles = intermittencies[sort_ix], infiles[sort_ix]
 intermittencies = np.insert(intermittencies, 0, np.uint16(0))
-intermittencies *= 2  # Convert trajectory frames to ps.
 infiles = np.insert(infiles, 0, infile_int0)
+
+valid = (intermittencies >= int_min) & (intermittencies <= int_max)
+intermittencies = intermittencies[valid]
+infiles = infiles[valid]
 n_files = len(infiles)
+intermittencies *= 2  # Convert trajectory frames to ps.
 
 
 print("Calculating characteristics of the lifetime distributions...")
