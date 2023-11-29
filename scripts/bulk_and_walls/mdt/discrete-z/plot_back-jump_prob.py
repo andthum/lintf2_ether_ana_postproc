@@ -9,6 +9,7 @@ layer as function of time for a single simulation.
 
 # Standard libraries
 import argparse
+import os
 
 # Third-party libraries
 import mdtools as mdt
@@ -60,6 +61,17 @@ parser.add_argument(
     action="store_true",
     help="Use the 'continuous' (true) back-jump probability.",
 )
+parser.add_argument(
+    "--intermittency",
+    type=int,
+    required=False,
+    default=0,
+    help=(
+        "Maximum number of frames a compound is allowed to leave its state"
+        " while still being considered to be in this state provided that it"
+        " returns to this state after the given number of frames."
+    ),
+)
 args = parser.parse_args()
 
 if args.continuous:
@@ -79,8 +91,10 @@ outfile = (
     + args.cmp
     + "_back_jump_prob_discrete"
     + con
-    + ".pdf"
 )
+if args.intermittency > 0:
+    outfile += "_intermittency_%d" % args.intermittency
+outfile += ".pdf"
 
 # Time conversion factor to convert from trajectory steps to ns.
 time_conv = 2e-3
@@ -102,6 +116,17 @@ file_suffix = (
     analysis + "_" + args.cmp + "_back_jump_prob_discrete" + con + ".txt.gz"
 )
 infile = leap.simulation.get_ana_file(Sim, analysis, tool, file_suffix)
+
+path = os.path.dirname(os.path.abspath(infile))
+path = os.path.join(path, "lifetime_intermittency_evaluation_power")
+if not os.path.isdir(path):
+    raise FileNotFoundError("No such directory: '{}'".format(path))
+infile, extension_gz = os.path.splitext(os.path.basename(infile))
+infile, extension_txt = os.path.splitext(infile)
+infile = os.path.join(path, infile)
+infile += "_intermittency_%d" % args.intermittency
+infile += extension_txt + extension_gz
+
 bj_probs, times, states = leap.simulation.read_time_state_matrix(
     infile, time_conv=1, amin=0, amax=1
 )
@@ -148,22 +173,23 @@ if not unit_bins:
 del times
 
 
-print("Fitting power law...")
-# Select a state from the center of the simulation box.
-state_ix_fit = n_states // 2
-fit_start_ix = 1
-_, fit_stop_ix = mdt.nph.find_nearest(bin_mids, 50, return_index=True)
-fit_stop_ix += 1
-bj_prob_fit = bj_probs[state_ix_fit][fit_start_ix:fit_stop_ix]
-bin_mids_fit = bin_mids[fit_start_ix:fit_stop_ix]  # This is a view!
-popt, pcov = curve_fit(
-    f=leap.misc.straight_line,
-    xdata=np.log(bin_mids_fit),
-    ydata=np.log(bj_prob_fit),
-    p0=(-1.5, np.log(bj_prob_fit[0])),
-)
-# perr = np.sqrt(np.diag(pcov))
-bj_prob_fit = leap.misc.power_law(bin_mids_fit, popt[0], np.exp(popt[1]))
+if args.intermittency == 0:
+    print("Fitting power law...")
+    # Select a state from the center of the simulation box.
+    state_ix_fit = n_states // 2
+    fit_start_ix = 1
+    _, fit_stop_ix = mdt.nph.find_nearest(bin_mids, 50, return_index=True)
+    fit_stop_ix += 1
+    bj_prob_fit = bj_probs[state_ix_fit][fit_start_ix:fit_stop_ix]
+    bin_mids_fit = bin_mids[fit_start_ix:fit_stop_ix]  # This is a view!
+    popt, pcov = curve_fit(
+        f=leap.misc.straight_line,
+        xdata=np.log(bin_mids_fit),
+        ydata=np.log(bj_prob_fit),
+        p0=(-1.5, np.log(bj_prob_fit[0])),
+    )
+    # perr = np.sqrt(np.diag(pcov))
+    bj_prob_fit = leap.misc.power_law(bin_mids_fit, popt[0], np.exp(popt[1]))
 
 
 print("Creating plots...")
@@ -178,13 +204,13 @@ xmin_xlin = 0
 xmin_xlog = 1 * time_conv
 ymin_ylin = 0
 ymin_ylog = np.min(bj_probs[bj_probs > 0]) / 2
-ymax_ylin = 0.5
-ymax_ylog = 0.6
+ymax_ylin = np.nanmax(bj_probs) * 1.2
+ymax_ylog = np.nanmax(bj_probs) * 2
 if args.continuous:
-    xmax_ylin = 0.2
-    xmax_ylog = 200
+    xmax_ylin = 2e2
+    xmax_ylog = 6e2
 else:
-    xmax_ylin = 0.2
+    xmax_ylin = 2e2
     xmax_ylog = n_frames * time_conv
 
 if surfq is None:
@@ -236,7 +262,7 @@ with PdfPages(outfile) as pdf:
     )
     legend = ax.legend(
         title=legend_title,
-        loc="upper right",
+        loc="best",
         ncol=n_legend_cols,
         **mdtplt.LEGEND_KWARGS_XSMALL,
     )
@@ -258,24 +284,25 @@ with PdfPages(outfile) as pdf:
     pdf.savefig()
 
     # Log scale xy.
-    ax.plot(
-        bin_mids_fit,
-        bj_prob_fit,
-        color="black",
-        linestyle="dashed",
-        alpha=leap.plot.ALPHA,
-    )
-    ax.text(
-        bin_mids_fit[-1],
-        bj_prob_fit[-1] * 1.2,
-        r"$\propto t^{%.2f}$" % popt[0],
-        rotation=np.rad2deg(np.arctan(popt[0])) / 1.6,
-        rotation_mode="anchor",
-        transform_rotates_text=False,
-        horizontalalignment="right",
-        verticalalignment="bottom",
-        fontsize="small",
-    )
+    if args.intermittency == 0:
+        ax.plot(
+            bin_mids_fit,
+            bj_prob_fit,
+            color="black",
+            linestyle="dashed",
+            alpha=leap.plot.ALPHA,
+        )
+        ax.text(
+            bin_mids_fit[-1],
+            bj_prob_fit[-1] * 1.2,
+            r"$\propto t^{%.2f}$" % popt[0],
+            rotation=np.rad2deg(np.arctan(popt[0])) / 1.6,
+            rotation_mode="anchor",
+            transform_rotates_text=False,
+            horizontalalignment="right",
+            verticalalignment="bottom",
+            fontsize="small",
+        )
     ax.set_xlim(xmin_xlog, xmax_ylog)
     ax.set_xscale("log", base=10, subs=np.arange(2, 10))
     pdf.savefig()
