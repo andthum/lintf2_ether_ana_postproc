@@ -447,10 +447,11 @@ with PdfPages(outfile) as pdf:
             ax.set_ylim(0, ylim[1])
         leap.plot.bins(ax, bins=bins)
         ax.xaxis.set_major_locator(MaxNLocator(integer=True))
-        legend = ax.legend(
+        legend = fig.legend(
             title=legend_title,
-            loc="best",
             ncol=4,
+            bbox_to_anchor=(0.58, 1.01),
+            loc="upper center",
             **mdtplt.LEGEND_KWARGS_XSMALL,
         )
         legend.get_title().set_multialignment("center")
