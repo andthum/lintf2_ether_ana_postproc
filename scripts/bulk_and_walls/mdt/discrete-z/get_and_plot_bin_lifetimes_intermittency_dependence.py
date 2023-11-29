@@ -261,7 +261,7 @@ infile_int0 = leap.simulation.get_ana_file(Sim, analysis, tool, file_suffix)
 states = np.unique(mdt.fh.load_dtrj(infile_int0))
 
 path = os.path.dirname(os.path.abspath(infile_int0))
-path = os.path.join(path, "lifetime_intermittency_evaluation")
+path = os.path.join(path, "lifetime_intermittency_evaluation_power")
 if not os.path.isdir(path):
     raise FileNotFoundError("No such directory: '{}'".format(path))
 infile_pattern = os.path.join(path, infile_pattern)
