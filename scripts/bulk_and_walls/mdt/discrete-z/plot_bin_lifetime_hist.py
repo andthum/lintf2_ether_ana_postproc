@@ -9,6 +9,7 @@ for a single simulation.
 
 # Standard libraries
 import argparse
+import os
 
 # Third-party libraries
 import mdtools as mdt
@@ -112,16 +113,18 @@ Sim = leap.simulation.get_sim(args.system, set_pat, top_path)
 print("Reading data...")
 file_suffix = analysis + "_" + args.cmp + "_dtrj.npz"
 infile = leap.simulation.get_ana_file(Sim, analysis, tool, file_suffix)
+
+path = os.path.dirname(os.path.abspath(infile))
+path = os.path.join(path, "lifetime_intermittency_evaluation_power")
+if not os.path.isdir(path):
+    raise FileNotFoundError("No such directory: '{}'".format(path))
+infile, extension = os.path.splitext(os.path.basename(infile))
+infile = os.path.join(path, infile)
+infile += "_intermittency_%d" % args.intermittency
+infile += extension
+
 dtrj = mdt.fh.load_dtrj(infile)
 n_frames = dtrj.shape[-1]
-
-
-if args.intermittency > 0:
-    print("Correcting for intermittency...")
-    dtrj = mdt.dyn.correct_intermittency(
-        dtrj.T, args.intermittency, inplace=True, verbose=True
-    )
-    dtrj = dtrj.T
 
 
 print("Calculating histograms...")
@@ -186,12 +189,12 @@ xlabel = "Lifetime / ns"
 ylabel = "PDF"
 xmin_xlin = 0
 xmin_xlog = 1 * time_conv
-xmax_ylin = 0.2
-xmax_ylog = 200
+xmax_ylin = 2e2
+xmax_ylog = 6e2
 ymin_ylin = 0
 ymin_ylog = np.min(hists[hists > 0]) / 2
-ymax_ylin = 0.5
-ymax_ylog = 0.6
+ymax_ylin = np.max(hists) * 1.2
+ymax_ylog = np.max(hists) * 2
 
 if surfq is None:
     legend_title = ""
@@ -242,7 +245,7 @@ with PdfPages(outfile) as pdf:
     )
     legend = ax.legend(
         title=legend_title,
-        loc="upper right",
+        loc="best",
         ncol=n_legend_cols,
         **mdtplt.LEGEND_KWARGS_XSMALL,
     )
