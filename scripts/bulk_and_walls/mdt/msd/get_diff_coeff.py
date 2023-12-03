@@ -134,7 +134,8 @@ if movav_wsize % 2 == 0:
     movav_wsize += 1
 # Regard the derivative of the moving average of MSD/t as zero if it
 # lies within +/- the minimum uncertainty of the derivative times
-# `deriv_sd_factor`.
+# `deriv_sd_factor`.  The region where the derivative is zero will be
+# identified as diffusive regime.
 # 0.674490 sigma = 50% confidence interval of the normal distribution.
 # 1.0 sigma = 68.2689492% confidence interval of the normal dist.
 # 1.17741 sigma = Full width at half maximum of the normal distribution
@@ -142,6 +143,27 @@ if movav_wsize % 2 == 0:
 deriv_sd_factor = 1.0
 # Stop fitting the MSD at `fit_stop_pct` percent of the data.
 fit_stop_pct = 0.9
+# Factor determining the required minimum length of the diffusive
+# regime.
+regime_length_factor = 5.0
+# Factor determining a security buffer for the found diffusive regime.
+# The diffusive regime will be decreased on both sides by this buffer.
+buffer_factor = 1.0
+if buffer_factor >= regime_length_factor:
+    raise ValueError(
+        "`buffer_factor` ({}) should be less than `regime_length_factor`"
+        " ({})".format(buffer_factor, regime_length_factor)
+    )
+elif buffer_factor < 0.5:
+    raise ValueError(
+        "`buffer_factor` ({}) should not be less than"
+        " 0.5".format(buffer_factor)
+    )
+# Security buffer.
+buffer = round(buffer_factor * movav_wsize)
+# Minimum length of the diffusive regime.
+regime_length_min = round(regime_length_factor * movav_wsize)
+regime_length_min += 2 * buffer
 
 
 print("Creating Simulation instance(s)...")
@@ -204,7 +226,6 @@ if np.any(msd_t_movav_var < 0):
         " should not have happened"
     )
 
-
 # Calculate the uncertainty of the derivative of the moving average.
 # Propagation of uncertainty:
 # https://en.wikipedia.org/wiki/Propagation_of_uncertainty#Example_formulae
@@ -238,36 +259,62 @@ diffusive = msd_t_movav_grad >= -deriv_sd_factor * msd_t_movav_grad_sd
 diffusive &= msd_t_movav_grad <= deriv_sd_factor * msd_t_movav_grad_sd
 
 if not np.any(diffusive):
+    warnings.warn(
+        "Could not detect the diffusive regime.  The derivative of the moving"
+        " average is not zero within its uncertainty at any point",
+        RuntimeWarning,
+        stacklevel=2,
+    )
     fit_start, fit_stop = -1, -1
 else:
-    # Find the longest sequence of ``True`` in `diffusive`.
+    # Find the first sequence of ``True`` in `diffusive` that is longer
+    # than `regime_length_min`.
     # Get the start, length and value of all consecutive sequences of
     # ``False`` and ``True`` in `diffusive`.
     seq_starts, seq_lengths, vals = mdt.nph.get_const_seqs(diffusive, tol=0.5)
-    # Discard all sequences of ``False``
+    # Discard all sequences of ``False``.
     valid = np.flatnonzero(vals)
     seq_starts, seq_lengths = seq_starts[valid], seq_lengths[valid]
-    # Find the longest sequence of ``True``.
-    ix_longest = np.argmax(seq_lengths)
-    fit_start = seq_starts[ix_longest]
-    fit_stop = fit_start + seq_lengths[ix_longest]
-    # Acount for the shift of indices: The times of the moving average,
-    # `times_t_movav` (and consequently `diffusive`), are shifted to the
-    # original times `time_t` by `movav_t_shift`.
-    fit_start += movav_t_shift
-    fit_stop += movav_t_shift
-    # Reduce the fit region by half of the window size as security
-    # buffer.
-    fit_start += (movav_wsize - 1) // 2
-    fit_stop -= (movav_wsize - 1) // 2
+    # Find the first sequence of ``True`` that is longer than
+    # `regime_length_min`.
+    ix = np.argmax(seq_lengths >= regime_length_min)
+    if seq_lengths[ix] < regime_length_min:
+        warnings.warn(
+            "Could not detect the diffusive regime.   There exists no"
+            " contiguous sequence where the derivative of the moving average"
+            " is not zero within its uncertainty that is longer than {} data"
+            " points ({} ns"
+            " )".format(regime_length_min, regime_length_min * time_diff),
+            RuntimeWarning,
+            stacklevel=2,
+        )
+        fit_start, fit_stop = -1, -1
+    else:
+        fit_start = seq_starts[ix]
+        fit_stop = fit_start + seq_lengths[ix]
+        # Acount for the shift of indices: The times of the moving
+        # average, `times_t_movav` (and consequently `diffusive`), are
+        # shifted to the original times `time_t` by `movav_t_shift`.
+        fit_start += movav_t_shift
+        fit_stop += movav_t_shift
+        # Reduce the fit region by the security buffer.
+        fit_start += buffer
+        fit_stop -= buffer
     del seq_starts, seq_lengths, vals, valid
 
 fit_stop_tot = int(fit_stop_pct * len(msd_t))
-fit_stop_tot -= (movav_wsize - 1) // 2  # Security buffer.
-if fit_start >= fit_stop_tot:
-    fit_start, fit_stop = -1, -1
+fit_stop_tot -= buffer
 if fit_stop > fit_stop_tot:
     fit_stop = fit_stop_tot
+if fit_start + regime_length_min - 2 * buffer >= fit_stop:
+    warnings.warn(
+        "Could not detect the diffusive regime.  The found region lies to far"
+        " behind the cutoff at {} data points"
+        " ({} ns)".format(fit_stop, fit_stop * time_diff),
+        RuntimeWarning,
+        stacklevel=2,
+    )
+    fit_start, fit_stop = -1, -1
 
 if fit_start > 0 and fit_stop > 0:
     diff_coeff = np.mean(msd_t[fit_start:fit_stop]) / (2 * n_dim)
@@ -331,29 +378,48 @@ header = (
     + "3.) Estimate the derivative of the moving average using finite\n"
     + "differences.\n"
     + "\n"
-    + "4.) Identify the diffusive regime as the largest continuous sequence\n"
-    + "where the derivative is zero within {:f} times of its\n".format(
+    + "4.) Identify the diffusive regime as the first continuous sequence\n"
+    + "that is longer than {:f} times the moving-average window size\n".format(
+        regime_length_factor
+    )
+    + "plus a buffer of 2x{:f} times the moving-average window size,\n".format(
+        buffer_factor
+    )
+    + "where the derivative is zero within {:f} times of its \n".format(
         deriv_sd_factor
     )
     + "uncertainty (which is calculated from the uncertainty of the moving\n"
     + "average using standard propagation of uncertainty).\n"
     + "\n"
-    + "6.) Reduce the diffusive regime on both sides by half of the\n"
-    + "moving-average window size as security buffer.  Furthermore, if the\n"
-    + "diffusive regime exceeds {:f} percent of the available D(t)\n".format(
+    + "6.) Reduce the diffusive regime on both sides by {:f} times\n".format(
+        buffer_factor
+    )
+    + "the moving-average window size as security buffer.  Furthermore, if\n"
+    + "the diffusive regime exceeds {:f} percent of the available\n".format(
         fit_stop_pct
     )
-    + "data minus half of the moving-average window size, cut it at this\n"
-    + "point, because D(t) tends to get quite noisy beyond it.\n"
+    + "D(t) data minus the security buffer, cut it at this point, because\n"
+    + "D(t) tends to get quite noisy beyond it.\n"
     + "\n"
-    + "5.) Calculate the diffusion coefficient as the mean of D(t) within\n"
+    + "7.) Calculate the diffusion coefficient as the mean of D(t) within\n"
     + "the diffusive regime.\n"
     + "\n"
-    + "movav_wsize     = {:d} data points ({:f} ns)\n".format(
+    + "movav_wsize          = {:>7d} data points ({:>12.6f} ns)\n".format(
         movav_wsize, movav_wsize * time_diff
     )
-    + "deriv_sd_factor = {:f}\n".format(deriv_sd_factor)
-    + "fit_stop_pct    = {:f}\n".format(fit_stop_pct)
+    + "regime_length_factor = {:>9.6f}\n".format(regime_length_factor)
+    + "regime_length_min    = {:>7d} data points ({:>12.6f} ns)\n".format(
+        regime_length_min, regime_length_min * time_diff
+    )
+    + "buffer_factor        = {:>9.6f}\n".format(buffer_factor)
+    + "buffer               = {:>7d} data points ({:>12.6f} ns)\n".format(
+        buffer, buffer * time_diff
+    )
+    + "deriv_sd_factor      = {:>9.6f}\n".format(deriv_sd_factor)
+    + "fit_stop_pct         = {:>9.6f}\n".format(fit_stop_pct)
+    + "fit_stop_tot         = {:>7d} data points ({:>12.6f} ns)\n".format(
+        fit_stop_tot, fit_stop_tot * time_diff
+    )
     + "\n"
     + "\n"
     + "Compound:       {:s}\n".format(args.cmp)
