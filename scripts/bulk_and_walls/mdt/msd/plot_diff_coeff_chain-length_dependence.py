@@ -23,10 +23,51 @@ import lintf2_ether_ana_postproc as leap
 
 
 # Diffusion coefficients from literature.
-Shi_1993 = [[], [], []]  # From Plot
-# Vincent_1995 = [[], [], []]  # Same data as Shi_1993
-Hayamizu_2002 = [[], [], []]  # From plot.
-Timachova_2015 = [[], [], []]  # From plot.
+
+# Shi and Vincent, Solid State Ionics, 1993, 60, 1, 11-17, Figure 6.
+# (Or Vincent, Electrochimica Acta, 1995, 40, 13, 2035-2040, Figure 4.)
+Shi_masses = np.array(
+    [  # Molecular weight in g/mol.
+        400,
+        1000,
+        2000,
+        3350,
+        6000,
+        10000,
+        4000000,
+    ]
+)
+Shi_masses = leap.misc.weight2oxygens(Shi_masses)
+Shi_1993_343K = np.array(
+    [  # log10[D(Li) / cm^2/s]
+        -59.8254982946958,
+        -67.3299629241815,
+        -69.0777391426833,
+        -70.9033398505937,
+        -71.2527518283685,
+        -70.2087511318662,
+        -72.5567923967724,
+    ]
+)
+Shi_1993_343K = 10**Shi_1993_343K
+Shi_1993_343K *= 1e5  # cm^2/s -> nm^2/s.
+Shi_1993_363K = np.array(
+    [  # log10[D(Li) / cm^2/s]
+        -57.6089374970041,
+        -65.1783327970702,
+        -66.5464432765872,
+        -68.7823758392288,
+        -69.3989353843387,
+        -68.7000136070483,
+        -69.8982956829097,
+    ]
+)
+Shi_1993_363K = 10**Shi_1993_363K
+Shi_1993_363K *= 1e5  # cm^2/s -> nm^2/s.
+
+
+Hayamizu_2002 = np.array([[], [], []])  # From plot.
+Timachova_2015 = np.array([[], [], []])  # From plot.
 
 
 def fit_diff_coeff(diff_coeffs, diff_coeffs_sd, Sims, start=0, stop=-1):
