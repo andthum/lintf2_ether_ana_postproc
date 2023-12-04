@@ -16,6 +16,34 @@ from scipy.stats import norm
 import lintf2_ether_ana_postproc as leap
 
 
+def weight2oxygens(weight, rnd=False):
+    """
+    Calculate the number of ether oxygen atoms per PEO chain from its
+    molecular weight.
+
+    Parameters
+    ----------
+    weight : scalar or array_like
+        Molecular weight of one PEO chain in g/mol.
+    rnd : bool, optional
+        If ``True``, round the result to the next integer.
+
+    Returns
+    -------
+    n_oxygens : scalar or numpy.ndarray
+        Number of oxygens atoms per PEO chain.
+    """
+    m_ch3 = 15.0350  # Mass of -CH3 terminus.
+    m_och3 = 31.0344  # Mass of -O-CH3 terminus.
+    m_oc2h4 = 44.0534  # Mass of -O-CH2-CH2- monomer unit.
+    n_oxygens = np.subtract(weight, (m_ch3 + m_och3))
+    n_oxygens = np.divide(n_oxygens, m_oc2h4)
+    n_oxygens += 1  # For -O-CH3 terminus.
+    if rnd:
+        n_oxygens = np.round(n_oxygens, out=n_oxygens).astype(int)
+    return n_oxygens
+
+
 def straight_line(x, m, c):
     """
     Straight Line.
