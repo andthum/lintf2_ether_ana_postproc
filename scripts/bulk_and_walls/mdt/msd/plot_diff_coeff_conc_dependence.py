@@ -22,6 +22,47 @@ from scipy.optimize import curve_fit
 import lintf2_ether_ana_postproc as leap
 
 
+# Zhang et al., J. Phys. Chem. B, 2014, 118, 19, 5144–5153.
+# Diffusion coefficients from PFG-NMR at 303.15 K.
+# Values read from Table S1 in SI.
+# n_EO = 2 (G1):
+Li_O_ratios_G1 = 1 / np.array([3.6, 4, 5, 6, 8, 16, 32])
+Zhang_2014_G1 = [
+    [2.84, 4.08, 7.21, 13.12, 37.06, 113.80, 192.20],  # D(G1).
+    [1.96, 2.81, 4.58, 7.58, 19.04, 51.15, 81.07],  # D(TFSI).
+    [2.34, 3.25, 4.94, 7.98, 18.63, 51.31, 89.73],  # D(Li).
+]
+Zhang_2014_G1 = np.asarray(Zhang_2014_G1)
+Zhang_2014_G1 *= 1e-2  # 1e-7 cm^2/s -> nm^2/ns (cm^2/s -> nm^2/ns = 1e5).
+Zhang_2014_G1 = np.row_stack([Li_O_ratios_G1, Zhang_2014_G1])
+del Li_O_ratios_G1
+# n_EO = 5 (G4):
+Li_O_ratios_G4 = 1 / np.array([3.75, 4, 5, 7.5, 10, 20, 40])
+Zhang_2014_G4 = [
+    [0.17, 0.41, 1.26, 4.21, 13.80, 20.60],  # D(G4).
+    [0.15, 0.38, 1.22, 3.98, 10.70, 14.90],  # D(TFSI).
+    [0.18, 0.38, 1.26, 3.32, 9.18, 12.20],  # D(Li).
+]
+Zhang_2014_G4 = np.asarray(Zhang_2014_G4)
+Zhang_2014_G4 *= 1e-2  # 1e-7 cm^2/s -> nm^2/ns (cm^2/s -> nm^2/ns = 1e5).
+Zhang_2014_G4 = np.row_stack([Li_O_ratios_G4, Zhang_2014_G4])
+del Li_O_ratios_G4
+
+# Yoshida et al., J. Phys. Chem. C, 2011, 115, 37, 18384-18394.
+# Diffusion coefficients from PFG-NMR at 303.15 K.
+# Values taken from Figure 3 and Table 1.
+Li_O_ratios_G4 = 1 / np.array([5, 10, 20, 40, 150])
+Yoshida_2011_G4 = [
+    [1.25, 4.27, 13.82, 21.00, 30.87],  # D(G4).
+    [1.25, 4.02, 10.72, 14.55, 19.82],  # D(TFSI).
+    [1.25, 3.30, 9.25, 12.07, 17.45],  # D(Li).
+]
+Yoshida_2011_G4 = np.asarray(Yoshida_2011_G4)
+Yoshida_2011_G4 *= 1e-2  # 1e-7 cm^2/s -> nm^2/ns (cm^2/s -> nm^2/ns = 1e5).
+Yoshida_2011_G4 = np.row_stack([Li_O_ratios_G4, Yoshida_2011_G4])
+del Li_O_ratios_G4
+
+
 def fit_diff_coeff(diff_coeffs, diff_coeffs_sd, Sims, start=0, stop=-1):
     """
     Fit the logarithmic diffusion coefficient as function of the linear
