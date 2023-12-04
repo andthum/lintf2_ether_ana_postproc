@@ -22,6 +22,13 @@ from scipy.optimize import curve_fit
 import lintf2_ether_ana_postproc as leap
 
 
+# Diffusion coefficients from literature.
+Shi_1993 = [[], [], []]  # From Plot
+# Vincent_1995 = [[], [], []]  # Same data as Shi_1993
+Hayamizu_2002 = [[], [], []]  # From plot.
+Timachova_2015 = [[], [], []]  # From plot.
+
+
 def fit_diff_coeff(diff_coeffs, diff_coeffs_sd, Sims, start=0, stop=-1):
     """
     Fit the logarithmic diffusion coefficient as function of the
