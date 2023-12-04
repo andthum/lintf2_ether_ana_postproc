@@ -244,6 +244,7 @@ if np.any(msd_t_movav_grad_sd < 0):
         RuntimeWarning,
         stacklevel=2,
     )
+    msd_t_movav_grad_sd[msd_t_movav_grad_sd < 0] = 0
 msd_t_movav_grad_sd = np.sqrt(msd_t_movav_grad_sd, out=msd_t_movav_grad_sd)
 msd_t_movav_grad_sd /= time_diff
 msd_t_movav_grad_sd_min = np.min(
