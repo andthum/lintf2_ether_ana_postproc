@@ -148,10 +148,13 @@ for fit_ix, start in enumerate(fit_peo_starts):
 
 # TFSI
 cmp_ix = compounds.index("NTf2")
-fit_tfsi_starts = (0, np.flatnonzero(Sims.O_per_chain == 6)[0])
+fit_tfsi_starts = (
+    0,
+    # np.flatnonzero(Sims.O_per_chain == 6)[0],
+)
 fit_tfsi_stops = (
     np.flatnonzero(Sims.O_per_chain == 6)[0],
-    np.flatnonzero(Sims.O_per_chain == 54)[0],
+    # np.flatnonzero(Sims.O_per_chain == 54)[0],
 )
 popt_tfsi = np.full((len(fit_tfsi_starts), 2), np.nan, dtype=np.float64)
 perr_tfsi = np.full_like(popt_tfsi, np.nan)
@@ -210,13 +213,12 @@ with PdfPages(outfile) as pdf:
             fit_peo_starts[fit_ix] : fit_peo_stops[fit_ix]
         ]
         fit = leap.misc.power_law(xdata, *popt)
-        # Create an offset to the real data.
         if fit_ix == 0:
-            fit *= 2
+            fit *= 2  # Create an offset to the real data.
             rotation = -36
             verticalalignment = "bottom"
         else:
-            fit /= 2
+            fit /= 2  # Create an offset to the real data.
             rotation = -37
             verticalalignment = "top"
         ax.plot(
@@ -242,11 +244,11 @@ with PdfPages(outfile) as pdf:
         ]
         fit = leap.misc.power_law(xdata, *popt)
         if fit_ix == 0:
-            fit /= 2
+            fit /= 2  # Create an offset to the real data.
             rotation = -35
             verticalalignment = "top"
         else:
-            fit *= 2
+            fit *= 2  # Create an offset to the real data.
             rotation = -18
             verticalalignment = "bottom"
         ax.plot(
@@ -333,7 +335,7 @@ with PdfPages(outfile) as pdf:
     pdf.savefig()
     plt.close()
 
-    # Fit stop - Fit start vs chain length.
+    # Fit region (fit stop minus fit start) vs chain length.
     fig, ax = plt.subplots(clear=True)
     for cmp_ix, label in enumerate(labels):
         ax.plot(
