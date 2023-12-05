@@ -26,48 +26,65 @@ import lintf2_ether_ana_postproc as leap
 
 # Shi and Vincent, Solid State Ionics, 1993, 60, 1, 11-17, Figure 6.
 # (Or Vincent, Electrochimica Acta, 1995, 40, 13, 2035-2040, Figure 4.)
-Shi_masses = np.array(
-    [  # Molecular weight in g/mol.
-        400,
-        1000,
-        2000,
-        3350,
-        6000,
-        10000,
-        4000000,
-    ]
-)
-Shi_masses = leap.misc.weight2oxygens(Shi_masses)
+# Self-diffusion coefficients from PFG-NMR.
 Shi_1993_343K = np.array(
-    [  # log10[D(Li) / cm^2/s]
-        -59.8254982946958,
-        -67.3299629241815,
-        -69.0777391426833,
-        -70.9033398505937,
-        -71.2527518283685,
-        -70.2087511318662,
-        -72.5567923967724,
+    [
+        [  # n_EO calculated from the molecular weight given in the text
+            9.03413e00,
+            2.26540e01,
+            4.53537e01,
+            7.59983e01,
+            1.36153e02,
+            2.26951e02,
+            9.07988e04,
+        ],
+        [  # D(Li) in nm^2/ns at 343.15 K taken from Figure 6.
+            1.09583e-01,
+            1.81301e-02,
+            1.18834e-02,
+            7.66857e-03,
+            7.02093e-03,
+            8.98093e-03,
+            5.00057e-03,
+        ],
     ]
 )
-Shi_1993_343K = 10**Shi_1993_343K
-Shi_1993_343K *= 1e5  # cm^2/s -> nm^2/s.
 Shi_1993_363K = np.array(
-    [  # log10[D(Li) / cm^2/s]
-        -57.6089374970041,
-        -65.1783327970702,
-        -66.5464432765872,
-        -68.7823758392288,
-        -69.3989353843387,
-        -68.7000136070483,
-        -69.8982956829097,
+    Shi_1993_343K[0],  # n_EO.
+    [  # D(Li) in nm^2/ns at 363.15 K taken from Figure 6.
+        1.88515e-01,
+        3.04457e-02,
+        2.18169e-02,
+        1.27715e-02,
+        1.09929e-02,
+        1.30165e-02,
+        9.48820e-03,
+    ],
+)
+
+# Hayamizu et al., J. Chem. Phys., 2002, 117, 5929, Figure 8.
+# Self-diffusion coefficients from PFG-NMR.
+Hayamizu_2002_343K_nEO = np.array()
+Hayamizu_2002_343K = np.array(
+    [
+        [6, 11.6, 56.3],  # n_EO from Table 1.
+        [2.03542e-01, 6.46224e-02, 2.80010e-03],  # D(PEO) / nm^2/ns.
+        [2.06350e-01, 9.12374e-02, 2.32371e-02],  # D(TFSI) / nm^2/ns.
+        [1.37189e-01, 6.33618e-02, 5.79263e-03],  # D(Li) / nm^2/ns.
     ]
 )
-Shi_1993_363K = 10**Shi_1993_363K
-Shi_1993_363K *= 1e5  # cm^2/s -> nm^2/s.
+Hayamizu_2002_363K_nEO = np.array([11.6, 56.3])
+Hayamizu_2002_363K = np.array(
+    [
+        Hayamizu_2002_343K[0][1:],  # n_EO.
+        [1.05838e-01, 5.58900e-03],  # D(PEO) / nm^2/ns.
+        [1.50907e-01, 4.31457e-02],  # D(TFSI) / nm^2/ns.
+        [1.08657e-01, 1.12581e-02],  # D(Li) / nm^2/ns.
+    ]
+)
 
 
-Hayamizu_2002 = np.array([[], [], []])  # From plot.
-Timachova_2015 = np.array([[], [], []])  # From plot.
+# Zhang 2014
 
 
 def fit_diff_coeff(diff_coeffs, diff_coeffs_sd, Sims, start=0, stop=-1):
