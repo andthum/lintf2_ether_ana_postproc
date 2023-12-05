@@ -22,6 +22,8 @@ from scipy.optimize import curve_fit
 import lintf2_ether_ana_postproc as leap
 
 
+# Diffusion coefficients from literature.
+
 # Zhang et al., J. Phys. Chem. B, 2014, 118, 19, 5144–5153.
 # Diffusion coefficients from PFG-NMR at 303.15 K.
 # Values read from Table S1 in SI.
@@ -61,6 +63,11 @@ Yoshida_2011_G4 = np.asarray(Yoshida_2011_G4)
 Yoshida_2011_G4 *= 1e-2  # 1e-7 cm^2/s -> nm^2/ns (cm^2/s -> nm^2/ns = 1e5).
 Yoshida_2011_G4 = np.row_stack([Li_O_ratios_G4, Yoshida_2011_G4])
 del Li_O_ratios_G4
+
+
+# Orädd et al., Solid State Ionics, 2002, 152-153, 131-136.
+# Timachova 2015
+# Pesko 2017
 
 
 def fit_diff_coeff(diff_coeffs, diff_coeffs_sd, Sims, start=0, stop=-1):
