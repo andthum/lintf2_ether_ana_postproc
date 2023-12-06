@@ -27,31 +27,32 @@ import lintf2_ether_ana_postproc as leap
 # Shi and Vincent, Solid State Ionics, 1993, 60, 1, 11-17, Figure 6.
 # (Or Vincent, Electrochimica Acta, 1995, 40, 13, 2035-2040, Figure 4.)
 # Self-diffusion coefficients from PFG-NMR.
-Shi_1993_343K = np.array(
-    [
-        [  # n_EO calculated from the molecular weight given in the text
-            9.03413e00,
-            2.26540e01,
-            4.53537e01,
-            7.59983e01,
-            1.36153e02,
-            2.26951e02,
-            9.07988e04,
-        ],
-        [  # D(Li) in nm^2/ns at 343.15 K taken from Figure 6.
-            1.09583e-01,
-            1.81301e-02,
-            1.18834e-02,
-            7.66857e-03,
-            7.02093e-03,
-            8.98093e-03,
-            5.00057e-03,
-        ],
-    ]
-)
-Shi_1993_363K = np.array(
+# Values taken from Figure 6.
+# Anion = CF3SO3 (Triflate), not TFSI.
+Shi_1993_343K = [  # D in nm^2/ns at 343 K.
+    [  # n_EO calculated from the molecular weight given in the text.
+        9.03413e00,
+        2.26540e01,
+        4.53537e01,
+        7.59983e01,
+        1.36153e02,
+        2.26951e02,
+        9.07988e04,
+    ],
+    [  # D(Li).
+        1.09583e-01,
+        1.81301e-02,
+        1.18834e-02,
+        7.66857e-03,
+        7.02093e-03,
+        8.98093e-03,
+        5.00057e-03,
+    ],
+]
+Shi_1993_343K = np.asarray(Shi_1993_343K)
+Shi_1993_363K = [  # D in nm^2/ns at 363 K.
     Shi_1993_343K[0],  # n_EO.
-    [  # D(Li) in nm^2/ns at 363.15 K taken from Figure 6.
+    [  # D(Li).
         1.88515e-01,
         3.04457e-02,
         2.18169e-02,
@@ -60,31 +61,89 @@ Shi_1993_363K = np.array(
         1.30165e-02,
         9.48820e-03,
     ],
-)
+]
+Shi_1993_363K = np.asarray(Shi_1993_363K)
 
-# Hayamizu et al., J. Chem. Phys., 2002, 117, 5929, Figure 8.
+# Hayamizu et al., J. Chem. Phys., 2002, 117, 5929.
 # Self-diffusion coefficients from PFG-NMR.
-Hayamizu_2002_343K_nEO = np.array()
-Hayamizu_2002_343K = np.array(
-    [
-        [6, 11.6, 56.3],  # n_EO from Table 1.
-        [2.03542e-01, 6.46224e-02, 2.80010e-03],  # D(PEO) / nm^2/ns.
-        [2.06350e-01, 9.12374e-02, 2.32371e-02],  # D(TFSI) / nm^2/ns.
-        [1.37189e-01, 6.33618e-02, 5.79263e-03],  # D(Li) / nm^2/ns.
-    ]
-)
-Hayamizu_2002_363K_nEO = np.array([11.6, 56.3])
-Hayamizu_2002_363K = np.array(
-    [
-        Hayamizu_2002_343K[0][1:],  # n_EO.
-        [1.05838e-01, 5.58900e-03],  # D(PEO) / nm^2/ns.
-        [1.50907e-01, 4.31457e-02],  # D(TFSI) / nm^2/ns.
-        [1.08657e-01, 1.12581e-02],  # D(Li) / nm^2/ns.
-    ]
-)
+# Values taken from Figures 8 and 9 and Table 1.
+Hayamizu_2002_303K = [  # D in nm^2/ns at 303 K (Figure 8).
+    [6.0, 11.6],  # n_EO from Table 1.
+    [6.97241e-02, 1.62601e-02],  # D(PEO).
+    [7.08797e-02, 2.44353e-02],  # D(TFSI).
+    [5.60011e-02, 1.44467e-02],  # D(Li).
+]
+Hayamizu_2002_303K = np.asarray(Hayamizu_2002_303K)
+Hayamizu_2002_333K = [  # D in nm^2/ns at 333 K (Figure 8).
+    [  # n_EO from Table 1 and Figure 9.
+        4.0,
+        5.0,
+        6.0,
+        11.6,
+        23.9,
+        56.3,
+        179.0,  # Cross-linked PEO.
+        224.7,  # Cross-linked PEO.
+    ],
+    [  # D(PEO).
+        3.56010e-01,
+        2.32830e-01,
+        1.64683e-01,
+        4.85299e-02,
+        9.16646e-03,
+        1.91032e-03,
+        5.07389e-04,  # Cross-linked PEO.
+        9.02664e-04,  # Cross-linked PEO.
+    ],
+    [  # D(TFSI).
+        2.92574e-01,
+        2.13849e-01,
+        1.63611e-01,
+        6.86411e-02,
+        2.69746e-02,
+        1.61154e-02,
+        1.19537e-02,  # Cross-linked PEO.
+        1.31057e-02,  # Cross-linked PEO.
+    ],
+    [  # D(Li).
+        2.22289e-01,
+        1.63543e-01,
+        1.17199e-01,
+        4.25789e-02,
+        1.03120e-02,
+        3.89734e-03,
+        2.47083e-03,  # Cross-linked PEO.
+        3.80653e-03,  # Cross-linked PEO.
+    ],
+]
+Hayamizu_2002_333K = np.asarray(Hayamizu_2002_333K)
+Hayamizu_2002_343K = [  # D in nm^2/ns at 343 K (Figure 8).
+    [6.0, 11.6, 56.3],  # n_EO from Table 1.
+    [2.03542e-01, 6.46224e-02, 2.80010e-03],  # D(PEO).
+    [2.06350e-01, 9.12374e-02, 2.32371e-02],  # D(TFSI).
+    [1.37189e-01, 6.33618e-02, 5.79263e-03],  # D(Li).
+]
+Hayamizu_2002_343K = np.asarray(Hayamizu_2002_343K)
+Hayamizu_2002_363K = [  # D in nm^2/ns at 363 K (Figure 8).
+    [11.6, 56.3],  # n_EO from Table 1.
+    [1.05838e-01, 5.58900e-03],  # D(PEO).
+    [1.50907e-01, 4.31457e-02],  # D(TFSI).
+    [1.08657e-01, 1.12581e-02],  # D(Li).
+]
+Hayamizu_2002_363K = np.asarray(Hayamizu_2002_363K)
 
-
-# Zhang 2014
+# Zhang et al., J. Phys. Chem. B, 2014, 118, 19, 5144–5153.
+# Self-diffusion coefficients from PFG-NMR.
+# Values taken from Table S1 in SI.
+# r = Li/EO ~ 1/20 = 0.05
+Zhang_2014_303K = [
+    # Actual r values:  0.0625,  0.0417,  0.0625,  0.0500
+    # 1/r = EO/Li:     16.00  , 24.00  , 16.00  , 20.00
+    [2, 3, 4, 5],  # n_EO.
+    [1.13800e00, 5.84100e-01, 1.73000e-01, 1.38000e-01],  # D(PEO).
+    [5.13100e-01, 3.14200e-01, 1.22000e-01, 1.07000e-01],  # D(TFSI).
+    [5.11500e-01, 2.79200e-01, 1.05000e-01, 9.18000e-02],  # D(Li).
+]
 
 
 def fit_diff_coeff(diff_coeffs, diff_coeffs_sd, Sims, start=0, stop=-1):
