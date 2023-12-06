@@ -25,49 +25,201 @@ import lintf2_ether_ana_postproc as leap
 # Diffusion coefficients from literature.
 
 # Zhang et al., J. Phys. Chem. B, 2014, 118, 19, 5144–5153.
-# Diffusion coefficients from PFG-NMR at 303.15 K.
-# Values read from Table S1 in SI.
+# Self-diffusion coefficients from PFG-NMR.
+# Values taken from Table S1 in SI.
 # n_EO = 2 (G1):
-Li_O_ratios_G1 = 1 / np.array([3.6, 4, 5, 6, 8, 16, 32])
-Zhang_2014_G1 = [  # Self-diffusion coefficients in 1e-7 cm^2/s.
-    [2.84, 4.08, 7.21, 13.12, 37.06, 113.80, 192.20],  # D(G1).
-    [1.96, 2.81, 4.58, 7.58, 19.04, 51.15, 81.07],  # D(TFSI).
-    [2.34, 3.25, 4.94, 7.98, 18.63, 51.31, 89.73],  # D(Li).
+Li_O_ratios_G1 = 1 / np.array([32.00, 16.00, 8.00, 6.00, 5.00, 4.00, 3.60])
+Zhang_2014_G1 = [  # D in nm^2/ns at 303 K.
+    [  # D(G1).
+        1.92200e00,
+        1.13800e00,
+        3.70600e-01,
+        1.31200e-01,
+        7.21000e-02,
+        4.08000e-02,
+        2.84000e-02,
+    ],
+    [  # D(TFSI).
+        8.97300e-01,
+        5.13100e-01,
+        1.86300e-01,
+        7.98000e-02,
+        4.94000e-02,
+        3.25000e-02,
+        2.34000e-02,
+    ],
+    [  # D(Li).
+        8.10700e-01,
+        5.11500e-01,
+        1.90400e-01,
+        7.58000e-02,
+        4.58000e-02,
+        2.81000e-02,
+        1.96000e-02,
+    ],
 ]
 Zhang_2014_G1 = np.asarray(Zhang_2014_G1)
-Zhang_2014_G1 *= 1e-2  # 1e-7 cm^2/s -> nm^2/ns (cm^2/s -> nm^2/ns = 1e5).
 Zhang_2014_G1 = np.row_stack([Li_O_ratios_G1, Zhang_2014_G1])
 del Li_O_ratios_G1
 # n_EO = 5 (G4):
-Li_O_ratios_G4 = 1 / np.array([3.75, 4, 5, 7.5, 10, 20, 40])
-Zhang_2014_G4 = [  # Self-diffusion coefficients in 1e-7 cm^2/s.
-    [0.17, 0.41, 1.26, 4.21, 13.80, 20.60],  # D(G4).
-    [0.15, 0.38, 1.22, 3.98, 10.70, 14.90],  # D(TFSI).
-    [0.18, 0.38, 1.26, 3.32, 9.18, 12.20],  # D(Li).
+Li_O_ratios_G4 = 1 / np.array([40.00, 20.00, 10.00, 5.00, 4.00, 3.75])
+Zhang_2014_G4 = [  # D in nm^2/ns at 303 K.
+    [  # D(G4).
+        2.06000e-01,
+        1.38000e-01,
+        4.21000e-02,
+        1.26000e-02,
+        4.10000e-03,
+        1.70000e-03,
+    ],
+    [  # D(TFSI).
+        1.49000e-01,
+        1.07000e-01,
+        3.98000e-02,
+        1.22000e-02,
+        3.80000e-03,
+        1.50000e-03,
+    ],
+    [  # D(Li).
+        1.22000e-01,
+        9.18000e-02,
+        3.32000e-02,
+        1.26000e-02,
+        3.80000e-03,
+        1.80000e-03,
+    ],
 ]
 Zhang_2014_G4 = np.asarray(Zhang_2014_G4)
-Zhang_2014_G4 *= 1e-2  # 1e-7 cm^2/s -> nm^2/ns (cm^2/s -> nm^2/ns = 1e5).
 Zhang_2014_G4 = np.row_stack([Li_O_ratios_G4, Zhang_2014_G4])
 del Li_O_ratios_G4
 
 # Yoshida et al., J. Phys. Chem. C, 2011, 115, 37, 18384-18394.
-# Diffusion coefficients from PFG-NMR at 303.15 K.
+# Self-diffusion coefficients from PFG-NMR.
 # Values taken from Figure 3 and Table 1.
-Li_O_ratios_G4 = 1 / np.array([5, 10, 20, 40, 150])
-Yoshida_2011_G4 = [  # Self-diffusion coefficients in 1e-7 cm^2/s.
-    [1.25, 4.27, 13.82, 21.00, 30.87],  # D(G4).
-    [1.25, 4.02, 10.72, 14.55, 19.82],  # D(TFSI).
-    [1.25, 3.30, 9.25, 12.07, 17.45],  # D(Li).
+# n_EO = 5 (G4):
+Li_O_ratios_G4 = 1 / np.array([150, 40, 20, 10, 5])
+Yoshida_2011_G4 = [  # D in nm^2/ns at 303 K.
+    [
+        3.08824e-01,
+        2.09857e-01,
+        1.38315e-01,
+        4.19714e-02,
+        1.24006e-02,
+    ],  # D(G4).
+    [
+        1.98172e-01,
+        1.45469e-01,
+        1.06836e-01,
+        4.03021e-02,
+        1.24006e-02,
+    ],  # D(TFSI).
+    [
+        1.74324e-01,
+        1.20668e-01,
+        9.22893e-02,
+        3.31479e-02,
+        1.24006e-02,
+    ],  # D(Li).
 ]
 Yoshida_2011_G4 = np.asarray(Yoshida_2011_G4)
-Yoshida_2011_G4 *= 1e-2  # 1e-7 cm^2/s -> nm^2/ns (cm^2/s -> nm^2/ns = 1e5).
 Yoshida_2011_G4 = np.row_stack([Li_O_ratios_G4, Yoshida_2011_G4])
 del Li_O_ratios_G4
 
-
 # Orädd et al., Solid State Ionics, 2002, 152-153, 131-136.
-# Timachova 2015
-# Pesko 2017
+# Self-diffusion coefficients from PFG-NMR.
+# Values taken from Figure 4.
+# n_EO = 113498.57 (molecular weight = 5e6 g/mol).
+Li_O_ratios_G4 = 1 / np.array([50, 30, 20, 16, 12, 8, 5])
+Oraedd_2002 = [  # D in nm^2/ns at 358 K.
+    [  # D(TFSI).
+        3.55743e-02,
+        2.98148e-02,
+        2.43424e-02,
+        2.23579e-02,
+        1.63331e-02,
+        9.42827e-03,
+        4.30054e-03,
+    ],
+    [  # D(Li).
+        7.21032e-03,
+        6.04296e-03,
+        4.59126e-03,
+        4.24464e-03,
+        2.75639e-03,
+        1.29908e-03,
+        8.05842e-04,
+    ],
+]
+Oraedd_2002 = np.asarray(Oraedd_2002)
+Oraedd_2002 = np.row_stack([Li_O_ratios_G4, Oraedd_2002])
+del Li_O_ratios_G4
+
+# Timachova et al., Macromolecules, 2015, 48, 7882-7888.
+# Self-diffusion coefficients from PFG-NMR.
+# Values taken from Figure 1.
+# n_EO = 91 (molecular weight = 4000 g/mol).
+Timachova_2015 = [  # D in nm^2/ns at 363 K.
+    [  # r = Li/EO.
+        0.0100,
+        0.0200,
+        0.0400,
+        0.0600,
+        0.0800,
+    ],
+    [  # D(TFSI).
+        6.90424e-02,
+        6.41182e-02,
+        5.26498e-02,
+        4.70472e-02,
+        4.10536e-02,
+    ],
+    [  # D(Li).
+        3.00480e-02,
+        2.60735e-02,
+        1.57783e-02,
+        1.49802e-02,
+        1.42938e-02,
+    ],
+]
+Timachova_2015 = np.asarray(Timachova_2015)
+
+# Pesko et al., J. Electrochem. Soc., 2017, 164, 11, E3569-E3575.
+# Self-diffusion coefficients from PFG-NMR.
+# Values taken from Figure 1.
+# n_EO = 112.45 (molecular weight = 5000 g/mol).
+Pesko_2017 = [  # D in nm^2/ns at 363 K.
+    [  # r = Li/EO.
+        0.0100,
+        0.0200,
+        0.0400,
+        0.0600,
+        0.0800,
+        0.1000,
+        0.1200,
+        0.1400,
+    ],
+    [  # D(TFSI).
+        6.56089e-02,
+        6.16827e-02,
+        5.10406e-02,
+        3.47159e-02,
+        3.08413e-02,
+        2.15424e-02,
+        1.73579e-02,
+        1.41550e-02,
+    ],
+    [  # D(Li).
+        2.13875e-02,
+        1.72546e-02,
+        1.45683e-02,
+        9.86716e-03,
+        7.59410e-03,
+        4.54613e-03,
+        3.77122e-03,
+        2.63469e-03,
+    ],
+]
+Pesko_2017 = np.asarray(Pesko_2017)
 
 
 def fit_diff_coeff(diff_coeffs, diff_coeffs_sd, Sims, start=0, stop=-1):
