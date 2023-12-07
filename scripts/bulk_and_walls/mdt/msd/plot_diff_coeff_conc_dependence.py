@@ -143,7 +143,12 @@ for cmp_ix, cmp in enumerate(compounds):
 print("Fitting exponential law...")
 # PEO
 cmp_ix = compounds.index("ether")
-if args.sol == "g4":
+if args.sol == "g1":
+    fit_peo_starts = (0,)
+    fit_peo_stops = (
+        np.flatnonzero(np.isclose(Sims.Li_O_ratios, 1 / 6))[0] + 1,
+    )
+elif args.sol == "g4":
     fit_peo_starts = (
         0,
         np.flatnonzero(np.isclose(Sims.Li_O_ratios, 1 / 5))[0],
@@ -152,11 +157,13 @@ if args.sol == "g4":
         np.flatnonzero(np.isclose(Sims.Li_O_ratios, 1 / 6))[0] + 1,
         np.flatnonzero(np.isclose(Sims.Li_O_ratios, 2 / 5))[0] + 1,
     )
-else:
+elif args.sol == "peo63":
     fit_peo_starts = (np.flatnonzero(np.isclose(Sims.Li_O_ratios, 1 / 40))[0],)
     fit_peo_stops = (
         np.flatnonzero(np.isclose(Sims.Li_O_ratios, 1 / 6))[0] + 1,
     )
+else:
+    raise ValueError("Unknown --sol ({})".format(args.sol))
 popt_peo = np.full((len(fit_peo_starts), 2), np.nan, dtype=np.float64)
 perr_peo = np.full_like(popt_peo, np.nan)
 for fit_ix, start in enumerate(fit_peo_starts):
@@ -170,7 +177,12 @@ for fit_ix, start in enumerate(fit_peo_starts):
 
 # TFSI
 cmp_ix = compounds.index("NTf2")
-if args.sol == "g4":
+if args.sol == "g1":
+    fit_tfsi_starts = (0,)
+    fit_tfsi_stops = (
+        np.flatnonzero(np.isclose(Sims.Li_O_ratios, 1 / 6))[0] + 1,
+    )
+elif args.sol == "g4":
     fit_tfsi_starts = (
         0,
         np.flatnonzero(np.isclose(Sims.Li_O_ratios, 1 / 5))[0],
@@ -179,13 +191,15 @@ if args.sol == "g4":
         np.flatnonzero(np.isclose(Sims.Li_O_ratios, 1 / 6))[0] + 1,
         np.flatnonzero(np.isclose(Sims.Li_O_ratios, 2 / 5))[0] + 1,
     )
-else:
+elif args.sol == "peo63":
     fit_tfsi_starts = (
         np.flatnonzero(np.isclose(Sims.Li_O_ratios, 1 / 40))[0],
     )
     fit_tfsi_stops = (
         np.flatnonzero(np.isclose(Sims.Li_O_ratios, 1 / 6))[0] + 1,
     )
+else:
+    raise ValueError("Unknown --sol ({})".format(args.sol))
 popt_tfsi = np.full((len(fit_tfsi_starts), 2), np.nan, dtype=np.float64)
 perr_tfsi = np.full_like(popt_tfsi, np.nan)
 for fit_ix, start in enumerate(fit_tfsi_starts):
@@ -199,17 +213,24 @@ for fit_ix, start in enumerate(fit_tfsi_starts):
 
 # Li
 cmp_ix = compounds.index("Li")
-if args.sol == "g4":
+if args.sol == "g1":
+    fit_li_starts = (0,)
+    fit_li_stops = (
+        np.flatnonzero(np.isclose(Sims.Li_O_ratios, 1 / 6))[0] + 1,
+    )
+elif args.sol == "g4":
     fit_li_starts = (0, np.flatnonzero(np.isclose(Sims.Li_O_ratios, 1 / 5))[0])
     fit_li_stops = (
         np.flatnonzero(np.isclose(Sims.Li_O_ratios, 1 / 6))[0] + 1,
         np.flatnonzero(np.isclose(Sims.Li_O_ratios, 2 / 5))[0] + 1,
     )
-else:
+elif args.sol == "peo63":
     fit_li_starts = (np.flatnonzero(np.isclose(Sims.Li_O_ratios, 1 / 40))[0],)
     fit_li_stops = (
         np.flatnonzero(np.isclose(Sims.Li_O_ratios, 1 / 6))[0] + 1,
     )
+else:
+    raise ValueError("Unknown --sol ({})".format(args.sol))
 popt_li = np.full((len(fit_li_starts), 2), np.nan, dtype=np.float64)
 perr_li = np.full_like(popt_li, np.nan)
 for fit_ix, start in enumerate(fit_li_starts):
