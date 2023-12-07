@@ -215,7 +215,7 @@ with PdfPages(outfile) as pdf:
         fit = leap.misc.power_law(xdata, *popt)
         if fit_ix == 0:
             fit *= 2  # Create an offset to the real data.
-            rotation = -36
+            rotation = -38
             verticalalignment = "bottom"
         else:
             fit /= 2  # Create an offset to the real data.
@@ -245,7 +245,7 @@ with PdfPages(outfile) as pdf:
         fit = leap.misc.power_law(xdata, *popt)
         if fit_ix == 0:
             fit /= 2  # Create an offset to the real data.
-            rotation = -35
+            rotation = -34
             verticalalignment = "top"
         else:
             fit *= 2  # Create an offset to the real data.
@@ -272,7 +272,7 @@ with PdfPages(outfile) as pdf:
         xdata = Sims.O_per_chain[fit_li_starts[fit_ix] : fit_li_stops[fit_ix]]
         fit = leap.misc.power_law(xdata, *popt)
         fit /= 8  # Create an offset to the real data.
-        rotation = -35
+        rotation = -36
         ax.plot(
             xdata, fit, color=colors[labels.index("Li")], linestyle="dashed"
         )
@@ -292,7 +292,12 @@ with PdfPages(outfile) as pdf:
     del xdata, fit
     ax.set_xscale("log", base=10, subs=np.arange(2, 10))
     ax.set_yscale("log", base=10, subs=np.arange(2, 10))
-    ax.set(xlabel=xlabel, ylabel=r"Diff. Coeff. / nm$^2$ ns$^{-1}$", xlim=xlim)
+    ax.set(
+        xlabel=xlabel,
+        ylabel=r"Diff. Coeff. / nm$^2$ ns$^{-1}$",
+        xlim=xlim,
+        ylim=(1e-3, 2e1),
+    )
     ax.legend(loc="upper right")
     pdf.savefig()
     plt.close()
