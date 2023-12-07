@@ -601,12 +601,12 @@ with PdfPages(outfile) as pdf:
         # MSD vs time.
         ax_msd.set(
             xlabel="Diffusion Time / ns",
-            ylabel=labels[cmp_ix] + r" MSD / nm$^2$",
+            ylabel=r"MSD / nm$^2$",
             xlim=(times[0], times[-1]),
             ylim=(0, None),
         )
         legend = ax_msd.legend(
-            title=legend_title,
+            title=labels[cmp_ix] + ", " + legend_title,
             loc="upper left",
             ncol=1 + Sims.n_sims // (4 + 1),
             **mdtplt.LEGEND_KWARGS_XSMALL,
@@ -624,7 +624,7 @@ with PdfPages(outfile) as pdf:
         ax_msd.set_xlim(times[0], times[-1])
         ax_msd.set_yscale("log", base=10, subs=np.arange(2, 10))
         legend = ax_msd.legend(
-            title=legend_title,
+            title=labels[cmp_ix] + ", " + legend_title,
             loc="lower right",
             ncol=1 + Sims.n_sims // (4 + 1),
             **mdtplt.LEGEND_KWARGS_XSMALL,
@@ -635,7 +635,7 @@ with PdfPages(outfile) as pdf:
         ax_msd.set_xlim(times[1], times[-1])
         ax_msd.set_xscale("log", base=10, subs=np.arange(2, 10))
         legend = ax_msd.legend(
-            title=legend_title,
+            title=labels[cmp_ix] + ", " + legend_title,
             loc="upper left",
             ncol=1 + Sims.n_sims // (4 + 1),
             **mdtplt.LEGEND_KWARGS_XSMALL,
@@ -647,11 +647,11 @@ with PdfPages(outfile) as pdf:
         # MSD/t vs time.
         ax_msd_t.set(
             xlabel=r"Diffusion Time $t$ / ns",
-            ylabel=labels[cmp_ix] + r" MSD$(t)/t$ / nm$^2$ ns$^{-1}$",
+            ylabel=r"MSD$(t)/t$ / nm$^2$ ns$^{-1}$",
             xlim=(times[1], times[-1]),
         )
         legend = ax_msd_t.legend(
-            title=legend_title,
+            title=labels[cmp_ix] + ", " + legend_title,
             loc="upper left",
             ncol=1 + Sims.n_sims // (4 + 1),
             **mdtplt.LEGEND_KWARGS_XSMALL,
@@ -668,7 +668,7 @@ with PdfPages(outfile) as pdf:
         # Log scale xy.
         ax_msd_t.set_xscale("log", base=10, subs=np.arange(2, 10))
         legend = ax_msd_t.legend(
-            title=legend_title,
+            title=labels[cmp_ix] + ", " + legend_title,
             loc="lower left",
             ncol=1 + Sims.n_sims // (4 + 1),
             **mdtplt.LEGEND_KWARGS_XSMALL,
@@ -680,11 +680,11 @@ with PdfPages(outfile) as pdf:
         # Fit residuals vs time.
         ax_res.set(
             xlabel="Diffusion Time / ns",
-            ylabel=labels[cmp_ix] + r" Fit Res. / nm$^2$",
+            ylabel=r"Fit Res. / nm$^2$",
             xlim=(times[0], times[-1]),
         )
         legend = ax_res.legend(
-            title=legend_title,
+            title=labels[cmp_ix] + ", " + legend_title,
             loc="upper left",
             ncol=1 + Sims.n_sims // (4 + 1),
             **mdtplt.LEGEND_KWARGS_XSMALL,
@@ -700,11 +700,11 @@ with PdfPages(outfile) as pdf:
         # Fit residuals / t vs time.
         ax_res_t.set(
             xlabel=r"Diffusion Time $t$ / ns",
-            ylabel=labels[cmp_ix] + r" Fit Res. / $t$ / nm$^2$ ns$^{-1}$",
+            ylabel=r"Fit Res. / $t$ / nm$^2$ ns$^{-1}$",
             xlim=(times[0], times[-1]),
         )
         legend = ax_res_t.legend(
-            title=legend_title,
+            title=labels[cmp_ix] + ", " + legend_title,
             loc="upper left",
             ncol=1 + Sims.n_sims // (4 + 1),
             **mdtplt.LEGEND_KWARGS_XSMALL,
@@ -720,11 +720,11 @@ with PdfPages(outfile) as pdf:
         # Fit residuals / MSD vs time.
         ax_res_msd.set(
             xlabel="Diffusion Time / ns",
-            ylabel=labels[cmp_ix] + r" Fit Res. / MSD",
+            ylabel=r"Fit Res. / MSD",
             xlim=(times[0], times[-1]),
         )
         legend = ax_res_msd.legend(
-            title=legend_title,
+            title=labels[cmp_ix] + ", " + legend_title,
             loc="upper left",
             ncol=1 + Sims.n_sims // (4 + 1),
             **mdtplt.LEGEND_KWARGS_XSMALL,
