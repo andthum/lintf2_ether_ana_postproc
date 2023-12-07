@@ -44,8 +44,8 @@ def fit_diff_coeff(diff_coeffs, diff_coeffs_sd, Sims, start=0, stop=-1):
         absolute_sigma=True,
     )
     perr = np.sqrt(np.diag(pcov))
-    # Convert straight-line parameters to the corresponding power-law
-    # parameters.
+    # Convert straight-line parameters to the corresponding
+    # exponential-law parameters.
     popt = np.array([popt[0], np.exp(popt[1])])
     # Propagation of uncertainty.
     # Std[exp(A)] = |exp(A)| * Std[A]
@@ -140,7 +140,7 @@ for cmp_ix, cmp in enumerate(compounds):
         rmses[cmp_ix].append(rmse)
 
 
-print("Fitting power law...")
+print("Fitting exponential law...")
 # PEO
 cmp_ix = compounds.index("ether")
 if args.sol == "g4":
@@ -225,6 +225,14 @@ for fit_ix, start in enumerate(fit_li_starts):
 print("Creating plot(s)...")
 xlabel = r"Li-to-EO Ratio $r$"
 xlim = (0, 0.4 + 0.0125)
+if args.sol == "g1":
+    ylim = (1e-1, 4e1)
+elif args.sol == "g4":
+    ylim = (7e-3, 4e0)
+elif args.sol == "peo63":
+    ylim = (3e-4, 2e-1)
+else:
+    raise ValueError("Unknown --sol ({})".format(args.sol))
 labels = ("PEO", "TFSI", "Li")
 colors = ("tab:blue", "tab:orange", "tab:green")
 markers = ("o", "s", "^")
@@ -253,15 +261,15 @@ with PdfPages(outfile) as pdf:
         # Create an offset to the real data.
         if args.sol == "g1":
             fit *= 1.5
-            rotation = -45
+            rotation = -36
             verticalalignment = "bottom"
         elif args.sol == "g4":
             fit *= 1.5
-            rotation = np.rad2deg(np.arctan(popt[0])) / 3.4
+            rotation = np.rad2deg(np.arctan(popt[0])) / 3.8
             verticalalignment = "bottom"
         elif args.sol == "peo63":
             fit /= 1.5
-            rotation = -34
+            rotation = -33
             verticalalignment = "top"
         ax.plot(
             xdata, fit, color=colors[labels.index("PEO")], linestyle="dashed"
@@ -287,15 +295,15 @@ with PdfPages(outfile) as pdf:
         fit = leap.misc.exp_law(xdata, *popt)
         if args.sol == "g1":
             fit /= 1.5
-            rotation = -40
+            rotation = -30
             verticalalignment = "top"
         elif args.sol == "g4":
             fit /= 1.5
-            rotation = np.rad2deg(np.arctan(popt[0])) / 3.15
+            rotation = np.rad2deg(np.arctan(popt[0])) / 3.3
             verticalalignment = "top"
         elif args.sol == "peo63":
             fit *= 1.5
-            rotation = -22
+            rotation = -21.5
             verticalalignment = "bottom"
         ax.plot(
             xdata, fit, color=colors[labels.index("TFSI")], linestyle="dashed"
@@ -318,16 +326,16 @@ with PdfPages(outfile) as pdf:
         xdata = Sims.Li_O_ratios[fit_li_starts[fit_ix] : fit_li_stops[fit_ix]]
         fit = leap.misc.exp_law(xdata, *popt)
         if args.sol == "g1":
-            fit /= 2.5  # Create an offset to the real data.
-            rotation = -39
+            fit /= 3  # Create an offset to the real data.
+            rotation = -30
             verticalalignment = "top"
         elif args.sol == "g4":
-            fit /= 2.8  # Create an offset to the real data.
-            rotation = np.rad2deg(np.arctan(popt[0])) / 3.15
+            fit /= 3  # Create an offset to the real data.
+            rotation = np.rad2deg(np.arctan(popt[0])) / 3.3
             verticalalignment = "top"
         elif args.sol == "peo63":
             fit *= 1.5
-            rotation = -31
+            rotation = -30
             verticalalignment = "bottom"
         ax.plot(
             xdata, fit, color=colors[labels.index("Li")], linestyle="dashed"
@@ -346,7 +354,12 @@ with PdfPages(outfile) as pdf:
             fontsize="small",
         )
     ax.set_yscale("log", base=10, subs=np.arange(2, 10))
-    ax.set(xlabel=xlabel, ylabel=r"Diff. Coeff. / nm$^2$ ns$^{-1}$", xlim=xlim)
+    ax.set(
+        xlabel=xlabel,
+        ylabel=r"Diff. Coeff. / nm$^2$ ns$^{-1}$",
+        xlim=xlim,
+        ylim=ylim,
+    )
     ax.legend(title=legend_title, loc="upper right")
     pdf.savefig()
     plt.close()
