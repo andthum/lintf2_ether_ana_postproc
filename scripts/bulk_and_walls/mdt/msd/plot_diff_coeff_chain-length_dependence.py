@@ -36,8 +36,8 @@ Shi_1993_343K = [  # D in nm^2/ns at 343 K.
         4.53537e01,
         7.59983e01,
         1.36153e02,
-        2.26951e02,
-        9.07988e04,
+        # 2.26951e02,  # n_EO > 200.
+        # 9.07988e04,  # n_EO >> 200.
     ],
     [  # D(Li).
         1.09583e-01,
@@ -45,8 +45,8 @@ Shi_1993_343K = [  # D in nm^2/ns at 343 K.
         1.18834e-02,
         7.66857e-03,
         7.02093e-03,
-        8.98093e-03,
-        5.00057e-03,
+        # 8.98093e-03,  # n_EO > 200.
+        # 5.00057e-03,  # n_EO >> 200.
     ],
 ]
 Shi_1993_343K = np.asarray(Shi_1993_343K)
@@ -58,8 +58,8 @@ Shi_1993_363K = [  # D in nm^2/ns at 363 K.
         2.18169e-02,
         1.27715e-02,
         1.09929e-02,
-        1.30165e-02,
-        9.48820e-03,
+        # 1.30165e-02,
+        # 9.48820e-03,  # n_EO >> 200.
     ],
 ]
 Shi_1993_363K = np.asarray(Shi_1993_363K)
@@ -82,8 +82,8 @@ Hayamizu_2002_333K = [  # D in nm^2/ns at 333 K (Figure 8).
         11.6,
         23.9,
         56.3,
-        179.0,  # Cross-linked PEO.
-        224.7,  # Cross-linked PEO.
+        # 179.0,  # Cross-linked PEO.
+        # 224.7,  # Cross-linked PEO.
     ],
     [  # D(PEO).
         3.56010e-01,
@@ -92,8 +92,8 @@ Hayamizu_2002_333K = [  # D in nm^2/ns at 333 K (Figure 8).
         4.85299e-02,
         9.16646e-03,
         1.91032e-03,
-        5.07389e-04,  # Cross-linked PEO.
-        9.02664e-04,  # Cross-linked PEO.
+        # 5.07389e-04,  # Cross-linked PEO.
+        # 9.02664e-04,  # Cross-linked PEO.
     ],
     [  # D(TFSI).
         2.92574e-01,
@@ -102,8 +102,8 @@ Hayamizu_2002_333K = [  # D in nm^2/ns at 333 K (Figure 8).
         6.86411e-02,
         2.69746e-02,
         1.61154e-02,
-        1.19537e-02,  # Cross-linked PEO.
-        1.31057e-02,  # Cross-linked PEO.
+        # 1.19537e-02,  # Cross-linked PEO.
+        # 1.31057e-02,  # Cross-linked PEO.
     ],
     [  # D(Li).
         2.22289e-01,
@@ -112,8 +112,8 @@ Hayamizu_2002_333K = [  # D in nm^2/ns at 333 K (Figure 8).
         4.25789e-02,
         1.03120e-02,
         3.89734e-03,
-        2.47083e-03,  # Cross-linked PEO.
-        3.80653e-03,  # Cross-linked PEO.
+        # 2.47083e-03,  # Cross-linked PEO.
+        # 3.80653e-03,  # Cross-linked PEO.
     ],
 ]
 Hayamizu_2002_333K = np.asarray(Hayamizu_2002_333K)
@@ -144,6 +144,18 @@ Zhang_2014_303K = [
     [5.13100e-01, 3.14200e-01, 1.22000e-01, 1.07000e-01],  # D(TFSI).
     [5.11500e-01, 2.79200e-01, 1.05000e-01, 9.18000e-02],  # D(Li).
 ]
+
+
+def adjust_brightness(color, amount=0.5):
+    import matplotlib.colors as mc
+    import colorsys
+
+    try:
+        c = mc.cnames[color]
+    except:
+        c = color
+    c = colorsys.rgb_to_hls(*mc.to_rgb(c))
+    return colorsys.hls_to_rgb(c[0], max(0, min(1, amount * c[1])), c[2])
 
 
 def fit_diff_coeff(diff_coeffs, diff_coeffs_sd, Sims, start=0, stop=-1):
@@ -319,7 +331,7 @@ markers = ("o", "s", "^")
 
 mdt.fh.backup(outfile)
 with PdfPages(outfile) as pdf:
-    # Diffusion coefficients vs chain length.
+    # Diffusion coefficients vs chain length (Simulation only).
     fig, ax = plt.subplots(clear=True)
     for cmp_ix, label in enumerate(labels):
         ax.errorbar(
@@ -418,6 +430,96 @@ with PdfPages(outfile) as pdf:
     ax.set_yscale("log", base=10, subs=np.arange(2, 10))
     ax.set(xlabel=xlabel, ylabel=r"Diff. Coeff. / nm$^2$ ns$^{-1}$", xlim=xlim)
     ax.legend(loc="upper right")
+    pdf.savefig()
+    plt.close()
+
+    # Diffusion coefficients vs chain length (Experiment only).
+    fillstyles = ("left", "right", "bottom", "top", "full")
+    linestyles = ("dashed", "dashdot", "dotted")
+    fig, ax = plt.subplots(clear=True)
+    # for cmp_ix, label in enumerate(labels):
+    #     ax.plot(
+    #         [], [], label=label, color=colors[cmp_ix], marker=markers[cmp_ix]
+    #     )
+    for cmp_ix, marker in enumerate(markers):
+        ax.plot(
+            Zhang_2014_303K[0],  # n_EO.
+            Zhang_2014_303K[cmp_ix + 1],  # D(Li,TFSI,PEO).
+            label=r"Zhang 303 K ($r \approx 0.05$)" if cmp_ix == 2 else None,
+            linestyle=linestyles[0],
+            fillstyle=fillstyles[0],
+            color=adjust_brightness(colors[cmp_ix], 1 / 4),
+            marker=marker,
+            alpha=leap.plot.ALPHA,
+        )
+    for cmp_ix, marker in enumerate(markers):
+        ax.plot(
+            Hayamizu_2002_303K[0],  # n_EO.
+            Hayamizu_2002_303K[cmp_ix + 1],  # D(Li,TFSI,PEO).
+            label="Hayamizu 303 K" if cmp_ix == 2 else None,
+            linestyle=linestyles[1],
+            fillstyle=fillstyles[1],
+            color=adjust_brightness(colors[cmp_ix], 2 / 4),
+            marker=marker,
+            alpha=leap.plot.ALPHA,
+        )
+    for cmp_ix, marker in enumerate(markers):
+        ax.plot(
+            Hayamizu_2002_333K[0],  # n_EO.
+            Hayamizu_2002_333K[cmp_ix + 1],  # D(Li,TFSI,PEO).
+            label="Hayamizu 333 K" if cmp_ix == 2 else None,
+            linestyle=linestyles[1],
+            fillstyle=fillstyles[1],
+            color=adjust_brightness(colors[cmp_ix], 3 / 4),
+            marker=marker,
+            alpha=leap.plot.ALPHA,
+        )
+    for cmp_ix, marker in enumerate(markers):
+        ax.plot(
+            Hayamizu_2002_343K[0],  # n_EO.
+            Hayamizu_2002_343K[cmp_ix + 1],  # D(Li,TFSI,PEO).
+            label="Hayamizu 343 K" if cmp_ix == 2 else None,
+            linestyle=linestyles[1],
+            fillstyle=fillstyles[1],
+            color=adjust_brightness(colors[cmp_ix], 4 / 4),
+            marker=marker,
+            alpha=leap.plot.ALPHA,
+        )
+    for cmp_ix, marker in enumerate(markers):
+        ax.plot(
+            Hayamizu_2002_363K[0],  # n_EO.
+            Hayamizu_2002_363K[cmp_ix + 1],  # D(Li,TFSI,PEO).
+            label="Hayamizu 363 K" if cmp_ix == 2 else None,
+            linestyle=linestyles[1],
+            fillstyle=fillstyles[1],
+            color=adjust_brightness(colors[cmp_ix], 6 / 4),
+            marker=marker,
+            alpha=leap.plot.ALPHA,
+        )
+    ax.plot(
+        Shi_1993_343K[0],  # n_EO.
+        Shi_1993_343K[1],  # D(Li).
+        label="Shi 343 K",
+        linestyle=linestyles[2],
+        fillstyle=fillstyles[2],
+        color=adjust_brightness(colors[2], 5 / 4),
+        marker=markers[2],
+        alpha=leap.plot.ALPHA,
+    )
+    ax.plot(
+        Shi_1993_363K[0],  # n_EO.
+        Shi_1993_363K[1],  # D(Li).
+        label="Shi 363 K",
+        color=adjust_brightness(colors[2], 7 / 4),
+        linestyle=linestyles[2],
+        fillstyle=fillstyles[2],
+        marker=markers[2],
+        alpha=leap.plot.ALPHA,
+    )
+    ax.set_xscale("log", base=10, subs=np.arange(2, 10))
+    ax.set_yscale("log", base=10, subs=np.arange(2, 10))
+    ax.set(xlabel=xlabel, ylabel=r"Diff. Coeff. / nm$^2$ ns$^{-1}$", xlim=xlim)
+    ax.legend(loc="lower left", ncol=1, **mdtplt.LEGEND_KWARGS_XSMALL)
     pdf.savefig()
     plt.close()
 
