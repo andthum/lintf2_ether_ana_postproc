@@ -148,10 +148,13 @@ for fit_ix, start in enumerate(fit_peo_starts):
 
 # TFSI
 cmp_ix = compounds.index("NTf2")
-fit_tfsi_starts = (0, np.flatnonzero(Sims.O_per_chain == 6)[0])
+fit_tfsi_starts = (
+    0,
+    # np.flatnonzero(Sims.O_per_chain == 6)[0],
+)
 fit_tfsi_stops = (
     np.flatnonzero(Sims.O_per_chain == 6)[0],
-    np.flatnonzero(Sims.O_per_chain == 54)[0],
+    # np.flatnonzero(Sims.O_per_chain == 54)[0],
 )
 popt_tfsi = np.full((len(fit_tfsi_starts), 2), np.nan, dtype=np.float64)
 perr_tfsi = np.full_like(popt_tfsi, np.nan)
@@ -210,13 +213,12 @@ with PdfPages(outfile) as pdf:
             fit_peo_starts[fit_ix] : fit_peo_stops[fit_ix]
         ]
         fit = leap.misc.power_law(xdata, *popt)
-        # Create an offset to the real data.
         if fit_ix == 0:
-            fit *= 2
-            rotation = -36
+            fit *= 2  # Create an offset to the real data.
+            rotation = -38
             verticalalignment = "bottom"
         else:
-            fit /= 2
+            fit /= 2  # Create an offset to the real data.
             rotation = -37
             verticalalignment = "top"
         ax.plot(
@@ -242,11 +244,11 @@ with PdfPages(outfile) as pdf:
         ]
         fit = leap.misc.power_law(xdata, *popt)
         if fit_ix == 0:
-            fit /= 2
-            rotation = -35
+            fit /= 2  # Create an offset to the real data.
+            rotation = -34
             verticalalignment = "top"
         else:
-            fit *= 2
+            fit *= 2  # Create an offset to the real data.
             rotation = -18
             verticalalignment = "bottom"
         ax.plot(
@@ -270,7 +272,7 @@ with PdfPages(outfile) as pdf:
         xdata = Sims.O_per_chain[fit_li_starts[fit_ix] : fit_li_stops[fit_ix]]
         fit = leap.misc.power_law(xdata, *popt)
         fit /= 8  # Create an offset to the real data.
-        rotation = -35
+        rotation = -36
         ax.plot(
             xdata, fit, color=colors[labels.index("Li")], linestyle="dashed"
         )
@@ -290,7 +292,12 @@ with PdfPages(outfile) as pdf:
     del xdata, fit
     ax.set_xscale("log", base=10, subs=np.arange(2, 10))
     ax.set_yscale("log", base=10, subs=np.arange(2, 10))
-    ax.set(xlabel=xlabel, ylabel=r"Diff. Coeff. / nm$^2$ ns$^{-1}$", xlim=xlim)
+    ax.set(
+        xlabel=xlabel,
+        ylabel=r"Diff. Coeff. / nm$^2$ ns$^{-1}$",
+        xlim=xlim,
+        ylim=(1e-3, 2e1),
+    )
     ax.legend(loc="upper right")
     pdf.savefig()
     plt.close()
@@ -333,7 +340,7 @@ with PdfPages(outfile) as pdf:
     pdf.savefig()
     plt.close()
 
-    # Fit stop - Fit start vs chain length.
+    # Fit region (fit stop minus fit start) vs chain length.
     fig, ax = plt.subplots(clear=True)
     for cmp_ix, label in enumerate(labels):
         ax.plot(
@@ -516,12 +523,12 @@ with PdfPages(outfile) as pdf:
         # MSD vs time.
         ax_msd.set(
             xlabel="Diffusion Time / ns",
-            ylabel=labels[cmp_ix] + r" MSD / nm$^2$",
+            ylabel=r"MSD / nm$^2$",
             xlim=(times[0], times[-1]),
             ylim=(0, None),
         )
         legend = ax_msd.legend(
-            title=legend_title,
+            title=labels[cmp_ix] + ", " + legend_title,
             loc="upper left",
             ncol=3,
             **mdtplt.LEGEND_KWARGS_XSMALL,
@@ -539,7 +546,7 @@ with PdfPages(outfile) as pdf:
         ax_msd.set_xlim(times[0], times[-1])
         ax_msd.set_yscale("log", base=10, subs=np.arange(2, 10))
         legend = ax_msd.legend(
-            title=legend_title,
+            title=labels[cmp_ix] + ", " + legend_title,
             loc="lower right",
             ncol=3,
             **mdtplt.LEGEND_KWARGS_XSMALL,
@@ -550,7 +557,7 @@ with PdfPages(outfile) as pdf:
         ax_msd.set_xlim(times[1], times[-1])
         ax_msd.set_xscale("log", base=10, subs=np.arange(2, 10))
         legend = ax_msd.legend(
-            title=legend_title,
+            title=labels[cmp_ix] + ", " + legend_title,
             loc="upper left",
             ncol=3,
             **mdtplt.LEGEND_KWARGS_XSMALL,
@@ -562,11 +569,11 @@ with PdfPages(outfile) as pdf:
         # MSD/t vs time.
         ax_msd_t.set(
             xlabel=r"Diffusion Time $t$ / ns",
-            ylabel=labels[cmp_ix] + r" MSD$(t)/t$ / nm$^2$ ns$^{-1}$",
+            ylabel=r"MSD$(t)/t$ / nm$^2$ ns$^{-1}$",
             xlim=(times[1], times[-1]),
         )
         legend = ax_msd_t.legend(
-            title=legend_title,
+            title=labels[cmp_ix] + ", " + legend_title,
             loc="upper left",
             ncol=3,
             **mdtplt.LEGEND_KWARGS_XSMALL,
@@ -583,7 +590,7 @@ with PdfPages(outfile) as pdf:
         # Log scale xy.
         ax_msd_t.set_xscale("log", base=10, subs=np.arange(2, 10))
         legend = ax_msd_t.legend(
-            title=legend_title,
+            title=labels[cmp_ix] + ", " + legend_title,
             loc="lower left",
             ncol=3,
             **mdtplt.LEGEND_KWARGS_XSMALL,
@@ -595,11 +602,11 @@ with PdfPages(outfile) as pdf:
         # Fit residuals vs time.
         ax_res.set(
             xlabel="Diffusion Time / ns",
-            ylabel=labels[cmp_ix] + r" Fit Res. / nm$^2$",
+            ylabel=r"Fit Res. / nm$^2$",
             xlim=(times[0], times[-1]),
         )
         legend = ax_res.legend(
-            title=legend_title,
+            title=labels[cmp_ix] + ", " + legend_title,
             loc="upper left",
             ncol=3,
             **mdtplt.LEGEND_KWARGS_XSMALL,
@@ -615,11 +622,11 @@ with PdfPages(outfile) as pdf:
         # Fit residuals / t vs time.
         ax_res_t.set(
             xlabel=r"Diffusion Time $t$ / ns",
-            ylabel=labels[cmp_ix] + r" Fit Res. / $t$ / nm$^2$ ns$^{-1}$",
+            ylabel=r"Fit Res. / $t$ / nm$^2$ ns$^{-1}$",
             xlim=(times[0], times[-1]),
         )
         legend = ax_res_t.legend(
-            title=legend_title,
+            title=labels[cmp_ix] + ", " + legend_title,
             loc="upper left",
             ncol=3,
             **mdtplt.LEGEND_KWARGS_XSMALL,
@@ -635,11 +642,11 @@ with PdfPages(outfile) as pdf:
         # Fit residuals / MSD vs time.
         ax_res_msd.set(
             xlabel="Diffusion Time / ns",
-            ylabel=labels[cmp_ix] + r" Fit Res. / MSD",
+            ylabel=r"Fit Res. / MSD",
             xlim=(times[0], times[-1]),
         )
         legend = ax_res_msd.legend(
-            title=legend_title,
+            title=labels[cmp_ix] + ", " + legend_title,
             loc="upper left",
             ncol=3,
             **mdtplt.LEGEND_KWARGS_XSMALL,
@@ -651,7 +658,6 @@ with PdfPages(outfile) as pdf:
         ax_res_msd.set_xscale("log", base=10, subs=np.arange(2, 10))
         pdf.savefig(fig_res_msd)
         plt.close(fig_res_msd)
-
 
 print("Created {}".format(outfile))
 print("Done")

@@ -1,7 +1,11 @@
 """Module containing functions for plotting."""
 
 
+# Standard libraries
+import colorsys
+
 # Third-party libraries
+import matplotlib.colors as mc
 import numpy as np
 
 # First-party libraries
@@ -19,6 +23,36 @@ ATOM_TYPE2DISPLAY_NAME = {
     "ether": "PEO",
     "PEO": "PEO",
 }
+
+
+def change_brightness(color, amount=1):
+    """
+    Change the brightness of a given color.
+
+    Parameters
+    ----------
+    color : str or tuple or list
+        A color string, e.g. ``"green"``, or an RGB tuple.
+    amount : float
+        The amount by which to change the brightness.  Values less than
+        one darken the input color, values greater than one lighten the
+        input color.
+
+    Returns
+    -------
+    color : tuple
+        RGB tuple for the darkened/lightened input color.
+
+    Notes
+    -----
+    Code adapted from https://stackoverflow.com/a/49601444.
+    """
+    try:
+        c = mc.cnames[color]
+    except KeyError:
+        c = color
+    c = colorsys.rgb_to_hls(*mc.to_rgb(c))
+    return colorsys.hls_to_rgb(c[0], max(0, min(1, amount * c[1])), c[2])
 
 
 def elctrd_left(ax, offset=0, **kwargs):
