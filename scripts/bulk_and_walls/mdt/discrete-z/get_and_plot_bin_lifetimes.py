@@ -6,14 +6,14 @@ Calculate bin residence times / lifetimes.
 
 For a single simulation, calculate the average time that a given
 compound stays in a given bin directly from the discrete trajectory
-(Method 1-3) and from the corresponding remain probability function
-(Method 4-7).
+(Method 1-3), from the corresponding remain probability function
+(Method 4-7) of from the corresponding Kaplan-Meier estimate of the
+survival function.
 """
 
 
 # Standard libraries
 import argparse
-import warnings
 
 # Third-party libraries
 import matplotlib.pyplot as plt
@@ -22,324 +22,9 @@ import mdtools.plot as mdtplt  # Load MDTools plot style  # noqa: F401
 import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.ticker import MaxNLocator
-from scipy import stats
-from scipy.special import gamma
 
 # First-party libraries
 import lintf2_ether_ana_postproc as leap
-
-
-def dist_charac(a, axis=-1):
-    """
-    Calculate distribution characteristics of a given sample.
-
-    Parameters
-    ----------
-    a : array_like
-        Array of samples.
-    axis : int, optional
-        The axis along which to compute the distribution
-        characteristics.
-
-    Returns
-    -------
-    charac : numpy.ndarray
-        Array of shape ``(9, )`` containing the
-
-            1. Sample mean
-            2. Uncertainty of the sample mean (standard error)
-            3. Corrected sample standard deviation
-            4. Unbiased sample skewness
-            5. Unbiased sample excess kurtosis (according to Fisher)
-            6. Sample median
-            7. Sample minimum
-            8. Sample maximum
-            9. Number of samples
-
-    """
-    a = np.asarray(a)
-    nobs, min_max, mean, var, skew, kurt = stats.describe(
-        a, axis=axis, ddof=1, bias=False
-    )
-    median = np.median(a, axis=axis)
-    charac = np.array(
-        [
-            mean,  # Sample mean.
-            np.sqrt(np.divide(var, nobs)),  # Uncertainty of sample mean
-            np.sqrt(var),  # Corrected sample standard deviation.
-            skew,  # Unbiased sample skewness.
-            kurt,  # Unbiased sample excess kurtosis (Fisher).
-            median,  # Median of the sample.
-            min_max[0],  # Minimum value of the sample.
-            min_max[1],  # Maximum value of the sample.
-            nobs,  # Number of observations (sample points).
-        ]
-    )
-    return charac
-
-
-def raw_moment_integrate(sf, x, n=1):
-    r"""
-    Calculate the :math:`n`-th raw moment through numerical integration
-    of the survival function using of the alternative expectation
-    formula.
-    [1]_
-
-    .. math::
-
-        \langle x^n \rangle =
-        n \int_{-\infty}^\infty x^{n-1} S(x) \text{ d}x
-
-    Here, :math:`S(x)` is the survival function of the probability
-    density function of :math:`x`.  The integral is evaluated
-    numerically using :func:`numpy.trapz`.
-
-    Parameters
-    ----------
-    sf : array_like
-        Values of the survival function :math:`S(x)`.
-    x : array_like
-        Corresponding :math:`x` values.
-    n : int, optional
-        Order of the moment.
-
-    Returns
-    -------
-    rm_n : float
-        The :math:`n`-th raw moment.
-
-    Notes
-    -----
-    Values were `sf` or `x` are NaN or infinite are removed prior to
-    computing the integral.
-
-    References
-    ----------
-    .. [1] S. Chakraborti, F. Jardim, E. Epprecht,
-        `Higher-order moments using the survival function: The
-        alternative expectation formula
-        <https://doi.org/10.1080/00031305.2017.1356374>`_,
-        The American Statistician, 2019, 73, 2, 191-194.
-    """
-    valid = np.isfinite(x) & np.isfinite(sf)
-    if not np.any(valid):
-        warnings.warn(
-            "No valid values for numerical integration", stacklevel=2
-        )
-        return np.nan
-    if n < 1 or np.any(np.modf(n)[0] != 0):
-        raise ValueError(
-            "The moment order, `n` ({}), must be a positive integer".format(n)
-        )
-    integrand = x[valid] ** (n - 1)
-    integrand *= sf[valid]
-    integral = np.trapz(y=integrand, x=x[valid])
-    integral *= n
-    return integral
-
-
-def raw_moment_weibull(tau0, beta, n=1):
-    r"""
-    Calculate the :math:`n`-th raw moment of the Weibull distribution.
-
-    .. math::
-
-        \langle t^n \rangle =
-        \tau_0^n \Gamma(1 + \frac{n}{\beta})
-
-    Parameters
-    ----------
-    tau0 : scalar or array_like
-        The scale parameter of the Weibull distribution.
-    beta : scalar or array_like
-        The shape parameter of the Weibull distribution.
-    n : int or array of int, optional
-        Order of the moment.
-
-    Returns
-    -------
-    rm_n : scalar or numpy.ndarray
-        The :math:`n`-th raw moment.
-
-    Notes
-    -----
-    If more than one input argument is an array, all arrays must be
-    broadcastable.
-    """
-    rm_n = np.power(tau0, n)
-    rm_n *= gamma(1 + np.divide(n, beta))
-    return rm_n
-
-
-def raw_moment_burr12(tau0, beta, delta, n=1):
-    r"""
-    Calculate the :math:`n`-th raw moment of the Burr Type XII
-    distribution.
-
-    .. math::
-
-        \langle t^n \rangle =
-        \tau_0^n
-        \frac{
-            \Gamma\left( \delta - \frac{n}{\beta} \right)
-            \Gamma\left( 1      + \frac{n}{\beta} \right)
-        }{
-            \Gamma(\delta)
-        }
-
-    Parameters
-    ----------
-    tau0 : scalar or array_like
-        The scale parameter of the Burr Type XII distribution.
-    beta, delta : scalar or array_like
-        The shape parameters of the Burr Type XII distribution.
-    n : int or array of int, optional
-        Order of the moment.
-
-    Returns
-    -------
-    rm_n : scalar or numpy.ndarray
-        The :math:`n`-th raw moment.
-
-    Notes
-    -----
-    If more than one input argument is an array, all arrays must be
-    broadcastable.
-    """
-    rm_n = np.power(tau0, n)
-    rm_n *= gamma(np.subtract(delta, np.divide(n, beta)))
-    rm_n *= gamma(1 + np.divide(n, beta))
-    rm_n /= gamma(delta)
-    return rm_n
-
-
-def skewness(mu2, mu3):
-    r"""
-    Calculate the skewness of a distribution from the second and third
-    central moment.
-
-    .. math::
-
-        \gamma_1 = \frac{\mu_3}{\mu_2^{3/2}}
-
-    Here, :math:`\mu_n = \langle (x - \mu)^n \rangle` is the
-    :math:`n`-th central moment.
-
-    Parameters
-    ----------
-    mu2, mu3 : scalar or array_like
-        The second and third central moment.
-
-    Returns
-    -------
-    skew : scalar or numpy.ndarray
-        The skewness of the distribution.
-
-    Notes
-    -----
-    If more than one input argument is an array, all arrays must be
-    broadcastable.
-    """
-    return np.divide(mu3, np.power(mu2, 3 / 2))
-
-
-def kurtosis(mu2, mu4):
-    r"""
-    Calculate the excess kurtosis (according to Fisher) of a
-    distribution from the second and fourth central moment.
-
-    .. math::
-
-        \gamma_2 = \frac{\mu_4}{\mu_2^2} - 3
-
-    Here, :math:`\mu_n = \langle (x - \mu)^n \rangle` is the
-    :math:`n`-th central moment.
-
-    Parameters
-    ----------
-    mu2, mu4 : scalar or array_like
-        The second and fourth central moment.
-
-    Returns
-    -------
-    kurt : scalar or numpy.ndarray
-        The excess kurtosis of the distribution.
-
-    Notes
-    -----
-    If more than one input argument is an array, all arrays must be
-    broadcastable.
-    """
-    return np.divide(mu4, np.power(mu2, 2)) - 3
-
-
-def cross(y, x, f):
-    r"""
-    Return the `x` value where the array `f` falls below the given `y`
-    value for the first time.
-
-    If `f` never falls below the given `y` value, ``numpy.nan`` is
-    returned.
-
-    If `f` falls immediately below the given `y` value, ``0`` is
-    returned.
-
-    Parameters
-    ----------
-    y : scalar
-        The `y` value for which to get the `x` value.
-    x, f : array_like
-        The `x` values and corresponding `f` values.
-
-    Returns
-    -------
-    x_of_y : scalar
-        The `x` value that belongs to the given `y` value.
-    """
-    ix_y = np.nanargmax(f <= y)
-    if f[ix_y] > y:
-        # `f` never falls below the given `y` value.
-        return np.nan
-    elif ix_y < 1:
-        # `f` falls immediately below the given `y` value.
-        return 0
-    elif f[ix_y] == y:
-        return x[ix_y]
-    else:
-        # Linearly interpolate between `f[ix_y]` and `f[ix_y - 1]` to
-        # estimate the `x` value that belongs to the given `y` value.
-        slope = f[ix_y] - f[ix_y - 1]
-        slope /= x[ix_y] - x[ix_y - 1]
-        intercept = f[ix_y] - slope * x[ix_y]
-        return (y - intercept) / slope
-
-
-def get_ydata_min_max(ax):
-    """
-    Get the minimum and maximum y value of the data plotted in an
-    :class:`matplotlib.axes.Axes`.
-
-    Parameters
-    ----------
-    ax : matplotlib.axes.Axes
-        The :class:`~matplotlib.axes.Axes` from which to get the data.
-
-    Returns
-    -------
-    yd_min, yd_max : numpy.ndarray
-        Array of minimum and maximum values of the y data plotted in the
-        given :class:`~matplotlib.axes.Axes`.  Each value in the array
-        corresponds to one plotted :class:`matplotlib.lines.Line2D` in
-        the :class:`~matplotlib.axes.Axes`.
-    """
-    ydata = [line.get_ydata() for line in ax.get_lines()]
-    yd_min, yd_max = [], []
-    for yd in ydata:
-        if isinstance(yd, np.ndarray) and np.any(yd > 0):
-            yd_min.append(np.min(yd[yd > 0]))
-            yd_max.append(np.max(yd[yd > 0]))
-    yd_min, yd_max = np.array(yd_min), np.array(yd_max)
-    return yd_min, yd_max
 
 
 # Input parameters.
@@ -464,42 +149,24 @@ file_suffix = file_suffix_common + "_dtrj.npz"
 infile_dtrj = leap.simulation.get_ana_file(Sim, analysis, tool, file_suffix)
 dtrj = mdt.fh.load_dtrj(infile_dtrj)
 n_frames = dtrj.shape[1]
-
-# Method 1: Calculate the average lifetime by counting the number of
-# frames that a given compound stays in a given state including
-# truncated states at the trajectory edges -> censored.
-lts_cnt_cen, states = mdt.dtrj.lifetimes_per_state(
-    dtrj, uncensored=False, return_states=True
+# Method 1: Censored counting.
+lts_cnt_cen_characs, states = leap.lifetimes.count_method(
+    dtrj,
+    uncensored=False,
+    n_moms=n_moms,
+    time_conv=time_conv,
+    states_check=None,
 )
-lts_cnt_cen = [lts * time_conv for lts in lts_cnt_cen]
 n_states = len(states)
-lts_cnt_cen_characs = np.full((n_states, 9), np.nan, dtype=np.float64)
-lts_cnt_cen_characs[:, -1] = 0  # Default number of observations.
-for i, lts in enumerate(lts_cnt_cen):
-    lts_cnt_cen_characs[i] = dist_charac(lts)
-del lts_cnt_cen
-
-# Method 2: Calculate the average lifetime by counting the number of
-# frames that a given compound stays in a given state excluding
-# truncated states at the trajectory edges -> uncensored.
-lts_cnt_unc, states_cnt_unc = mdt.dtrj.lifetimes_per_state(
-    dtrj, uncensored=True, return_states=True
+# Method 2: Uncensored counting.
+lts_cnt_unc_characs, _states = leap.lifetimes.count_method(
+    dtrj,
+    uncensored=True,
+    n_moms=n_moms,
+    time_conv=time_conv,
+    states_check=states,
 )
-lts_cnt_unc = [lts * time_conv for lts in lts_cnt_unc]
-if not np.all(np.isin(states_cnt_unc, states)):
-    raise ValueError(
-        "`states_cnt_unc` ({}) is not fully contained in `states`"
-        " ({})".format(states_cnt_unc, states)
-    )
-lts_cnt_unc_characs = np.full((n_states, 9), np.nan, dtype=np.float64)
-lts_cnt_unc_characs[:, -1] = 0  # Default number of observations.
-for i, lts in enumerate(lts_cnt_unc):
-    if len(lts) == 0:
-        continue
-    else:
-        lts_cnt_unc_characs[i] = dist_charac(lts)
-del lts_cnt_unc, states_cnt_unc
-
+del _states
 # Method 3: Calculate the transition rate as the number of transitions
 # leading out of a given state divided by the number of frames that
 # compounds have spent in this state.  The average lifetime is
@@ -517,171 +184,123 @@ print("Calculating lifetimes from the remain probability...")
 # Read remain probabilities (one for each bin).
 file_suffix = file_suffix_common + "_state_lifetime_discrete" + con + ".txt.gz"
 infile_rp = leap.simulation.get_ana_file(Sim, analysis, tool, file_suffix)
-remain_props = np.loadtxt(infile_rp)
-states_rp = remain_props[0, 1:]  # State indices.
-times = remain_props[1:, 0]  # Lag times in trajectory steps.
-remain_props = remain_props[1:, 1:]  # Remain probability functions.
-if np.any(remain_props < 0) or np.any(remain_props > 1):
-    raise ValueError(
-        "Some values of the remain probability lie outside the interval [0, 1]"
-    )
-if not np.array_equal(times, np.arange(n_frames)):
-    print("`n_frames` =", n_frames)
-    print("`times` =")
-    print(times)
-    raise ValueError("`times` != `np.arange(n_frames)`")
-times *= time_conv  # Trajectory steps -> ns.
-if np.any(np.modf(states_rp)[0] != 0):
-    raise ValueError(
-        "Some state indices are not integers but floats.  `states_rp` ="
-        " {}".format(states_rp)
-    )
-if not np.array_equal(states_rp, states):
-    raise ValueError(
-        "`states_rp` ({}) != `states` ({})".format(states_rp, states)
-    )
-del states_rp
-
-# Method 4: Set the lifetime to the lag time at which the remain
-# probability crosses 1/e.
-lts_e = np.array([cross(y=1 / np.e, x=times, f=rp) for rp in remain_props.T])
-
-# Method 5: Calculate the lifetime as the integral of the remain
-# probability p(t).
-lts_int_characs = np.full((n_states, 5), np.nan, dtype=np.float64)
-for i, rp in enumerate(remain_props.T):
-    raw_moms = np.full(n_moms, np.nan, dtype=np.float64)
-    cen_moms = np.full(n_moms, np.nan, dtype=np.float64)
-    if np.any(rp <= args.int_thresh):
-        # Only calculate the (raw) moments by numerically integrating
-        # the remain probability if the remain probability falls below
-        # the given threshold.
-        for n in range(n_moms):
-            raw_moms[n] = raw_moment_integrate(sf=rp, x=times, n=n + 1)
-            cen_moms[n] = mdt.stats.moment_raw2cen(raw_moms[: n + 1])
-    skew = skewness(mu2=cen_moms[1], mu3=cen_moms[2])
-    kurt = kurtosis(mu2=cen_moms[1], mu4=cen_moms[3])
-    # Estimate of the median assuming that the remain probability is
-    # equal to the survival function of the underlying distribution of
-    # lifetimes.
-    median = cross(y=0.5, x=times, f=rp)
-    lts_int_characs[i] = np.array(
-        [raw_moms[0], np.sqrt(cen_moms[1]), skew, kurt, median]
-    )
-
-# Get fit region for fitting methods.
-if args.end_fit is None:
-    end_fit = int(0.9 * len(times))
-else:
-    _, end_fit = mdt.nph.find_nearest(times, args.end_fit, return_index=True)
-end_fit += 1  # Make `end_fit` inclusive.
-fit_start = np.zeros(n_states, dtype=np.uint32)  # Inclusive.
-fit_stop = np.zeros(n_states, dtype=np.uint32)  # Exclusive.
-for i, rp in enumerate(remain_props.T):
-    stop_fit = np.nanargmax(rp < args.stop_fit)
-    if rp[stop_fit] >= args.stop_fit:
-        # The remain probability never falls below `args.stop_fit`.
-        stop_fit = len(rp)
-    elif stop_fit < 2:
-        # The remain probability immediately falls below
-        # `args.stop_fit`.
-        stop_fit = 2
-    fit_stop[i] = min(end_fit, stop_fit)
-
-# Method 6: Fit the remain probability with a Kohlrausch function
-# stretched exponential) and calculate the lifetime as the integral of
-# the fit:
-#   I_kww(t) = exp[-(t/tau0_kww)^beta_kww]
-#   <t^n> = n * int_0^inf t^(n-1) * I_kww(t) dt
-#         = tau0_kww^n * Gamma(1 + n/beta_kww)
-bounds_kww = ([0, 0], [np.inf, 10])
-popt_kww = np.full((n_states, 2), np.nan, dtype=np.float64)
-perr_kww = np.full((n_states, 2), np.nan, dtype=np.float64)
-lts_kww_fit_goodness = np.full((n_states, 2), np.nan, dtype=np.float64)
-lts_kww_characs = np.full((n_states, 5), np.nan, dtype=np.float64)
-for i, rp in enumerate(remain_props.T):
-    # Fit remain probability.
-    times_fit = times[fit_start[i] : fit_stop[i]]
-    rp_fit = rp[fit_start[i] : fit_stop[i]]
-    popt_kww[i], perr_kww[i], valid = mdt.func.fit_kww(
-        xdata=times_fit,
-        ydata=rp_fit,
-        return_valid=True,
-        bounds=bounds_kww,
-        method=fit_method,
-    )
-    fit = mdt.func.kww(times_fit[valid], *popt_kww[i])
-    r2, rmse = leap.misc.fit_goodness(data=rp_fit[valid], fit=fit)
-    lts_kww_fit_goodness[i] = np.array([r2, rmse])
-    # Calculate distribution characteristics.
-    raw_moms = np.full(n_moms, np.nan, dtype=np.float64)
-    cen_moms = np.full(n_moms, np.nan, dtype=np.float64)
-    for n in range(n_moms):
-        raw_moms[n] = raw_moment_weibull(*popt_kww[i], n=n + 1)
-        cen_moms[n] = mdt.stats.moment_raw2cen(raw_moms[: n + 1])
-    skew = skewness(mu2=cen_moms[1], mu3=cen_moms[2])
-    kurt = kurtosis(mu2=cen_moms[1], mu4=cen_moms[3])
-    # Median = tau_0 * ln(2)^(1/beta)
-    median = popt_kww[i][0] * np.log(2) ** (1 / popt_kww[i][1])
-    lts_kww_characs[i] = np.array(
-        [raw_moms[0], np.sqrt(cen_moms[1]), skew, kurt, median]
-    )
-tau0_kww, beta_kww = popt_kww.T
-tau0_kww_sd, beta_kww_sd = perr_kww.T
-
-# Method 7: Fit the remain probability with the survival function of a
-# Burr Type XII distribution and calculate the lifetime as the integral
-# fo the fit:
-#   I_bur(t) = 1 / [1 + (t/tau0_bur)^beta_bur]^delta_bur
-#   <t^n> = n * int_0^inf t^(n-1) * I_bur(t) dt
-#         = tau0_bur^n * Gamma(delta_bur - n/beta_bur) *
-#           Gamma(1 + n/beta_bur) / Gamma(delta_bur)
-bounds_bur = ([0, 0, 1 + 1e-6], [np.inf, 10, 100])
-popt_bur = np.full((n_states, 3), np.nan, dtype=np.float64)
-perr_bur = np.full((n_states, 3), np.nan, dtype=np.float64)
-lts_bur_fit_goodness = np.full((n_states, 2), np.nan, dtype=np.float64)
-lts_bur_characs = np.full((n_states, 5), np.nan, dtype=np.float64)
-for i, rp in enumerate(remain_props.T):
-    # Fit remain probability.
-    times_fit = times[fit_start[i] : fit_stop[i]]
-    rp_fit = rp[fit_start[i] : fit_stop[i]]
-    popt_bur[i], perr_bur[i], valid = mdt.func.fit_burr12_sf_alt(
-        xdata=times_fit,
-        ydata=rp_fit,
-        return_valid=True,
-        bounds=bounds_bur,
-        method=fit_method,
-    )
-    fit = mdt.func.burr12_sf_alt(times_fit[valid], *popt_bur[i])
-    r2, rmse = leap.misc.fit_goodness(data=rp_fit[valid], fit=fit)
-    lts_bur_fit_goodness[i] = np.array([r2, rmse])
-    # Calculate distribution characteristics.
-    tau0 = popt_bur[i][0]
-    beta = popt_bur[i][1]
-    delta = popt_bur[i][2] / beta
-    raw_moms = np.full(n_moms, np.nan, dtype=np.float64)
-    cen_moms = np.full(n_moms, np.nan, dtype=np.float64)
-    for n in range(n_moms):
-        raw_moms[n] = raw_moment_burr12(tau0, beta, delta, n=n + 1)
-        cen_moms[n] = mdt.stats.moment_raw2cen(raw_moms[: n + 1])
-    skew = skewness(mu2=cen_moms[1], mu3=cen_moms[2])
-    kurt = kurtosis(mu2=cen_moms[1], mu4=cen_moms[3])
-    # Median = tau_0 * (2^(1/delta) - 1)^(1/beta)
-    median = tau0 * (2 ** (1 / delta) - 1) ** (1 / beta)
-    lts_bur_characs[i] = np.array(
-        [raw_moms[0], np.sqrt(cen_moms[1]), skew, kurt, median]
-    )
-tau0_bur, beta_bur, d_bur = popt_bur.T
-tau0_bur_sd, beta_bur_sd, d_bur_sd = perr_bur.T
-delta_bur = d_bur / beta_bur
-delta_bur_sd = np.sqrt(  # Propagation of uncertainty.
-    delta_bur**2
-    * (
-        (d_bur_sd / d_bur) ** 2
-        + (beta_bur_sd / beta_bur) ** 2
-        - 2 * d_bur_sd * beta_bur_sd / (d_bur * beta_bur)
-    )
+remain_probs, times, _states = leap.simulation.read_time_state_matrix(
+    infile_rp,
+    time_conv=time_conv,
+    amin=0,
+    amax=1,
+    n_rows_check=n_frames,
+    states_check=states,
 )
+del _states
+# Method 4: Numerical integration of the remain probability.
+lts_rp_int_characs = leap.lifetimes.integral_method(
+    remain_probs, times, n_moms=n_moms, int_thresh=args.int_thresh
+)
+# Get fit region for fitting methods.
+fit_start_rp, fit_stop_rp = leap.lifetimes.get_fit_region(
+    remain_probs, times, end_fit=args.end_fit, stop_fit=args.stop_fit
+)
+# Method 5: Weibull fit of the remain probability.
+(
+    lts_rp_wbl_characs,
+    lts_rp_wbl_fit_goodness,
+    popt_rp_wbl,
+    perr_rp_wbl,
+) = leap.lifetimes.weibull_fit_method(
+    remain_probs,
+    times,
+    fit_start=fit_start_rp,
+    fit_stop=fit_stop_rp,
+    n_moms=n_moms,
+    fit_method=fit_method,
+)
+tau0_rp_wbl, beta_rp_wbl = popt_rp_wbl.T
+tau0_rp_wbl_sd, beta_rp_wbl_sd = perr_rp_wbl.T
+# Method 6: Burr Type XII fit of the remain probability.
+(
+    lts_rp_brr_characs,
+    lts_rp_brr_fit_goodness,
+    popt_rp_brr,
+    perr_rp_brr,
+    popt_conv_rp_brr,
+    perr_conv_rp_brr,
+) = leap.lifetimes.burr12_fit_method(
+    remain_probs,
+    times,
+    fit_start=fit_start_rp,
+    fit_stop=fit_stop_rp,
+    n_moms=n_moms,
+    fit_method=fit_method,
+)
+tau0_rp_brr, beta_rp_brr, delta_rp_brr = popt_conv_rp_brr.T
+tau0_rp_brr_sd, beta_rp_brr_sd, delta_rp_brr_sd = perr_conv_rp_brr.T
+
+print("Calculating lifetimes from the Kaplan-Meier estimator...")
+# Read Kaplan-Meier survival functions (one for each bin).
+file_suffix = file_suffix_common + "_kaplan_meier_discrete_sf.txt.gz"
+infile_km = leap.simulation.get_ana_file(Sim, analysis, tool, file_suffix)
+file_suffix = file_suffix_common + "_kaplan_meier_discrete_sf_var.txt.gz"
+infile_km_var = leap.simulation.get_ana_file(Sim, analysis, tool, file_suffix)
+(
+    km_surv_funcs,
+    km_surv_funcs_var,
+    times,
+    _states,
+) = leap.simulation.read_time_state_matrix(
+    infile_km,
+    fname_var=infile_km_var,
+    time_conv=time_conv,
+    amin=0,
+    amax=1,
+    n_rows_check=n_frames,
+    states_check=states,
+)
+del _states
+# Method 7: Numerical integration of the Kaplan-Meier estimator.
+lts_km_int_characs = leap.lifetimes.integral_method(
+    km_surv_funcs, times, n_moms=n_moms, int_thresh=args.int_thresh
+)
+# Get fit region for fitting methods.
+fit_start_km, fit_stop_km = leap.lifetimes.get_fit_region(
+    km_surv_funcs, times, end_fit=args.end_fit, stop_fit=args.stop_fit
+)
+# Method 8: Weibull fit of the Kaplan-Meier estimator.
+(
+    lts_km_wbl_characs,
+    lts_km_wbl_fit_goodness,
+    popt_km_wbl,
+    perr_km_wbl,
+) = leap.lifetimes.weibull_fit_method(
+    km_surv_funcs,
+    times,
+    fit_start=fit_start_km,
+    fit_stop=fit_stop_km,
+    surv_funcs_var=km_surv_funcs_var,
+    n_moms=n_moms,
+    fit_method=fit_method,
+)
+tau0_km_wbl, beta_km_wbl = popt_km_wbl.T
+tau0_km_wbl_sd, beta_km_wbl_sd = perr_km_wbl.T
+# Method 9: Burr Type XII fit of the Kaplan-Meier estimator.
+(
+    lts_km_brr_characs,
+    lts_km_brr_fit_goodness,
+    popt_km_brr,
+    perr_km_brr,
+    popt_conv_km_brr,
+    perr_conv_km_brr,
+) = leap.lifetimes.burr12_fit_method(
+    km_surv_funcs,
+    times,
+    fit_start=fit_start_km,
+    fit_stop=fit_stop_km,
+    surv_funcs_var=km_surv_funcs_var,
+    n_moms=n_moms,
+    fit_method=fit_method,
+)
+tau0_km_brr, beta_km_brr, delta_km_brr = popt_conv_km_brr.T
+tau0_km_brr_sd, beta_km_brr_sd, delta_km_brr_sd = perr_conv_km_brr.T
 
 
 print("Creating output file(s)...")
@@ -710,48 +329,69 @@ data = np.column_stack(
         box_z - elctrd_thk - bins_low,  # 5
         bins_up - elctrd_thk,  # 6
         box_z - elctrd_thk - bins_up,  # 7
-        # Method 1 (censored counting).
-        lts_cnt_cen_characs,  # 8-16
-        # Method 2 (uncensored counting).
-        lts_cnt_unc_characs,  # 17-25
-        # Method 3 (inverse transition rate).
-        lts_k,  # 26
-        # Method 4 (1/e criterion).
-        lts_e,  # 27
-        # Method 5 (direct integral).
-        lts_int_characs,  # 28-32
-        # Method 6 (integral of Kohlrausch fit).
-        lts_kww_characs,  # 33-37
-        tau0_kww,  # 38
-        tau0_kww_sd,  # 39
-        beta_kww,  # 40
-        beta_kww_sd,  # 41
-        lts_kww_fit_goodness,  # 42-43
-        # Method 7 (integral of Burr fit).
-        lts_bur_characs,  # 44-48
-        tau0_bur,  # 49
-        tau0_bur_sd,  # 50
-        beta_bur,  # 51
-        beta_bur_sd,  # 52
-        delta_bur,  # 53
-        delta_bur_sd,  # 54
-        lts_bur_fit_goodness,  # 55-56
-        # Fit region
-        fit_start * time_conv,  # 57
-        (fit_stop - 1) * time_conv,  # 58
+        # Method 1: Censored counting.
+        lts_cnt_cen_characs,  # 8-21
+        # Method 2: Uncensored counting.
+        lts_cnt_unc_characs,  # 22-35
+        # Method 3: Inverse transition rate.
+        lts_k,  # 36
+        # Method 4: Numerical integration of the remain probability.
+        lts_rp_int_characs,  # 37-46
+        # Method 5: Weibull fit of the remain probability.
+        lts_rp_wbl_characs,  # 47-56
+        tau0_rp_wbl,  # 57
+        tau0_rp_wbl_sd,  # 58
+        beta_rp_wbl,  # 59
+        beta_rp_wbl_sd,  # 60
+        lts_rp_wbl_fit_goodness,  # 61-62
+        # Method 6: Burr Type XII fit of the remain probability.
+        lts_rp_brr_characs,  # 63-72
+        tau0_rp_brr,  # 73
+        tau0_rp_brr_sd,  # 74
+        beta_rp_brr,  # 75
+        beta_rp_brr_sd,  # 76
+        delta_rp_brr,  # 77
+        delta_rp_brr_sd,  # 78
+        lts_rp_brr_fit_goodness,  # 79-80
+        # Fit region for the remain probability.
+        fit_start_rp * time_conv,  # 81
+        (fit_stop_rp - 1) * time_conv,  # 82
+        # Method 7: Numerical integration of the Kaplan-Meier estimator.
+        lts_km_int_characs,  # 83-92
+        # Method 8: Weibull fit of the Kaplan-Meier estimator.
+        lts_km_wbl_characs,  # 93-102
+        tau0_km_wbl,  # 103
+        tau0_km_wbl_sd,  # 104
+        beta_km_wbl,  # 105
+        beta_km_wbl_sd,  # 106
+        lts_km_wbl_fit_goodness,  # 107-108
+        # Method 9: Burr Type XII fit of the Kaplan-Meier estimator.
+        lts_km_brr_characs,  # 109-118
+        tau0_km_brr,  # 119
+        tau0_km_brr_sd,  # 120
+        beta_km_brr,  # 121
+        beta_km_brr_sd,  # 122
+        delta_km_brr,  # 123
+        delta_km_brr_sd,  # 124
+        lts_km_brr_fit_goodness,  # 125-126
+        # Fit region for the Kaplan-Meier estimator.
+        fit_start_km * time_conv,  # 127
+        (fit_stop_km - 1) * time_conv,  # 128
     ]
 )
 header = (
     "Bin residence times (hereafter denoted state lifetimes).\n"
     + "Average time that a given compound stays in a given bin calculated\n"
     + "either directly from the discrete trajectory (Method 1-3) or from the\n"
-    + "corresponding remain probability function (Method 4-7).\n"
+    + "corresponding estimate of the survival function (Method 4-9).\n"
     + "\n"
-    + "System:              {:s}\n".format(args.system)
-    + "Settings:            {:s}\n".format(args.settings)
-    + "Bin edges:           {:s}\n".format(infile_bins)
-    + "Discrete trajectory: {:s}\n".format(infile_dtrj)
-    + "Remain probability:  {:s}\n".format(infile_rp)
+    + "System:                   {:s}\n".format(args.system)
+    + "Settings:                 {:s}\n".format(args.settings)
+    + "Bin edges:                {:s}\n".format(infile_bins)
+    + "Discrete trajectory:      {:s}\n".format(infile_dtrj)
+    + "Autocorrelation function: {:s}\n".format(infile_rp)
+    + "Kaplan-Meier estimator:   {:s}\n".format(infile_km)
+    + "KM estimator variance:    {:s}\n".format(infile_km_var)
     + "\n"
     + "Compound:                      {:s}\n".format(args.cmp)
 )
@@ -785,57 +425,42 @@ header += (
     + "   lifetime <t_k> is calculated as the inverse transition rate:\n"
     + "     <t_k> = 1 / <k>\n"
     + "\n"
-    + "4) The average lifetime <t_e> is set to the lag time at which the\n"
-    + "   remain probability function p(t) crosses 1/e.  If this never\n"
-    + "   happens, <t_e> is set to NaN.\n"
+    + "4) The autocorrelation function (ACF) C(t) of the existence/lifetime\n"
+    + "   operator is interpreted as the survival function (SF) of the\n"
+    + "   underlying lifetime distribution.  Thus, the lifetime can be\n"
+    + "   calculated according to the alternative expectation formula [1]:\n"
+    + "     <t_int^n> = n * int_0^inf t^(n-1) C(t) dt\n"
+    + "   If C(t) does not decay below the given threshold of\n"
+    + "   {:.4f}, <t_acf_int^n> is set to NaN.\n".format(args.int_thresh)
     + "\n"
-    + "5) The remain probability function p(t) is interpreted as the\n"
-    + "   survival function of the underlying lifetime distribution.  Thus,\n"
-    + "   the lifetime can be calculated according to the alternative\n"
-    + "   expectation formula [1]:\n"
-    + "     <t_int^n> = n * int_0^inf t^(n-1) p(t) dt\n"
-    + "   If p(t) does not decay below the given threshold of\n"
-    + "   {:.4f}, <t_int^n> is set to NaN.\n".format(args.int_thresh)
-    + "\n"
-    + "6) The remain probability function p(t) is fitted by a Kohlrausch\n"
-    + "   function (stretched exponential, survival function of the Weibull\n"
-    + "   distribution):\n"
-    + "     I_kww(t) = exp[-(t/tau0_kww)^beta_kww]\n"
-    + "   Thereby, tau0_kww is confined to the interval\n"
-    + "   [{:.4f}, {:.4f}] and beta_kww is confined to the interval\n".format(
-        bounds_kww[0][0], bounds_kww[1][0]
-    )
-    + "   [{:.4f}, {:.4f}].\n".format(bounds_kww[0][1], bounds_kww[1][1])
-    + "   The average lifetime <t_kww^n> is calculated according to the\n"
+    + "5) The ACF C(t) is fitted by the SF of the Weibull distribution\n"
+    + "   (stretched exponential):\n"
+    + "     S_wbl(t) = exp[-(t/tau0_wbl)^beta_wbl]\n"
+    + "   with tau0_wbl > 0 and beta_wbl > 0."
+    + "   The average lifetime <t_acf_wbl^n> is calculated according to the\n"
     + "   alternative expectation formula [1]:\n"
-    + "     <t_kww^n> = n * int_0^inf t^(n-1) I_kww(t) dt\n"
-    + "               = tau0_kww^n * Gamma(1 + n/beta_kww)\n"
+    + "     <t_wbl^n> = n * int_0^inf t^(n-1) S_wbl(t) dt\n"
+    + "               = tau0_wbl^n * Gamma(1 + n/beta_bwl)\n"
     + "   where Gamma(z) is the gamma function.\n"
     + "\n"
-    + "7) The remain probability function p(t) is fitted by the survival\n"
-    + "   function of a Burr Type XII distribution:\n"
-    + "     I_bur(t) = 1 / [1 + (t/tau0_bur)^beta_bur]^delta_bur\n"
-    + "   Thereby, tau0_bur is confined to the interval\n"
-    + "   [{:.4f}, {:.4f}], beta_bur is confined to the interval\n".format(
-        bounds_bur[0][0], bounds_bur[1][0]
-    )
-    + "   [{:.4f}, {:.4f}] and beta_bur * delta_bur is confined to\n".format(
-        bounds_bur[0][1], bounds_bur[1][1]
-    )
-    + "   the interval [{:.4f}, {:.4f}].\n".format(
-        bounds_bur[0][2], bounds_bur[1][2]
-    )
-    + "   The average lifetime <t_bur^n> is calculated according to the\n"
+    + "6) The ACF C(t) is fitted by the SF of a Burr Type XII\n"
+    + "   distribution:\n"
+    + "     S_brr(t) = 1 / [1 + (t/tau0_brr)^beta_brr]^delta_brr\n"
+    + "   with tau0_brr > 0, beta_brr > 0 and beta_brr*delta_brr > 1.\n"
+    + "   The average lifetime <t_brr^n> is calculated according to the\n"
     + "   alternative expectation formula [1]:\n"
-    + "     <t_bur^n> = n * int_0^inf t^(n-1) I_bur(t) dt\n"
-    + "               = tau0_bur^n * Gamma(delta_bur - n/beta_bur) *\n"
-    + "                 Gamma(1 + n/beta_bur) / Gamma(delta_bur)\n"
+    + "     <t_brr^n> = n * int_0^inf t^(n-1) S_brr(t) dt\n"
+    + "               = tau0_brr^n * Gamma(delta_brr - n/beta_brr) *\n"
+    + "                 Gamma(1 + n/beta_brr) / Gamma(delta_brr)\n"
     + "   where Gamma(z) is the gamma function.\n"
+    + "\n"
+    + "7)-9) Like 4)-6) but instead of the ACF, the Kaplan-Meier estimate of\n"
+    + "   the SF is used."
     + "\n"
     + "All fits are done using scipy.optimize.curve_fit with the 'Trust\n"
-    + "Region Reflective' method.  The remain probability is always\n"
-    + "fitted until it decays below the given threshold or until the\n"
-    + "given lag time is reached (whatever happens earlier).\n"
+    + "Region Reflective' method.  The SF is always fitted until it decays\n"
+    + "below the given threshold or until the given lag time is reached\n"
+    + "(whatever happens earlier).\n"
     + "\n"
     + "int_thresh = {:.4f}\n".format(args.int_thresh)
     + "end_fit  = {}\n".format(args.end_fit)
@@ -863,52 +488,75 @@ header += (
     + "  7 Distance of the upper bin edges to the right electrode surface / A"
     + "\n"
     + "\n"
-    + "  Lifetime from Method 1 (censored counting)\n"
-    + "  8 Sample mean <t_cnt_cen> / ns\n"
+    + "Methods based on counting frames:\n"
+    + "  Method 1: Censored counting\n"
+    + "  8 Sample mean (1st raw moment) / ns\n"
     + "  9 Uncertainty of the sample mean (standard error) / ns\n"
     + " 10 Corrected sample standard deviation / ns\n"
-    + " 11 Unbiased sample skewness\n"
-    + " 12 Unbiased sample excess kurtosis (Fisher)\n"
-    + " 13 Sample median / ns\n"
-    + " 14 Sample minimum / ns\n"
-    + " 15 Sample maximum / ns\n"
-    + " 16 Number of observations/samples\n"
+    + " 11 Corrected coefficient of variation\n"
+    + " 12 Unbiased sample skewness (Fisher)\n"
+    + " 13 Unbiased sample excess kurtosis (Fisher)\n"
+    + " 14 Sample median / ns\n"
+    + " 15 Non-parametric skewness\n"
+    + " 16 2nd raw moment (biased estimate) / ns^2\n"
+    + " 17 3rd raw moment (biased estimate) / ns^3\n"
+    + " 18 4th raw moment (biased estimate) / ns^4\n"
+    + " 19 Sample minimum / ns\n"
+    + " 20 Sample maximum / ns\n"
+    + " 21 Number of observations/samples\n"
     + "\n"
-    + "  Lifetime from Method 2 (uncensored counting)\n"
-    + " 17-25 As Method 1\n"
+    + "  Method 2: Uncensored counting.\n"
+    + " 22-35 As Method 1\n"
     + "\n"
-    + "  Lifetime from Method 3 (inverse transition rate)\n"
-    + " 26 <t_k> / ns\n"
+    + "  Method 3: Inverse transition rate\n"
+    + " 36 Mean lifetime / ns\n"
     + "\n"
-    + "  Lifetime from Method 4 (1/e criterion)\n"
-    + " 27 <t_e> / ns\n"
+    + "Methods based on the ACF:\n"
+    + "  Method 4: Numerical integration of the ACF\n"
+    + " 37 Mean lifetime (1st raw moment) / ns\n"
+    + " 38 Standard deviation / ns\n"
+    + " 39 Coefficient of variation"
+    + " 40 Skewness (Fisher)\n"
+    + " 41 Excess kurtosis (Fisher)\n"
+    + " 42 Median / ns\n"
+    + " 43 Non-parametric skewness\n"
+    + " 44 2nd raw moment / ns^2\n"
+    + " 45 3rd raw moment / ns^3\n"
+    + " 46 4th raw moment / ns^4\n"
     + "\n"
-    + "  Lifetime from Method 5 (direct integral)\n"
-    + " 28 Mean <t_int> / ns\n"
-    + " 29 Standard deviation / ns\n"
-    + " 30 Skewness\n"
-    + " 31 Excess kurtosis (Fisher)\n"
-    + " 32 Median / ns\n"
+    + "  Method 5: Weibull fit of the ACF\n"
+    + " 47-56 As Method 4\n"
+    + " 57 Fit parameter tau0_wbl / ns\n"
+    + " 58 Standard deviation of tau0_wbl / ns\n"
+    + " 59 Fit parameter beta_wbl\n"
+    + " 60 Standard deviation of beta_wbl\n"
+    + " 61 Coefficient of determination of the fit (R^2 value)\n"
+    + " 62 Root-mean-square error (RMSE) of the fit\n"
     + "\n"
-    + "  Lifetime from Method 6 (integral of Kohlrausch fit)\n"
-    + " 33-37 As Method 5\n"
-    + " 38 Fit parameter tau0_kww / ns\n"
-    + " 39 Standard deviation of tau0_kww / ns\n"
-    + " 40 Fit parameter beta_kww\n"
-    + " 41 Standard deviation of beta_kww\n"
-    + " 42 Coefficient of determination of the fit (R^2 value)\n"
-    + " 43 Root-mean-square error (RMSE) of the fit\n"
+    + "  Method 6: Burr Type XII fit of the ACF\n"
+    + " 63-76 As Method 5\n"
+    + " 77 Fit parameter delta_brr\n"
+    + " 78 Standard deviation of delta_brr\n"
+    + " 79 Coefficient of determination of the fit (R^2 value)\n"
+    + " 80 Root-mean-square error (RMSE) of the fit\n"
     + "\n"
-    + "  Lifetime from Method 7 (integral of Burr fit)\n"
-    + " 44-52 As Method 6\n"
-    + " 53 Fit parameter delta_burr\n"
-    + " 54 Standard deviation of delta_burr\n"
-    + " 55 Coefficient of determination of the fit (R^2 value)\n"
-    + " 56 Root-mean-square error (RMSE) of the fit\n"
+    + "  Fit region for all ACF fitting methods\n"
+    + " 81 Start of fit region (inclusive) / ns\n"
+    + " 82 End of fit region (inclusive) / ns\n"
     + "\n"
-    + "  Fit region for all fitting methods\n"
-    + " 57 Start of fit region (inclusive) / ns\n"
-    + " 58 End of fit region (inclusive) / ns\n"
+    + "Methods based on the Kaplan-Meier estimator:\n"
+    + "  Method 7: Numerical integration of the Kaplan-Meier estimator\n"
+    + " 83-92 As Method 4\n"
+    + "\n"
+    + "  Method 8: Weibull fit of the Kaplan-Meier estimator\n"
+    + " 93-108 As Method 5\n"
+    + "\n"
+    + "  Method 9: Burr Type XII fit of the Kaplan-Meier estimator\n"
+    + " 109-126 As Method 6\n"
+    + "\n"
+    + "  Fit region for all Kaplan-Meier estimator fitting methods\n"
+    + " 127 Start of fit region (inclusive) / ns\n"
+    + " 128 End of fit region (inclusive) / ns\n"
     + "\n"
     + "Column number:\n"
 )
@@ -1006,7 +654,7 @@ with PdfPages(outfile_pdf) as pdf:
             ax.axhline(
                 y=6, color="tab:green", linestyle="dashed", label="Exp. Dist."
             )
-        # Method 1 (censored counting).
+        # Method 1: Censored counting.
         ax.errorbar(
             bin_mids,
             lts_cnt_cen_characs[:, i + offset_i_cnt],
@@ -1016,7 +664,7 @@ with PdfPages(outfile_pdf) as pdf:
             marker=marker_cnt_cen,
             alpha=leap.plot.ALPHA,
         )
-        # Method 2 (uncensored counting).
+        # Method 2: Uncensored counting.
         ax.errorbar(
             bin_mids,
             lts_cnt_unc_characs[:, i + offset_i_cnt],
@@ -1027,7 +675,7 @@ with PdfPages(outfile_pdf) as pdf:
             alpha=leap.plot.ALPHA,
         )
         if i == 0:
-            # Method 3 (inverse transition rate).
+            # Method 3: Inverse transition rate.
             ax.errorbar(
                 bin_mids,
                 lts_k,
@@ -1047,7 +695,7 @@ with PdfPages(outfile_pdf) as pdf:
             #     marker=marker_e,
             #     alpha=leap.plot.ALPHA,
             # )
-        # Method 5 (direct integral)
+        # Method 4: Numerical integration of the remain probability
         ax.errorbar(
             bin_mids,
             lts_int_characs[:, i],
@@ -1057,7 +705,7 @@ with PdfPages(outfile_pdf) as pdf:
             marker=marker_int,
             alpha=leap.plot.ALPHA,
         )
-        # Method 6 (integral of Kohlrausch fit).
+        # Method 5: Weibull fit of the remain probability.
         ax.errorbar(
             bin_mids,
             lts_kww_characs[:, i],
@@ -1067,7 +715,7 @@ with PdfPages(outfile_pdf) as pdf:
             marker=marker_kww,
             alpha=leap.plot.ALPHA,
         )
-        # Method 7 (integral of Burr fit).
+        # Method 6: Burr Type XII fit of the remain probability.
         ax.errorbar(
             bin_mids,
             lts_bur_characs[:, i],
@@ -1126,7 +774,7 @@ with PdfPages(outfile_pdf) as pdf:
             leap.plot.elctrds(
                 ax, offset_left=elctrd_thk, offset_right=box_z - elctrd_thk
             )
-        # Method 1 (censored counting).
+        # Method 1: Censored counting.
         ax.plot(
             bin_mids,
             lts_cnt_cen_characs[:, 6 + i],
@@ -1135,7 +783,7 @@ with PdfPages(outfile_pdf) as pdf:
             marker=marker_cnt_cen,
             alpha=leap.plot.ALPHA,
         )
-        # Method 2 (uncensored counting).
+        # Method 2: Uncensored counting.
         ax.plot(
             bin_mids,
             lts_cnt_unc_characs[:, 6 + i],
