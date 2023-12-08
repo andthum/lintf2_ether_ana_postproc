@@ -574,29 +574,42 @@ bins /= 10  # A -> nm.
 bin_mids = bins_up - (bins_up - bins_low) / 2
 bin_mids /= 10  # A -> nm.
 
-label_cnt_cen = "Cens."
-label_cnt_unc = "Uncens."
+label_cnt_cen = "Cens."  # Count
+label_cnt_unc = "Uncens."  # Count
 label_k = "Rate"
-# label_e = r"$1/e$"
-label_int = "Area"
-label_kww = "Kohl."
-label_bur = "Burr"
+label_rp_int = "ACF Num"
+label_rp_wbl = "ACF Wbl"
+label_rp_brr = "ACF Burr"
+label_km_int = "KM Num"
+label_km_wbl = "KM Wbl"
+label_km_brr = "KM Burr"
 
 color_cnt_cen = "tab:orange"
 color_cnt_unc = "tab:red"
 color_k = "tab:brown"
-# color_e = "tab:pink"
-color_int = "tab:purple"
-color_kww = "tab:blue"
-color_bur = "tab:cyan"
+color_rp_int = "tab:purple"
+color_rp_wbl = "tab:blue"
+color_rp_brr = "tab:cyan"
+color_km_int = "goldenrod"
+color_km_wbl = "gold"
+color_km_brr = "yellow"
 
 marker_cnt_cen = "H"
 marker_cnt_unc = "h"
 marker_k = "p"
-# marker_e = "<"
-marker_int = ">"
-marker_kww = "^"
-marker_bur = "v"
+marker_rp_int = "^"
+marker_rp_wbl = ">"
+marker_rp_brr = "<"
+marker_km_int = "s"
+marker_km_wbl = "D"
+marker_km_brr = "d"
+
+color_exp = "tab:green"
+linestyle_exp = "dashed"
+label_exp = "Exp. Dist."
+
+ylabel_acf = "Autocorrelation Function"
+ylabel_km = "Kaplan-Meier Estimate"
 
 xlabel = r"$z$ / nm"
 xlim = (0, box_z)
@@ -609,6 +622,8 @@ legend_title = (
     + r"$n_{EO} = %d$, " % Sim.O_per_chain
     + r"$r = %.4f$" % Sim.Li_O_ratio
 )
+legend_bbox = (0.58, 1.01)
+legend_loc = "upper center"
 height_ratios = (0.2, 1)
 cmap = plt.get_cmap()
 c_vals = np.arange(n_states)
@@ -622,9 +637,11 @@ with PdfPages(outfile_pdf) as pdf:
     ylabels = (
         "Residence Time / ns",
         "Std. Dev. / ns",
+        "Coeff. of Variation",
         "Skewness",
         "Excess Kurtosis",
         "Median / ns",
+        "Non-Parametric Skewness",
     )
     for i, ylabel in enumerate(ylabels):
         if i == 0:
@@ -644,15 +661,22 @@ with PdfPages(outfile_pdf) as pdf:
             leap.plot.elctrds(
                 ax, offset_left=elctrd_thk, offset_right=box_z - elctrd_thk
             )
-        if i == 2:
-            # Skewness of exponential distribution is 2.
+        if ylabel == "Coeff. of Variation":
+            y_exp = 1  # Coeff. of variation of exp. distribution.
+        elif ylabel == "Skewness":
+            y_exp = 2  # Skewness of exponential distribution.
+        elif ylabel == "Excess Kurtosis":
+            y_exp = 6  # Excess kurtosis of exponential distribution.
+        elif ylabel == "Non-Parametric Skewness":
+            y_exp = 1 - np.log(2)  # Non-param. skew. of exp. dist.
+        else:
+            y_exp = None
+        if y_exp is not None:
             ax.axhline(
-                y=2, color="tab:green", linestyle="dashed", label="Exp. Dist."
-            )
-        elif i == 3:
-            # Excess kurtosis of exponential distribution is 6
-            ax.axhline(
-                y=6, color="tab:green", linestyle="dashed", label="Exp. Dist."
+                y=y_exp,
+                color=color_exp,
+                linestyle=linestyle_exp,
+                label=label_exp,
             )
         # Method 1: Censored counting.
         ax.errorbar(
@@ -685,79 +709,99 @@ with PdfPages(outfile_pdf) as pdf:
                 marker=marker_k,
                 alpha=leap.plot.ALPHA,
             )
-            # # Method 4 (1/e criterion).
-            # ax.errorbar(
-            #     bin_mids,
-            #     lts_e,
-            #     yerr=None,
-            #     label=label_e,
-            #     color=color_e,
-            #     marker=marker_e,
-            #     alpha=leap.plot.ALPHA,
-            # )
-        # Method 4: Numerical integration of the remain probability
+        # Method 4: Numerical integration of the remain probability.
         ax.errorbar(
             bin_mids,
-            lts_int_characs[:, i],
+            lts_rp_int_characs[:, i],
             yerr=None,
-            label=label_int,
-            color=color_int,
-            marker=marker_int,
+            label=label_rp_int,
+            color=color_rp_int,
+            marker=marker_rp_int,
             alpha=leap.plot.ALPHA,
         )
         # Method 5: Weibull fit of the remain probability.
         ax.errorbar(
             bin_mids,
-            lts_kww_characs[:, i],
+            lts_rp_wbl_characs[:, i],
             yerr=None,
-            label=label_kww,
-            color=color_kww,
-            marker=marker_kww,
+            label=label_rp_wbl,
+            color=color_rp_wbl,
+            marker=marker_rp_wbl,
             alpha=leap.plot.ALPHA,
         )
         # Method 6: Burr Type XII fit of the remain probability.
         ax.errorbar(
             bin_mids,
-            lts_bur_characs[:, i],
+            lts_rp_brr_characs[:, i],
             yerr=None,
-            label=label_bur,
-            color=color_bur,
-            marker=marker_bur,
+            label=label_rp_brr,
+            color=color_rp_brr,
+            marker=marker_rp_brr,
+            alpha=leap.plot.ALPHA,
+        )
+        # Method 7: Numerical integration of the KM estimator.
+        ax.errorbar(
+            bin_mids,
+            lts_km_int_characs[:, i],
+            yerr=None,
+            label=label_km_int,
+            color=color_km_int,
+            marker=marker_km_int,
+            alpha=leap.plot.ALPHA,
+        )
+        # Method 8: Weibull fit of the Kaplan-Meier estimator.
+        ax.errorbar(
+            bin_mids,
+            lts_km_wbl_characs[:, i],
+            yerr=None,
+            label=label_km_wbl,
+            color=color_km_wbl,
+            marker=marker_km_wbl,
+            alpha=leap.plot.ALPHA,
+        )
+        # Method 9: Burr Type XII fit of the Kaplan-Meier estimator.
+        ax.errorbar(
+            bin_mids,
+            lts_km_brr_characs[:, i],
+            yerr=None,
+            label=label_km_brr,
+            color=color_km_brr,
+            marker=marker_km_brr,
             alpha=leap.plot.ALPHA,
         )
         ax.set(xlabel=xlabel, ylabel=ylabel, xlim=xlim)
         ylim = ax.get_ylim()
-        if i not in (2, 3) and ylim[0] < 0:
+        if ylim[0] < 0 and ylabel not in (
+            "Skewness",
+            "Excess Kurtosis",
+            "Non-Parametric Skewness",
+        ):
             ax.set_ylim(0, ylim[1])
         leap.plot.bins(ax, bins=bins)
         ax.xaxis.set_major_locator(MaxNLocator(integer=True))
-        legend = ax.legend(
+        legend = fig.legend(
             title=legend_title,
-            loc="upper center",
             ncol=3,
+            bbox_to_anchor=legend_bbox,
+            loc=legend_loc,
             **mdtplt.LEGEND_KWARGS_XSMALL,
         )
         legend.get_title().set_multialignment("center")
         pdf.savefig()
-        yd_min, yd_max = get_ydata_min_max(ax)
-        if len(yd_min) > 0:
-            # Set y axis to log scale.
-            # Round y limits to next lower and higher power of ten.
-            ylim = ax.get_ylim()
-            ymin = 10 ** np.floor(np.log10(np.min(yd_min)))
-            ymax = 10 ** np.ceil(np.log10(np.max(yd_max)))
-            ax.set_ylim(
-                ymin if np.isfinite(ymin) else None,
-                ymax if np.isfinite(ymax) else None,
-            )
+        yd_min, yd_max = leap.plot.get_ydata_min_max(ax)
+        if np.any(np.greater(yd_min, 0)):
+            # Log scale y.
+            ax.relim()
+            ax.autoscale()
             ax.set_yscale("log", base=10, subs=np.arange(2, 10))
+            ax.set_xlim(xlim)
             pdf.savefig()
         plt.close()
 
-    # Plot number of min, max and number of samples for count methods.
+    # Plot min, max and number of samples for count methods.
     ylabels = (
-        "Min. Lifetime / ns",
-        "Max. Lifetime / ns",
+        "Min. Residence Time / ns",
+        "Max. Residence Time / ns",
         "No. of Samples",
     )
     for i, ylabel in enumerate(ylabels):
@@ -777,7 +821,7 @@ with PdfPages(outfile_pdf) as pdf:
         # Method 1: Censored counting.
         ax.plot(
             bin_mids,
-            lts_cnt_cen_characs[:, 6 + i],
+            lts_cnt_cen_characs[:, 11 + i],
             label=label_cnt_cen,
             color=color_cnt_cen,
             marker=marker_cnt_cen,
@@ -786,7 +830,7 @@ with PdfPages(outfile_pdf) as pdf:
         # Method 2: Uncensored counting.
         ax.plot(
             bin_mids,
-            lts_cnt_unc_characs[:, 6 + i],
+            lts_cnt_unc_characs[:, 11 + i],
             label=label_cnt_unc,
             color=color_cnt_unc,
             marker=marker_cnt_unc,
@@ -800,31 +844,27 @@ with PdfPages(outfile_pdf) as pdf:
         ax.xaxis.set_major_locator(MaxNLocator(integer=True))
         legend = ax.legend(
             title=legend_title,
+            ncol=2,
             loc="lower center" if i == 2 else "upper center",
-            ncol=3,
             **mdtplt.LEGEND_KWARGS_XSMALL,
         )
         legend.get_title().set_multialignment("center")
         pdf.savefig()
-        yd_min, yd_max = get_ydata_min_max(ax)
-        if len(yd_min) > 0:
-            # Set y axis to log scale.
-            # Round y limits to next lower and higher power of ten.
-            ylim = ax.get_ylim()
-            ymin = 10 ** np.floor(np.log10(np.min(yd_min)))
-            ymax = 10 ** np.ceil(np.log10(np.max(yd_max)))
-            ax.set_ylim(
-                ymin if np.isfinite(ymin) else None,
-                ymax if np.isfinite(ymax) else None,
-            )
+        yd_min, yd_max = leap.plot.get_ydata_min_max(ax)
+        if np.any(np.greater(yd_min, 0)):
+            # Log scale y.
+            ax.relim()
+            ax.autoscale()
             ax.set_yscale("log", base=10, subs=np.arange(2, 10))
+            ax.set_xlim(xlim)
             pdf.savefig()
         plt.close()
 
-    # Plot fit parameters tau0 and beta.
+    # Plot fit parameters tau0, beta and delta.
     ylabels = (
         r"Fit Parameter $\tau_0$ / ns",
         r"Fit Parameter $\beta$",
+        r"Fit Parameter $\delta$",
     )
     for i, ylabel in enumerate(ylabels):
         fig, axs = plt.subplots(
@@ -840,102 +880,72 @@ with PdfPages(outfile_pdf) as pdf:
             leap.plot.elctrds(
                 ax, offset_left=elctrd_thk, offset_right=box_z - elctrd_thk
             )
-        # Method 6 (Kohlrausch fit).
+        if i < 2:
+            # Method 5: Weibull fit of the remain probability.
+            ax.errorbar(
+                bin_mids,
+                popt_rp_wbl[:, i],
+                yerr=perr_rp_wbl[:, i],
+                label=label_rp_wbl,
+                color=color_rp_wbl,
+                marker=marker_rp_wbl,
+                alpha=leap.plot.ALPHA,
+            )
+        # Method 6: Burr Type XII fit of the remain probability.
         ax.errorbar(
             bin_mids,
-            popt_kww[:, i],
-            yerr=perr_kww[:, i],
-            label=label_kww,
-            color=color_kww,
-            marker=marker_kww,
+            popt_conv_rp_brr[:, i],
+            yerr=perr_conv_rp_brr[:, i],
+            label=label_rp_brr,
+            color=color_rp_brr,
+            marker=marker_rp_brr,
             alpha=leap.plot.ALPHA,
         )
-        # Method 7 (Burr fit).
+        if i < 2:
+            # Method 8: Weibull fit of the Kaplan-Meier estimator.
+            ax.errorbar(
+                bin_mids,
+                popt_km_wbl[:, i],
+                yerr=perr_km_wbl[:, i],
+                label=label_km_wbl,
+                color=color_km_wbl,
+                marker=marker_km_wbl,
+                alpha=leap.plot.ALPHA,
+            )
+        # Method 9: Burr Type XII fit of the Kaplan-Meier estimator.
         ax.errorbar(
             bin_mids,
-            popt_bur[:, i],
-            yerr=perr_bur[:, i],
-            label=label_bur,
-            color=color_bur,
-            marker=marker_bur,
+            popt_conv_km_brr[:, i],
+            yerr=perr_conv_km_brr[:, i],
+            label=label_km_brr,
+            color=color_km_brr,
+            marker=marker_km_brr,
             alpha=leap.plot.ALPHA,
         )
         ax.set(xlabel=xlabel, ylabel=ylabel, xlim=xlim)
         ylim = ax.get_ylim()
-        if i not in (2, 3) and ylim[0] < 0:
+        if ylim[0] < 0:
             ax.set_ylim(0, ylim[1])
         leap.plot.bins(ax, bins=bins)
         ax.xaxis.set_major_locator(MaxNLocator(integer=True))
-        legend = ax.legend(
+        legend = fig.legend(
             title=legend_title,
-            loc="upper center",
             ncol=2,
+            bbox_to_anchor=legend_bbox,
+            loc=legend_loc,
             **mdtplt.LEGEND_KWARGS_XSMALL,
         )
         legend.get_title().set_multialignment("center")
         pdf.savefig()
-        yd_min, yd_max = get_ydata_min_max(ax)
-        if len(yd_min) > 0:
-            # Set y axis to log scale.
-            # Round y limits to next lower and higher power of ten.
-            ylim = ax.get_ylim()
-            ymin = 10 ** np.floor(np.log10(np.min(yd_min)))
-            ymax = 10 ** np.ceil(np.log10(np.max(yd_max)))
-            ax.set_ylim(
-                ymin if np.isfinite(ymin) else None,
-                ymax if np.isfinite(ymax) else None,
-            )
+        yd_min, yd_max = leap.plot.get_ydata_min_max(ax)
+        if np.any(np.greater(yd_min, 0)):
+            # Log scale y.
+            ax.relim()
+            ax.autoscale()
             ax.set_yscale("log", base=10, subs=np.arange(2, 10))
+            ax.set_xlim(xlim)
             pdf.savefig()
         plt.close()
-
-    # Plot fit parameter delta.
-    fig, axs = plt.subplots(
-        clear=True,
-        nrows=2,
-        sharex=True,
-        gridspec_kw={"height_ratios": height_ratios},
-    )
-    fig.set_figheight(fig.get_figheight() * sum(height_ratios))
-    ax_profile, ax = axs
-    leap.plot.profile(ax_profile, Sim=Sim, free_en=True)
-    if surfq is not None:
-        leap.plot.elctrds(
-            ax, offset_left=elctrd_thk, offset_right=box_z - elctrd_thk
-        )
-    # Method 7 (Burr fit).
-    ax.errorbar(
-        bin_mids,
-        delta_bur,
-        yerr=delta_bur_sd,
-        label=label_bur,
-        color=color_bur,
-        marker=marker_bur,
-        alpha=leap.plot.ALPHA,
-    )
-    ax.set(xlabel=xlabel, ylabel=r"Fit Parameter $\delta$", xlim=xlim)
-    ylim = ax.get_ylim()
-    if ylim[0] < 0:
-        ax.set_ylim(0, ylim[1])
-    leap.plot.bins(ax, bins=bins)
-    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
-    legend = ax.legend(title=legend_title, **mdtplt.LEGEND_KWARGS_XSMALL)
-    legend.get_title().set_multialignment("center")
-    pdf.savefig()
-    yd_min, yd_max = get_ydata_min_max(ax)
-    if len(yd_min) > 0:
-        # Set y axis to log scale.
-        # Round y limits to next lower and higher power of ten.
-        ylim = ax.get_ylim()
-        ymin = 10 ** np.floor(np.log10(np.min(yd_min)))
-        ymax = 10 ** np.ceil(np.log10(np.max(yd_max)))
-        ax.set_ylim(
-            ymin if np.isfinite(ymin) else None,
-            ymax if np.isfinite(ymax) else None,
-        )
-        ax.set_yscale("log", base=10, subs=np.arange(2, 10))
-        pdf.savefig()
-    plt.close()
 
     # Plot goodness of fit quantities.
     ylabels = (r"Coeff. of Determ. $R^2$", "RMSE")
@@ -953,22 +963,40 @@ with PdfPages(outfile_pdf) as pdf:
             leap.plot.elctrds(
                 ax, offset_left=elctrd_thk, offset_right=box_z - elctrd_thk
             )
-        # Method 6 (Kohlrausch fit).
+        # Method 5: Weibull fit of the remain probability.
         ax.plot(
             bin_mids,
-            lts_kww_fit_goodness[:, i],
-            label=label_kww,
-            color=color_kww,
-            marker=marker_kww,
+            lts_rp_wbl_fit_goodness[:, i],
+            label=label_rp_wbl,
+            color=color_rp_wbl,
+            marker=marker_rp_wbl,
             alpha=leap.plot.ALPHA,
         )
-        # Method 7 (Burr fit).
+        # Method 6: Burr Type XII fit of the remain probability.
         ax.plot(
             bin_mids,
-            lts_bur_fit_goodness[:, i],
-            label=label_bur,
-            color=color_bur,
-            marker=marker_bur,
+            lts_rp_brr_fit_goodness[:, i],
+            label=label_rp_brr,
+            color=color_rp_brr,
+            marker=marker_rp_brr,
+            alpha=leap.plot.ALPHA,
+        )
+        # Method 8: Weibull fit of the Kaplan-Meier estimator.
+        ax.plot(
+            bin_mids,
+            lts_km_wbl_fit_goodness[:, i],
+            label=label_km_wbl,
+            color=color_km_wbl,
+            marker=marker_km_wbl,
+            alpha=leap.plot.ALPHA,
+        )
+        # Method 9: Burr Type XII fit of the Kaplan-Meier estimator.
+        ax.plot(
+            bin_mids,
+            lts_km_brr_fit_goodness[:, i],
+            label=label_km_brr,
+            color=color_km_brr,
+            marker=marker_km_brr,
             alpha=leap.plot.ALPHA,
         )
         ax.set(xlabel=xlabel, ylabel=ylabel, xlim=xlim)
@@ -977,30 +1005,27 @@ with PdfPages(outfile_pdf) as pdf:
             ax.set_ylim(0, ylim[1])
         leap.plot.bins(ax, bins=bins)
         ax.xaxis.set_major_locator(MaxNLocator(integer=True))
-        legend = ax.legend(
-            title=legend_title, ncol=2, **mdtplt.LEGEND_KWARGS_XSMALL
+        legend = fig.legend(
+            title=legend_title,
+            ncol=2,
+            bbox_to_anchor=legend_bbox,
+            loc=legend_loc,
+            **mdtplt.LEGEND_KWARGS_XSMALL,
         )
         legend.get_title().set_multialignment("center")
         pdf.savefig()
-        yd_min, yd_max = get_ydata_min_max(ax)
-        if len(yd_min) > 0:
-            # Set y axis to log scale.
-            # Round y limits to next lower and higher power of ten.
-            ylim = ax.get_ylim()
-            ymin = 10 ** np.floor(np.log10(np.min(yd_min)))
-            if i == 0:
-                ymax = 2
-            else:
-                ymax = 10 ** np.ceil(np.log10(np.max(yd_max)))
-            ax.set_ylim(
-                ymin if np.isfinite(ymin) else None,
-                ymax if np.isfinite(ymax) else None,
-            )
+        yd_min, yd_max = leap.plot.get_ydata_min_max(ax)
+        if np.any(np.greater(yd_min, 0)):
+            # Log scale y.
+            ax.relim()
+            ax.autoscale()
             ax.set_yscale("log", base=10, subs=np.arange(2, 10))
+            ax.set_xlim(xlim)
             pdf.savefig()
         plt.close()
 
     # Plot end of fit region.
+    ylabel = "End of Fit Region / ns"
     fig, axs = plt.subplots(
         clear=True,
         nrows=2,
@@ -1014,20 +1039,53 @@ with PdfPages(outfile_pdf) as pdf:
         leap.plot.elctrds(
             ax, offset_left=elctrd_thk, offset_right=box_z - elctrd_thk
         )
-    ax.plot(bin_mids, (fit_stop - 1) * time_conv, marker="v")
-    ax.set_yscale("log", base=10, subs=np.arange(2, 10))
-    ax.set(xlabel=xlabel, ylabel="End of Fit Region / ns", xlim=xlim)
+    # Fit of remain probability.
+    ax.plot(
+        bin_mids,
+        (fit_stop_rp - 1) * time_conv,
+        label="ACF",
+        color=color_rp_wbl,
+        marker=marker_rp_wbl,
+    )
+    # Fit of Kaplan-Meier estimator.
+    ax.plot(
+        bin_mids,
+        (fit_stop_km - 1) * time_conv,
+        label="KM",
+        color=color_km_wbl,
+        marker=marker_km_wbl,
+    )
+    ax.set(xlabel=xlabel, ylabel=ylabel, xlim=xlim)
+    ylim = ax.get_ylim()
+    if ylim[0] < 0:
+        ax.set_ylim(0, ylim[1])
     leap.plot.bins(ax, bins=bins)
     ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+    legend = fig.legend(
+        title=legend_title,
+        ncol=2,
+        bbox_to_anchor=legend_bbox,
+        loc=legend_loc,
+        **mdtplt.LEGEND_KWARGS_XSMALL,
+    )
+    legend.get_title().set_multialignment("center")
     pdf.savefig()
+    yd_min, yd_max = leap.plot.get_ydata_min_max(ax)
+    if np.any(np.greater(yd_min, 0)):
+        # Log scale y.
+        ax.relim()
+        ax.autoscale()
+        ax.set_yscale("log", base=10, subs=np.arange(2, 10))
+        ax.set_xlim(xlim)
+        pdf.savefig()
     plt.close()
 
-    # Plot remain probabilities and Kohlrausch fits for each bin.
+    # Plot remain probabilities and Weibull fits for each state.
     fig, ax = plt.subplots(clear=True)
     ax.set_prop_cycle(color=colors)
-    for i, rp in enumerate(remain_props.T):
-        times_fit = times[fit_start[i] : fit_stop[i]]
-        fit = mdt.func.kww(times_fit, *popt_kww[i])
+    for i, rp in enumerate(remain_probs.T):
+        times_fit = times[fit_start_rp[i] : fit_stop_rp[i]]
+        fit = mdt.func.kww(times_fit, *popt_rp_wbl[i])
         lines = ax.plot(
             times,
             rp,
@@ -1038,14 +1096,14 @@ with PdfPages(outfile_pdf) as pdf:
         ax.plot(
             times_fit,
             fit,
-            label=label_kww if i == len(remain_props.T) - 1 else None,
+            label="Wbl Fit" if i == len(remain_probs.T) - 1 else None,
             linestyle="dashed",
             color=lines[0].get_color(),
             alpha=leap.plot.ALPHA,
         )
     ax.set(
         xlabel="Time / ns",
-        ylabel=r"Autocorrelation $C(t)$",
+        ylabel=ylabel_acf,
         xlim=(times[1], times[-1]),
         ylim=(0, 1),
     )
@@ -1059,14 +1117,13 @@ with PdfPages(outfile_pdf) as pdf:
     legend.get_title().set_multialignment("center")
     pdf.savefig()
     plt.close()
-
-    # Plot Kohlrausch fit residuals for each bin.
+    # Plot Weibull fit residuals (remain probability) for each state.
     fig, ax = plt.subplots(clear=True)
     ax.set_prop_cycle(color=colors)
-    for i, rp in enumerate(remain_props.T):
-        times_fit = times[fit_start[i] : fit_stop[i]]
-        fit = mdt.func.kww(times_fit, *popt_kww[i])
-        res = rp[fit_start[i] : fit_stop[i]] - fit
+    for i, rp in enumerate(remain_probs.T):
+        times_fit = times[fit_start_rp[i] : fit_stop_rp[i]]
+        fit = mdt.func.kww(times_fit, *popt_rp_wbl[i])
+        res = rp[fit_start_rp[i] : fit_stop_rp[i]] - fit
         ax.plot(
             times_fit,
             res,
@@ -1075,7 +1132,7 @@ with PdfPages(outfile_pdf) as pdf:
         )
     ax.set(
         xlabel="Time / ns",
-        ylabel="Kohlrausch Fit Residuals",
+        ylabel="ACF Weibull Fit Res.",
         xlim=(times[1], times[-1]),
     )
     ax.set_xscale("log", base=10, subs=np.arange(2, 10))
@@ -1089,15 +1146,15 @@ with PdfPages(outfile_pdf) as pdf:
     pdf.savefig()
     plt.close()
 
-    # Plot remain probabilities and Burr fits for each bin.
+    # Plot Kaplan-Meier estimates and Weibull fits for each state.
     fig, ax = plt.subplots(clear=True)
     ax.set_prop_cycle(color=colors)
-    for i, rp in enumerate(remain_props.T):
-        times_fit = times[fit_start[i] : fit_stop[i]]
-        fit = mdt.func.burr12_sf_alt(times_fit, *popt_bur[i])
+    for i, km in enumerate(km_surv_funcs.T):
+        times_fit = times[fit_start_km[i] : fit_stop_km[i]]
+        fit = mdt.func.kww(times_fit, *popt_km_wbl[i])
         lines = ax.plot(
             times,
-            rp,
+            km,
             label=r"$%d$" % (states[i] + 1),
             linewidth=1,
             alpha=leap.plot.ALPHA,
@@ -1105,14 +1162,14 @@ with PdfPages(outfile_pdf) as pdf:
         ax.plot(
             times_fit,
             fit,
-            label=label_bur if i == len(remain_props.T) - 1 else None,
+            label="Wbl Fit" if i == len(km_surv_funcs.T) - 1 else None,
             linestyle="dashed",
             color=lines[0].get_color(),
             alpha=leap.plot.ALPHA,
         )
     ax.set(
         xlabel="Time / ns",
-        ylabel=r"Autocorrelation $C(t)$",
+        ylabel=ylabel_km,
         xlim=(times[1], times[-1]),
         ylim=(0, 1),
     )
@@ -1126,14 +1183,13 @@ with PdfPages(outfile_pdf) as pdf:
     legend.get_title().set_multialignment("center")
     pdf.savefig()
     plt.close()
-
-    # Plot Burr fit residuals for each bin.
+    # Plot Weibull fit residuals (Kaplan-Meier) for each state.
     fig, ax = plt.subplots(clear=True)
     ax.set_prop_cycle(color=colors)
-    for i, rp in enumerate(remain_props.T):
-        times_fit = times[fit_start[i] : fit_stop[i]]
-        fit = mdt.func.burr12_sf_alt(times_fit, *popt_bur[i])
-        res = rp[fit_start[i] : fit_stop[i]] - fit
+    for i, km in enumerate(km_surv_funcs.T):
+        times_fit = times[fit_start_km[i] : fit_stop_km[i]]
+        fit = mdt.func.kww(times_fit, *popt_km_wbl[i])
+        res = km[fit_start_km[i] : fit_stop_km[i]] - fit
         ax.plot(
             times_fit,
             res,
@@ -1142,7 +1198,139 @@ with PdfPages(outfile_pdf) as pdf:
         )
     ax.set(
         xlabel="Time / ns",
-        ylabel="Burr Fit Residuals",
+        ylabel="KM Weibull Fit Res.",
+        xlim=(times[1], times[-1]),
+    )
+    ax.set_xscale("log", base=10, subs=np.arange(2, 10))
+    legend = ax.legend(
+        title=legend_title + "\nBin Number",
+        loc="lower right",
+        ncol=3,
+        **mdtplt.LEGEND_KWARGS_XSMALL,
+    )
+    legend.get_title().set_multialignment("center")
+    pdf.savefig()
+    plt.close()
+
+    # Plot remain probabilities and Burr fits for each state.
+    fig, ax = plt.subplots(clear=True)
+    ax.set_prop_cycle(color=colors)
+    for i, rp in enumerate(remain_probs.T):
+        times_fit = times[fit_start_rp[i] : fit_stop_rp[i]]
+        fit = mdt.func.burr12_sf_alt(times_fit, *popt_rp_brr[i])
+        lines = ax.plot(
+            times,
+            rp,
+            label=r"$%d$" % (states[i] + 1),
+            linewidth=1,
+            alpha=leap.plot.ALPHA,
+        )
+        ax.plot(
+            times_fit,
+            fit,
+            label="Burr Fit" if i == len(remain_probs.T) - 1 else None,
+            linestyle="dashed",
+            color=lines[0].get_color(),
+            alpha=leap.plot.ALPHA,
+        )
+    ax.set(
+        xlabel="Time / ns",
+        ylabel=ylabel_acf,
+        xlim=(times[1], times[-1]),
+        ylim=(0, 1),
+    )
+    ax.set_xscale("log", base=10, subs=np.arange(2, 10))
+    legend = ax.legend(
+        title=legend_title + "\nBin Number",
+        loc="upper right",
+        ncol=3,
+        **mdtplt.LEGEND_KWARGS_XSMALL,
+    )
+    legend.get_title().set_multialignment("center")
+    pdf.savefig()
+    plt.close()
+    # Plot Burr fit residuals (remain probability) for each state.
+    fig, ax = plt.subplots(clear=True)
+    ax.set_prop_cycle(color=colors)
+    for i, rp in enumerate(remain_probs.T):
+        times_fit = times[fit_start_rp[i] : fit_stop_rp[i]]
+        fit = mdt.func.burr12_sf_alt(times_fit, *popt_rp_brr[i])
+        res = rp[fit_start_rp[i] : fit_stop_rp[i]] - fit
+        ax.plot(
+            times_fit,
+            res,
+            label=r"$%d$" % (states[i] + 1),
+            alpha=leap.plot.ALPHA,
+        )
+    ax.set(
+        xlabel="Time / ns",
+        ylabel="ACF Burr Fit Res.",
+        xlim=(times[1], times[-1]),
+    )
+    ax.set_xscale("log", base=10, subs=np.arange(2, 10))
+    legend = ax.legend(
+        title=legend_title + "\nBin Number",
+        loc="lower right",
+        ncol=3,
+        **mdtplt.LEGEND_KWARGS_XSMALL,
+    )
+    legend.get_title().set_multialignment("center")
+    pdf.savefig()
+    plt.close()
+
+    # Plot Kaplan-Meier estimates and Burr fits for each state.
+    fig, ax = plt.subplots(clear=True)
+    ax.set_prop_cycle(color=colors)
+    for i, km in enumerate(km_surv_funcs.T):
+        times_fit = times[fit_start_km[i] : fit_stop_km[i]]
+        fit = mdt.func.burr12_sf_alt(times_fit, *popt_km_brr[i])
+        lines = ax.plot(
+            times,
+            km,
+            label=r"$%d$" % (states[i] + 1),
+            linewidth=1,
+            alpha=leap.plot.ALPHA,
+        )
+        ax.plot(
+            times_fit,
+            fit,
+            label="Burr Fit" if i == len(km_surv_funcs.T) - 1 else None,
+            linestyle="dashed",
+            color=lines[0].get_color(),
+            alpha=leap.plot.ALPHA,
+        )
+    ax.set(
+        xlabel="Time / ns",
+        ylabel=ylabel_km,
+        xlim=(times[1], times[-1]),
+        ylim=(0, 1),
+    )
+    ax.set_xscale("log", base=10, subs=np.arange(2, 10))
+    legend = ax.legend(
+        title=legend_title + "\nBin Number",
+        loc="upper right",
+        ncol=3,
+        **mdtplt.LEGEND_KWARGS_XSMALL,
+    )
+    legend.get_title().set_multialignment("center")
+    pdf.savefig()
+    plt.close()
+    # Plot Burr fit residuals (Kaplan-Meier) for each state.
+    fig, ax = plt.subplots(clear=True)
+    ax.set_prop_cycle(color=colors)
+    for i, km in enumerate(km_surv_funcs.T):
+        times_fit = times[fit_start_km[i] : fit_stop_km[i]]
+        fit = mdt.func.burr12_sf_alt(times_fit, *popt_km_brr[i])
+        res = km[fit_start_km[i] : fit_stop_km[i]] - fit
+        ax.plot(
+            times_fit,
+            res,
+            label=r"$%d$" % (states[i] + 1),
+            alpha=leap.plot.ALPHA,
+        )
+    ax.set(
+        xlabel="Time / ns",
+        ylabel="KM Burr Fit Res.",
         xlim=(times[1], times[-1]),
     )
     ax.set_xscale("log", base=10, subs=np.arange(2, 10))
