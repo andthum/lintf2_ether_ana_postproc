@@ -6,10 +6,18 @@ of LiTFSI-ether mixtures.
 
 
 # Local imports
-from . import clstr, io_handler, misc, plot, simulation, transfer
+from . import clstr, io_handler, lifetimes, misc, plot, simulation, transfer
 
 
-__all__ = ["clstr", "io_handler", "misc", "plot", "simulation", "transfer"]
+__all__ = [
+    "clstr",
+    "io_handler",
+    "lifetimes",
+    "misc",
+    "plot",
+    "simulation",
+    "transfer",
+]
 
 # Project metadata.
 # Keep in sync with `pyproject.toml` and `CITATION.cff`!
