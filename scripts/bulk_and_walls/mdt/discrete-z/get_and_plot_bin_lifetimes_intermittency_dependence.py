@@ -22,149 +22,9 @@ import mdtools.plot as mdtplt  # Load MDTools plot style  # noqa: F401
 import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.ticker import MaxNLocator
-from scipy import stats
 
 # First-party libraries
 import lintf2_ether_ana_postproc as leap
-
-
-def dist_characs(a, axis=-1, n_moms=4):
-    """
-    Estimate distribution characteristics from a given sample.
-
-    Parameters
-    ----------
-    a : array_like
-        Array of samples.
-    axis : int, optional
-        The axis along which to compute the distribution
-        characteristics.
-    n_moms : int, optional
-        Number of raw moments to calculate.
-
-    Returns
-    -------
-    characs : numpy.ndarray
-        Array of shape ``(10 + n_moms-1, )`` containing the following
-        distribution characteristics:
-
-            1. Sample mean (unbiased 1st raw moment)
-            2. Uncertainty of the sample mean (standard error)
-            3. Corrected sample standard deviation
-            4. Unbiased sample skewness (Fisher)
-            5. Unbiased sample excess kurtosis (according to Fisher)
-            6. Sample median
-            7. Non-parametric skewness
-            8. 2nd raw moment (biased estimate)
-            9. 3rd raw moment (biased estimate)
-            10. 4th raw moment (biased estimate)
-            11. Sample minimum
-            12. Sample maximum
-            13. Number of samples
-
-        The number of calculated raw moments depends on `n_moms`.  The
-        first raw moment (mean) is always calculated.
-    """
-    a = np.asarray(a)
-    nobs, min_max, mean, var, skew, kurt = stats.describe(
-        a, axis=axis, ddof=1, bias=False
-    )
-    median = np.median(a, axis=axis)
-    std = np.sqrt(var)
-    skew_non_param = np.divide((mean - median), std)
-    raw_moments = [np.mean(a**n) for n in range(2, n_moms + 1)]
-    characs = np.array(
-        [
-            mean,  # Sample mean.
-            np.divide(std, np.sqrt(nobs)),  # Uncertainty of sample mean
-            std,  # Corrected sample standard deviation.
-            skew,  # Unbiased sample skewness (Fisher).
-            kurt,  # Unbiased sample excess kurtosis (Fisher).
-            median,  # Median of the sample.
-            skew_non_param,  # Non-parametric skewness.
-            *raw_moments,  # 2nd to 4th raw moment (biased).
-            *min_max,  # Minimum and maximum value of the sample.
-            nobs,  # Number of observations (sample points).
-        ]
-    )
-    return characs
-
-
-def count_method(
-    dtrj, uncensored=False, n_moms=4, time_conv=1, states_check=None
-):
-    """
-    Estimate characteristics of the underlying lifetime distribution
-    from a sample of lifetimes.
-
-    Take a discrete trajectory and count the number of frames that a
-    given compound stays in a given state.  Estimate characteristics of
-    the underlying lifetime distribution from the obtained sample.
-
-    Parameters
-    ----------
-    dtrj : array_like
-        The discrete trajectory.  Array of shape ``(n, f)``, where ``n``
-        is the number of compounds and ``f`` is the number of frames.
-        The shape can also be ``(f,)``, in which case the array is
-        expanded to shape ``(1, f)``.   The elements of `dtrj` are
-        interpreted as the indices of the states in which a given
-        compound is at a given frame.
-    uncensored : bool, optional
-        If ``True`` only take into account uncensored states, i.e.
-        states whose start and end lie within the trajectory.  In other
-        words, discard the truncated (censored) states at the beginning
-        and end of the trajectory.  For these states the start/end time
-        is unknown.
-    n_moms : int, optional
-        Number of raw moments to calculate.
-    time_conv : scalar, optional
-        Time conversion factor.  All lifetimes are multiplied by this
-        factor.
-    states_check : array_like or None, optional
-        Expected state indices.  If provided, the state indices in the
-        discrete trajectory are checked against the provided state
-        indices.
-
-    Returns
-    -------
-    characs : numpy.ndarray
-        Estimated distribution characteristics.  See
-        :func:`dist_characs` for more details.
-    states : numpy.ndarray
-        The state indices.
-
-    Raises
-    ------
-    ValueError :
-        If the state indices in the given discrete trajectory are not
-        contained in the given array of state indices.
-    """
-    lts_per_state, states = mdt.dtrj.lifetimes_per_state(
-        dtrj, uncensored=uncensored, return_states=True
-    )
-    lts_per_state = [lts * time_conv for lts in lts_per_state]
-    if states_check is not None and not np.all(np.isin(states, states_check)):
-        raise ValueError(
-            "`states` ({}) is not fully contained in `states_check`"
-            " ({})".format(states, states_check)
-        )
-    if states_check is not None:
-        n_states = len(states_check)
-    else:
-        n_states = len(states)
-    characs = np.full((n_states, 9 + n_moms), np.nan, dtype=np.float64)
-    characs[:, -1] = 0  # Default number of observations.
-    for i, lts in enumerate(lts_per_state):
-        if len(lts) == 0:
-            if not uncensored:
-                raise ValueError(
-                    "`len(lts) == 0` although `uncensored` is False"
-                )
-            continue
-        else:
-            characs[i] = dist_characs(lts, n_moms=n_moms)
-    return characs, states
 
 
 # Input parameters.
@@ -294,7 +154,7 @@ for i, infile in enumerate(infiles):
     dtrj = mdt.fh.load_dtrj(infile)
     if args.method == "count_censored":
         # Method 1: Censored counting.
-        lts_characs, _states = count_method(
+        lts_characs, _states = leap.lifetimes.count_method(
             dtrj,
             uncensored=False,
             n_moms=n_moms,
@@ -303,7 +163,7 @@ for i, infile in enumerate(infiles):
         )
     elif args.method == "count_uncensored":
         # Method 2: Uncensored counting.
-        lts_characs, _states = count_method(
+        lts_characs, _states = leap.lifetimes.count_method(
             dtrj,
             uncensored=True,
             n_moms=n_moms,
@@ -351,12 +211,13 @@ if args.method in ("count_censored", "count_uncensored"):
     ylabels = (
         "Residence Time / ns",
         "Std. Dev. / ns",
+        "Coeff. of Variation",
         "Skewness",
         "Excess Kurtosis",
         "Median / ns",
         "Non-Parametric Skewness",
-        "Min. Lifetime / ns",
-        "Max. Lifetime / ns",
+        "Min. Residence / ns",
+        "Max. Residence / ns",
         "No. of Samples",
     )
 elif args.method == "rate":
@@ -375,6 +236,10 @@ legend_title = (
     + "Allowed Intermittence / ps"
 )
 height_ratios = (0.2, 1)
+
+color_exp = "tab:red"
+linestyle_exp = "dashed"
+label_exp = "Exp. Dist."
 
 cmap = plt.get_cmap()
 c_vals = np.arange(n_files)
@@ -406,24 +271,22 @@ with PdfPages(outfile) as pdf:
             leap.plot.elctrds(
                 ax, offset_left=elctrd_thk, offset_right=box_z - elctrd_thk
             )
-        if i == 2:
-            # Skewness of exponential distribution is 2.
+        if ylabel == "Coeff. of Variation":
+            y_exp = 1  # Coeff. of variation of exp. distribution.
+        elif ylabel == "Skewness":
+            y_exp = 2  # Skewness of exponential distribution.
+        elif ylabel == "Excess Kurtosis":
+            y_exp = 6  # Excess kurtosis of exponential distribution.
+        elif ylabel == "Non-Parametric Skewness":
+            y_exp = 1 - np.log(2)  # Non-param. skew. of exp. dist.
+        else:
+            y_exp = None
+        if y_exp is not None:
             ax.axhline(
-                y=2, color="tab:red", linestyle="dashed", label="Exp. Dist."
-            )
-        elif i == 3:
-            # Excess kurtosis of exponential distribution is 6.
-            ax.axhline(
-                y=6, color="tab:red", linestyle="dashed", label="Exp. Dist."
-            )
-        elif i == 5:
-            # Non-parametric skewness exponential distribution is
-            # 1 - ln(2).
-            ax.axhline(
-                y=1 - np.log(2),
-                color="tab:red",
-                linestyle="dashed",
-                label="Exp. Dist.",
+                y=y_exp,
+                color=color_exp,
+                linestyle=linestyle_exp,
+                label=label_exp,
             )
         for int_ix, lts_characs in enumerate(lts_characs_int):
             if args.method in ("count_censored", "count_uncensored"):
@@ -443,7 +306,11 @@ with PdfPages(outfile) as pdf:
                 )
         ax.set(xlabel=xlabel, ylabel=ylabel, xlim=xlim)
         ylim = ax.get_ylim()
-        if i not in (2, 3, 5) and ylim[0] < 0:
+        if ylim[0] < 0 and ylabel not in (
+            "Skewness",
+            "Excess Kurtosis",
+            "Non-Parametric Skewness",
+        ):
             ax.set_ylim(0, ylim[1])
         leap.plot.bins(ax, bins=bins)
         ax.xaxis.set_major_locator(MaxNLocator(integer=True))
@@ -460,6 +327,7 @@ with PdfPages(outfile) as pdf:
         ax.relim()
         ax.autoscale()
         ax.set_yscale("log", base=10, subs=np.arange(2, 10))
+        ax.set_xlim(xlim)
         pdf.savefig()
         plt.close()
 
