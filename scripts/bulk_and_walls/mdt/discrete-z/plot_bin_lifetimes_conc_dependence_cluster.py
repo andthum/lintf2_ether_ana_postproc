@@ -156,10 +156,12 @@ parser.add_argument(
         "count_censored",
         "count_uncensored",
         "rate",
-        "e",
-        "area",
-        "fit_kohlrausch",
-        "fit_burr",
+        "acf_numeric",
+        "acf_weibull",
+        "acf_burr",
+        "km_numeric",
+        "km_weibull",
+        "km_burr",
     ),
     help=(
         "The method used to calculate the residence times.  Default:"
@@ -173,8 +175,8 @@ parser.add_argument(
     action="store_true",
     help=(
         "Use the residence times calculated from the 'continuous' definition"
-        " of the remain probability function.  Meaningless for the methods"
-        " 'count_censored', 'count_uncensored' and 'rate'."
+        " of the remain probability function.  Only relevant for methods"
+        " starting with 'acf_*'."
     ),
 )
 parser.add_argument(
@@ -194,13 +196,16 @@ if args.n_clusters is not None and args.n_clusters <= 0:
         "--n-cluster ({}) must be a positive integer".format(args.n_clusters)
     )
 
-if args.continuous and args.method not in (
-    "count_censored",
-    "count_uncensored",
-    "rate",
-):
+if args.continuous and args.method.startswith("acf_"):
     con = "_continuous"
 else:
+    if args.continuous:
+        warnings.warn(
+            "'--continuous' will be ignored, because --method ({}) does not"
+            " start with 'acf_*'".format(args.method),
+            UserWarning,
+            stacklevel=2,
+        )
     con = ""
 
 settings = "pr_nvt423_nh"  # Simulation settings.
@@ -243,85 +248,127 @@ cols_lt_bins = (
     2,  # Upper bin edges [A].
 )
 ylabels += ("Residence Time / ns",)
-if args.method not in ("rate", "e"):
+if args.method != "rate":
     ylabels += (
         "Std. Dev. / ns",
+        "Coeff. of Variation",
         "Skewness",
         "Excess Kurtosis",
         "Median / ns",
+        "Non-Parametric Skewness",
     )
 if args.method in ("count_censored", "count_uncensored"):
     ylabels += (
-        "Min. Lifetime / ns",
-        "Max. Lifetime / ns",
+        "Min. Residence Time / ns",
+        "Max. Residence Time / ns",
         "No. of Samples",
         "Res. Time (Rate) / ns",
     )
+    # Column numbers for 'count_censored'.
     cols_lt_data = (
         7,  # Sample mean <t_cnt> [ns].
         8,  # Uncertainty of the sample mean (standard error) [ns^2].
         9,  # Corrected sample standard deviation [ns].
-        10,  # Unbiased sample skewness.
-        11,  # Unbiased sample excess kurtosis (Fisher).
-        12,  # Sample median [ns].
-        13,  # Sample minimum [ns].
-        14,  # Sample maximum [ns].
-        15,  # Number of observations/samples.
+        10,  # Corrected coefficient of variation.
+        11,  # Unbiased sample skewness.
+        12,  # Unbiased sample excess kurtosis (Fisher).
+        13,  # Sample median [ns].
+        14,  # Non-parametric skewness.
+        # 15-17  2nd-3rd raw moment.
+        18,  # Sample minimum [ns].
+        19,  # Sample maximum [ns].
+        20,  # Number of observations/samples.
     )
     if args.method == "count_uncensored":
+        # Shift the column numbers for 'count_censored' to obtain the
+        # correct column numbers for 'count_uncensored'.
         cols_lt_data = np.array(cols_lt_data)
-        cols_lt_data += len(cols_lt_data)
+        cols_lt_data += len(cols_lt_data) + 3  # +3 for raw moments.
         cols_lt_data = tuple(cols_lt_data)
     # Below we will check whether <t_cnt> is equal to <tau_k> within the
     # standard error.
-    cols_lt_data += (25,)  # Mean <tau_k> [ns].
+    cols_lt_data += (35,)  # Mean <tau_k> (rate method) [ns].
     col_lt_data_is_sd = [False for col in cols_lt_data]
     col_lt_data_is_sd[1] = True
 elif args.method == "rate":
-    cols_lt_data = (25,)  # Mean <tau_k> [ns].
+    cols_lt_data = (35,)  # Mean <tau_k> [ns].
     col_lt_data_is_sd = (False,)
-elif args.method == "e":
-    cols_lt_data = (26,)  # Mean <tau_e> [ns].
-    col_lt_data_is_sd = (False,)
-elif args.method == "area":
+elif args.method in ("acf_numeric", "km_numeric"):
+    # Column numbers for 'acf_numeric'.
     cols_lt_data = (
-        27,  # Mean <t_int> [ns].
-        28,  # Standard deviation [ns].
-        29,  # Skewness.
-        30,  # Excess kurtosis (Fisher).
-        31,  # Median [ns].
+        36,  # Mean <t_int> [ns].
+        37,  # Standard deviation [ns].
+        38,  # Coefficient of variation.
+        39,  # Skewness.
+        40,  # Excess kurtosis (Fisher).
+        41,  # Median [ns].
+        42,  # Non-parametric skewness.
+        # 43-45  2nd-3rd raw moment.
     )
+    if args.method == "km_numeric":
+        # Shift the column numbers for 'acf_numeric' to obtain the
+        # correct column numbers for 'km_numeric'.
+        cols_lt_data = np.array(cols_lt_data)
+        cols_lt_data += 46  # Column 82-37 + 1 = 46.
+        cols_lt_data = tuple(cols_lt_data)
     col_lt_data_is_sd = [False for col in cols_lt_data]
-elif args.method in ("fit_kohlrausch", "fit_burr"):
+elif args.method in ("acf_weibull", "acf_burr", "km_weibull", "km_burr"):
     ylabels += (
         r"Fit Parameter $\tau_0$ / ns",
         r"Fit Parameter $\beta$",
     )
+    # Column numbers for 'acf_weibull'.
     cols_lt_data = (
-        32,  # Mean <t_fit> [ns].
-        33,  # Standard deviation [ns].
-        34,  # Skewness.
-        35,  # Excess kurtosis (Fisher).
-        36,  # Median [ns].
-        37,  # Fit parameter tau0 [ns].
-        38,  # Standard deviation of tau0 [ns].
-        39,  # Fit parameter beta.
-        40,  # Standard deviation of beta.
-        41,  # Coefficient of determination of the fit (R^2 value).
-        42,  # Root-mean-square error (RMSE) of the fit.
+        46,  # Mean <t_fit> [ns].
+        47,  # Standard deviation [ns].
+        48,  # Coefficient of variation.
+        49,  # Skewness.
+        50,  # Excess kurtosis (Fisher).
+        51,  # Median [ns].
+        52,  # Non-parametric skewness
+        # 53-55  2nd-3rd raw moment.
+        56,  # Fit parameter tau0 [ns].
+        57,  # Standard deviation of tau0 [ns].
+        58,  # Fit parameter beta.
+        59,  # Standard deviation of beta.
+        60,  # Coefficient of determination of the fit (R^2 value).
+        61,  # Root-mean-square error (RMSE) of the fit.
     )
-    col_lt_data_is_sd_ix = [6, 8]
-    if args.method == "fit_burr":
+    col_lt_data_is_sd_ix = [8, 10]
+    if args.method == "acf_burr":
+        # Shift the column numbers for 'acf_weibull' to obtain the
+        # correct column numbers for 'acf_burr'.
         cols_lt_data = np.array(cols_lt_data)
-        cols_lt_data += len(cols_lt_data)
+        cols_lt_data += len(cols_lt_data) + 3  # +3 for raw moments.
         cols_lt_data = tuple(cols_lt_data)
         cols_lt_data += (
-            54,  # Coefficient of determination of the fit (R^2 value).
-            55,  # Root-mean-square error (RMSE) of the fit.
+            78,  # Coefficient of determination of the fit (R^2 value).
+            79,  # Root-mean-square error (RMSE) of the fit.
         )
-        col_lt_data_is_sd_ix = [6, 8, 10]
+        col_lt_data_is_sd_ix.append(12)
         ylabels += (r"Fit Parameter $\delta$",)
-    cols_lt_data += (57,)  # End of fit region [ns].
+    elif args.method == "km_weibull":
+        # Shift the column numbers for 'acf_weibull' to obtain the
+        # correct column numbers for 'km_weibull'.
+        cols_lt_data = np.array(cols_lt_data)
+        cols_lt_data += 46  # Column 92-47 + 1 = 46.
+        cols_lt_data = tuple(cols_lt_data)
+    elif args.method == "km_burr":
+        # Shift the column numbers for 'acf_weibull' to obtain the
+        # correct column numbers for 'km_burr'.
+        cols_lt_data = np.array(cols_lt_data)
+        cols_lt_data += 62  # Column 108-47 + 1 = 62.
+        cols_lt_data = tuple(cols_lt_data)
+        cols_lt_data += (
+            124,  # Coefficient of determination of the fit (R^2 value).
+            125,  # Root-mean-square error (RMSE) of the fit.
+        )
+        col_lt_data_is_sd_ix.append(12)
+        ylabels += (r"Fit Parameter $\delta$",)
+    if args.method in ("acf_weibull", "acf_burr"):
+        cols_lt_data += (81,)  # End of fit region [ns].
+    elif args.method in ("km_weibull", "km_burr"):
+        cols_lt_data += (127,)  # End of fit region [ns].
     col_lt_data_is_sd = np.array([False for col in cols_lt_data])
     col_lt_data_is_sd[col_lt_data_is_sd_ix] = True
     ylabels += (
@@ -581,28 +628,30 @@ if args.common_ylim:
         # Only common for conc dependence.
         ylims = [
             (0, 3.6),  # Peak positions [nm].
-            (None, None),  # Mean <tau> [ns].
+            (5e-3, 6e1),  # Mean <tau> [ns].
         ]
-        if args.method not in ("rate", "e"):
+        if args.method != "rate":
             ylims += [
-                (None, None),  # Standard deviation [ns].
-                (None, None),  # Skewness.
-                (None, None),  # Excess kurtosis (Fisher).
-                (None, None),  # Median [ns].
+                (5e-3, 2e2),  # Standard deviation [ns].
+                (0, 34),  # (0, 50),  # Coefficient of variation.
+                (1e0, 2e2),  # Skewness.
+                (4e0, 3e4),  # Excess kurtosis (Fisher).
+                (1e-3, 5e0),  # Median [ns].
+                (0, 0.56),  # Non-parametric skewness.
             ]
-        if args.method in ("count_censored", "count_uncensored"):
+        if args.method.startswith("count_"):
             ylims += (
-                (None, None),  # Sample minimum [ns].
-                (None, None),  # Sample maximum [ns].
-                (None, None),  # Number of observations/samples.
-                (None, None),  # Mean <tau_k> [ns].
+                (1e-3, 3e-3),  # Sample minimum [ns].
+                (1e-1, 2e3),  # Sample maximum [ns].
+                (8e2, 2e6),  # Number of observations/samples.
+                (5e-3, 6e1),  # Mean <tau_k> (rate method) [ns].
             )
-        elif args.method in ("fit_kohlrausch", "fit_burr"):
+        if args.method.endswith("_weibull") or args.method.endswith("_burr"):
             ylims += [
                 (None, None),  # Fit parameter tau0 [ns].
                 (None, None),  # Fit parameter beta.
             ]
-            if args.method == "fit_burr":
+            if args.method.endswith("_burr"):
                 ylims += [(None, None)]  # Fit parameter delta [ns].
             ylims += [
                 (None, None),  # Coefficient of determination (R^2).
@@ -626,26 +675,28 @@ logy = (
     False,  # Peak positions [nm].
     True,  # Mean <tau> [ns].
 )
-if args.method not in ("rate", "e"):
+if args.method != "rate":
     logy += (
         True,  # Standard deviation [ns].
+        False,  # Coefficient of variation.
         True,  # Skewness.
         True,  # Excess kurtosis (Fisher).
         True,  # Median [ns].
+        False,  # Non-parametric skewness.
     )
-if args.method in ("count_censored", "count_uncensored"):
+if args.method.startswith("count_"):
     logy += (
         False,  # Sample minimum [ns].
         True,  # Sample maximum [ns].
         True,  # Number of observations/samples.
         True,  # Mean <tau_k> [ns].
     )
-elif args.method in ("fit_kohlrausch", "fit_burr"):
+if args.method.endswith("_weibull") or args.method.endswith("_burr"):
     logy += (
         True,  # Fit parameter tau0 [ns].
         False,  # Fit parameter beta.
     )
-    if args.method == "fit_burr":
+    if args.method.endswith("_burr"):
         logy += (True,)  # Fit parameter delta [ns].
     logy += (
         False,  # Coefficient of determination of the fit (R^2 value).
@@ -670,6 +721,10 @@ if len(markers) != len(pk_pos_types):
         " ({})".format(len(markers), len(pk_pos_types))
     )
 
+color_exp = "tab:red"
+linestyle_exp = "dashed"
+label_exp = "Exp. Dist."
+
 cmap = plt.get_cmap()
 c_vals_sep = np.arange(n_clstrs_plot)
 c_norm_sep = n_clstrs_plot - 1
@@ -685,18 +740,25 @@ with PdfPages(outfile) as pdf:
             # Column contains a standard deviation.
             continue
         col_ix_data += 1
+        if ylabels[col_ix_data] == "Coeff. of Variation":
+            y_exp = 1  # Coeff. of variation of exp. distribution.
+        elif ylabels[col_ix_data] == "Skewness":
+            y_exp = 2  # Skewness of exponential distribution.
+        elif ylabels[col_ix_data] == "Excess Kurtosis":
+            y_exp = 6  # Excess kurtosis of exponential distribution.
+        elif ylabels[col_ix_data] == "Non-Parametric Skewness":
+            y_exp = 1 - np.log(2)  # Non-param. skew. of exp. dist.
+        else:
+            y_exp = None
 
         # Layers at left and right electrode combined in one plot.
         fig_comb, ax_comb = plt.subplots(clear=True)
-        if "skewness" in ylabels[col_ix_data].lower():
-            # Skewness of exponential distribution is 2.
+        if y_exp is not None:
             ax_comb.axhline(
-                y=2, color="black", linestyle="dashed", label="Exp. Dist."
-            )
-        elif "kurtosis" in ylabels[col_ix_data].lower():
-            # Excess kurtosis of exponential distribution is 6
-            ax_comb.axhline(
-                y=6, color="black", linestyle="dashed", label="Exp. Dist."
+                y=y_exp,
+                color=color_exp,
+                linestyle=linestyle_exp,
+                label=label_exp,
             )
 
         for pkt_ix, pkp_type in enumerate(pk_pos_types):
@@ -705,15 +767,12 @@ with PdfPages(outfile) as pdf:
             # Layers at left and right electrode in separate plots.
             fig_sep, ax_sep = plt.subplots(clear=True)
             ax_sep.set_prop_cycle(color=colors_sep)
-            if "skewness" in ylabels[col_ix_data].lower():
-                # Skewness of exponential distribution is 2.
+            if y_exp is not None:
                 ax_sep.axhline(
-                    y=2, color="black", linestyle="dashed", label="Exp. Dist."
-                )
-            elif "kurtosis" in ylabels[col_ix_data].lower():
-                # Excess kurtosis of exponential distribution is 6
-                ax_sep.axhline(
-                    y=6, color="black", linestyle="dashed", label="Exp. Dist."
+                    y=y_exp,
+                    color=color_exp,
+                    linestyle=linestyle_exp,
+                    label=label_exp,
                 )
 
             c_vals_comb = c_vals_sep + 0.5 * pkt_ix
