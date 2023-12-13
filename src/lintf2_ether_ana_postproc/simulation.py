@@ -2507,7 +2507,7 @@ def get_sim(sys_pat, set_pat, path_key, exclude_pat=None):
 
     Returns
     -------
-    Sim : lintf2_ether_ana_postproc.simulation.Simulations
+    Sim : lintf2_ether_ana_postproc.simulation.Simulation
         A :class:`~lintf2_ether_ana_postproc.simulation.Simulation`
         instance.
 
