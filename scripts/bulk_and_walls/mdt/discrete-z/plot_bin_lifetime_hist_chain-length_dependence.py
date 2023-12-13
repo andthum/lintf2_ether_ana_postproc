@@ -209,6 +209,9 @@ hists_bins = [None for sim in Sims.sims]
 # Lifetime histograms in the bulk and for each layer/free-energy minimum
 hists_bulk = [None for sim in Sims.sims]
 hists_layer = [[None for sim in Sims.sims] for pkp_type in pk_pos_types]
+hists_layer_state_ix = [
+    [None for sim in Sims.sims] for pkp_type in pk_pos_types
+]
 # Lower and upper bin edges used for generating the discrete trajectory
 # -> Free-energy maxima.
 # Don't confuse position bins (used to generate the discrete trajectory)
