@@ -21,29 +21,28 @@ from matplotlib.backends.backend_pdf import PdfPages
 import lintf2_ether_ana_postproc as leap
 
 
-def histogram(dtrj, use_states, uncensored=False):
+def histograms(dtrj_file, uncensored=False, intermittency=0):
     """TODO"""
-    dtrj = mdt.check.dtrj(dtrj)
+    # Read discrete trajectory.
+    dtrj = mdt.fh.load_dtrj(dtrj_file)
     n_frames = dtrj.shape[-1]
+
+    if intermittency > 0:
+        print("Correcting for intermittency...")
+        dtrj = mdt.dyn.correct_intermittency(
+            dtrj.T, args.intermittency, inplace=True, verbose=True
+        )
+        dtrj = dtrj.T
+
+    # Get list of all lifetimes for each state.
     lts_per_state, states = mdt.dtrj.lifetimes_per_state(
         dtrj, uncensored=uncensored, return_states=True
     )
+    states = states.astype(np.uint16)
+    n_states = len(states)
     del dtrj
 
-    use_states = np.unique(mdt.check.array(use_states, dim=1))
-    state_ix = np.flatnonzero(np.isin(states, use_states, assume_unique=True))
-    if len(state_ix) != len(use_states):
-        raise RuntimeError(
-            "Not all of the given states ({}) are contained in the discrete"
-            " trajectory ({})".format(use_states, states)
-        )
-    states = states[state_ix]
-    lts_per_state = [
-        lts_state for i, lts_state in enumerate(lts_per_state) if i in state_ix
-    ]
-    n_states = len(states)
-    del use_states, state_ix
-
+    # Calculate lifetime histogram for each state.
     # Binning is done in trajectory steps.
     # Linear bins.
     # step = 1
@@ -70,7 +69,8 @@ def histogram(dtrj, use_states, uncensored=False):
                 "The integral of the histogram ({}) is not close to"
                 " one".format(np.sum(hists[state_ix] * np.diff(bins)))
             )
-    return hists, bins
+    del lts_per_state, lts_state, _bins
+    return hists, bins.astype(np.float32), states
 
 
 # Input parameters.
@@ -96,6 +96,18 @@ parser.add_argument(
     help="Compound.  Default: %(default)s",
 )
 parser.add_argument(
+    "--prob-thresh",
+    type=float,
+    required=False,
+    default=0.5,
+    help=(
+        "Only calculate the lifetime histogram for layers/free-energy minima"
+        " whose prominence is at least such high that only 100*PROB_THRESH"
+        " percent of the particles have a higher 1-dimensional kinetic energy."
+        "  Default: %(default)s"
+    ),
+)
+parser.add_argument(
     "--uncensored",
     required=False,
     default=False,
@@ -117,6 +129,10 @@ parser.add_argument(
     ),
 )
 args = parser.parse_args()
+if args.prob_thresh < 0 or args.prob_thresh > 1:
+    raise ValueError(
+        "--prob-thresh ({}) must be between 0 and 1".format(args.prob_thresh)
+    )
 
 settings = "pr_nvt423_nh"  # Simulation settings.
 analysis = "discrete-z"  # Analysis name.
@@ -135,10 +151,19 @@ if args.uncensored:
     outfile += "_uncensored"
 if args.intermittency > 0:
     outfile += "_intermittency_%d" % args.intermittency
-outfile += ".pdf"
+outfile += "_pthresh_%.2f.pdf" % args.prob_thresh
 
 # Time conversion factor to convert from trajectory steps to ns.
 time_conv = 2e-3
+# The method to use for calculating the distance between clusters.  See
+# `scipy.cluster.hierarchy.linkage`.
+clstr_dist_method = "single"
+
+# Columns to read from the file containing the free-energy extrema
+# (output file of `scripts/gmx/density-z/get_free-energy_extrema.py`).
+pkp_col = 1  # Column that contains the peak positions in nm.
+cols_fe = (pkp_col,)  # Peak positions [nm].
+pkp_col_ix = cols_fe.index(pkp_col)
 
 
 print("Creating Simulation instance(s)...")
@@ -149,58 +174,145 @@ Sims = leap.simulation.get_sims(
 )
 
 
-print("Reading data and creating plot(s)...")
+print("Reading data...")
+# Read free-energy minima positions.
+prom_min = leap.misc.e_kin(args.prob_thresh)
+peak_pos, n_pks_max = leap.simulation.read_free_energy_extrema(
+    Sims, args.cmp, peak_type="minima", cols=cols_fe, prom_min=prom_min
+)
+
 # Get filenames of the discrete trajectories.
 file_suffix = analysis + "_" + args.cmp + "_dtrj.npz"
-infiles = leap.simulation.get_ana_files(Sims, analysis, tool, file_suffix)
-n_infiles = len(infiles)
+infiles_dtrj = leap.simulation.get_ana_files(Sims, analysis, tool, file_suffix)
+n_infiles_dtrj = len(infiles_dtrj)
 
-cmap = plt.get_cmap()
-c_vals = np.arange(n_infiles)
-c_norm = max(1, n_infiles - 1)
-c_vals_normed = c_vals / c_norm
-colors = cmap(c_vals_normed)
-
-mdt.fh.backup(outfile)
-with PdfPages(outfile) as pdf:
-    fig, ax = plt.subplots(clear=True)
-    ax.set_prop_cycle(color=colors)
-    for sim_ix, Sim in enumerate(Sims.sims):
-        # Read discrete trajectory from file.
-        dtrj = mdt.fh.load_dtrj(infiles[sim_ix])
-        if args.intermittency > 0:
-            print("Correcting for intermittency...")
-            dtrj = mdt.dyn.correct_intermittency(
-                dtrj.T, args.intermittency, inplace=True, verbose=True
-            )
-            dtrj = dtrj.T
-
-        states = np.unique(dtrj)
-        # Indices of the bins for which to plot the lifetime histogram.
-        use_states = np.array([states[len(states) // 2], states[-1]])
-        hists, bins = histogram(
-            dtrj, use_states=use_states, uncensored=args.uncensored
+# Get filenames of the files containing the bins used to generate the
+# discrete trajectories.
+file_suffix = analysis + "_" + args.cmp + "_bins.txt.gz"
+infiles_bins = leap.simulation.get_ana_files(Sims, analysis, tool, file_suffix)
+n_infiles_bins = len(infiles_bins)
+if n_infiles_bins != n_infiles_dtrj:
+    raise ValueError(
+        "`n_infiles_bins` ({}) != `n_infiles_dtrj` ({})".format(
+            n_infiles_bins, n_infiles_dtrj
         )
-        del dtrj
+    )
 
-        bin_mids = bins[1:] - np.diff(bins) / 2
-        unit_bins = True if np.allclose(np.diff(bins), 1) else False
-        for state_ix, hist in enumerate(hists):
-            state_num = use_states[state_ix]
-            if not unit_bins:
-                ax.stairs(
-                    hist,
-                    bins,
-                    fill=False,
-                    label=r"$%d$" % (state_num + 1),
-                    alpha=leap.plot.ALPHA,
-                    rasterized=False,
-                )
-            else:
-                ax.plot(
-                    bin_mids,
-                    hist,
-                    label=r"$%d$" % (state_num + 1),
-                    alpha=leap.plot.ALPHA,
-                    rasterized=False,
-                )
+# Assign state indices to layers/free-energy minima.
+Elctrd = leap.simulation.Electrode()
+elctrd_thk = Elctrd.ELCTRD_THK / 10  # A -> nm.
+bulk_start = Elctrd.BULK_START / 10  # A -> nm.
+
+pk_pos_types = ("left", "right")
+# Bin edges used for generating the lifetime histograms.
+hists_bins = [None for sim in Sims.sims]
+# Lifetime histograms in the bulk and for each layer/free-energy minimum
+hists_bulk = [None for sim in Sims.sims]
+hists_layer = [[None for sim in Sims.sims] for pkp_type in pk_pos_types]
+# Lower and upper bin edges used for generating the discrete trajectory
+# -> Free-energy maxima.
+# Don't confuse position bins (used to generate the discrete trajectory)
+# with time bins (used to generate the lifetime histograms).  Time bins
+# will always be prefixed with "hist_" or "hists_".
+bin_edges = [[[None, None] for sim in Sims.sims] for pkp_type in pk_pos_types]
+for sim_ix, Sim in enumerate(Sims.sims):
+    box_z = Sim.box[2] / 10  # A -> nm
+    bulk_region = Sim.bulk_region / 10  # A -> nm
+
+    # Calculate the lifetime histogram for each state from the discrete
+    # trajectory.
+    hists_sim, hists_bins_sim, states_sim = histograms(
+        infiles_dtrj[sim_ix],
+        uncensored=args.uncensored,
+        intermittency=args.intermittency,
+    )
+    hists_bulk[sim_ix] = hists_sim[len(states_sim) // 2]
+    hists_bins[sim_ix] = hists_bins_sim
+    del hists_bins_sim
+
+    # Read bin edges.
+    bins_sim = np.loadtxt(infiles_bins[sim_ix], dtype=np.float32)
+    bins_sim /= 10  # A -> nm.
+    # Lower and upper bin edges.
+    bin_edges_sim = np.column_stack([bins_sim[:-1], bins_sim[1:]])
+    bin_mids = bins_sim[1:] - np.diff(bins_sim) / 2
+    del bins_sim
+    # Select all bins for which lifetime histograms are available.
+    bin_edges_sim = bin_edges_sim[states_sim]
+    bin_mids = bin_mids[states_sim]
+    bin_is_left = bin_mids <= (box_z / 2)
+    del states_sim
+    if np.any(bin_mids <= elctrd_thk):
+        raise ValueError(
+            "Simulation: '{}'.\n"
+            "At least one bin lies within the left electrode.  Bin mid points:"
+            " {}.  Left electrode: {}".format(Sim.path, bin_mids, elctrd_thk)
+        )
+    if np.any(bin_mids >= box_z - elctrd_thk):
+        raise ValueError(
+            "Simulation: '{}'.\n"
+            "At least one bin lies within the right electrode.  Bin mid"
+            " points: {}.  Right electrode:"
+            " {}".format(Sim.path, bin_mids, box_z - elctrd_thk)
+        )
+    del bin_mids
+
+    for pkt_ix, pkp_type in enumerate(pk_pos_types):
+        if pkp_type == "left":
+            valid_bins = bin_is_left
+            hists_sim_valid = hists_sim[valid_bins]
+            bin_edges_sim_valid = bin_edges_sim[valid_bins]
+            # Convert absolute bin positions to distances to the
+            # electrodes.
+            bin_edges_sim_valid -= elctrd_thk
+            # Use lower bin edges for assigning bins to layers.
+            bin_edges_sim_valid_assign = bin_edges_sim_valid[:, 0]
+        elif pkp_type == "right":
+            valid_bins = ~bin_is_left
+            hists_sim_valid = hists_sim[valid_bins]
+            bin_edges_sim_valid = bin_edges_sim[valid_bins]
+            # Reverse the order of rows to sort bins as function of
+            # the distance to the electrodes in ascending order.
+            hists_sim_valid = hists_sim_valid[::-1]
+            bin_edges_sim_valid = bin_edges_sim_valid[::-1]
+            # Convert absolute bin positions to distances to the
+            # electrodes.
+            bin_edges_sim_valid += elctrd_thk
+            bin_edges_sim_valid -= box_z
+            bin_edges_sim_valid *= -1  # Ensure positive distance values
+            # Use upper bin edges for assigning bins to layers.
+            bin_edges_sim_valid_assign = bin_edges_sim_valid[:, 1]
+        else:
+            raise ValueError(
+                "Unknown peak position type: '{}'".format(pkp_type)
+            )
+        tolerance = 1e-6
+        if np.any(bin_edges_sim_valid_assign < -tolerance):
+            raise ValueError(
+                "Simulation: '{}'.\n".format(Sim.path)
+                + "Peak-position type: '{}'.\n".format(pkp_type)
+                + "At least one bin lies within the electrode.  This should"
+                + " not have happened.\n"
+                + "Bin edges: {}.\n".format(bin_edges_sim_valid_assign)
+                + "Electrode: 0"
+            )
+
+        # Assign bins to layers/free-energy minima.
+        pk_pos = peak_pos[pkp_col_ix][pkt_ix][sim_ix]
+        ix = np.searchsorted(pk_pos, bin_edges_sim_valid_assign)
+        # Bins that are sorted after the last free-energy minimum lie
+        # inside the bulk or near the opposite electrode and are
+        # therefore discarded.
+        layer_ix = ix[ix < len(pk_pos)]
+        if not np.array_equal(layer_ix, np.arange(len(pk_pos))):
+            raise ValueError(
+                "Simulation: '{}'.\n".format(Sim.path)
+                + "Peak-position type: '{}'.\n".format(pkp_type)
+                + "Could not match each layer/free-energy minimum to exactly"
+                + " one bin.\n"
+                + "Bin edges: {}.\n".format(bin_edges_sim_valid_assign)
+                + "Free-energy minima: {}.\n".format(pk_pos)
+                + "Assignment: {}".format(layer_ix)
+            )
+        hists_layer[pkt_ix][sim_ix] = hists_sim_valid[layer_ix]
+        bin_edges[pkt_ix][sim_ix] = bin_edges_sim_valid[layer_ix]
