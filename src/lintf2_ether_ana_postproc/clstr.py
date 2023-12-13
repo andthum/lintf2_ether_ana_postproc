@@ -462,15 +462,17 @@ def dists(data, clstr_ix, method="single"):
 
 def bin_indices(Sims, cmp="Li", prob_thresh=0.5):
     """
-    Assign bin indices to layers/free-energy minima and cluster them
-    based on the minima positions.
+    Assign the bin indices to clusters of free-energy extrema.
+
+    Assign the bin indices of the bins used to discretize the simulation
+    box along the z direction to clusters of free-energy extrema.
 
     Parameters
     ----------
     Sims : lintf2_ether_ana_postproc.simulation.Simulations
         The :class:`~lintf2_ether_ana_postproc.simulation.Simulations`
-        instance holding the simulations for which to assign and cluster
-        the bin indices.
+        instance holding the simulations for which to assign the bin
+        indices to clusters of free-energy extrema.
     cmp : {"Li", "NBT", "OBT", "OE"}
         The compound to consider.
     prob_thresh : float, optional
@@ -482,14 +484,50 @@ def bin_indices(Sims, cmp="Li", prob_thresh=0.5):
     -------
     TODO
     """
-    # Read free-energy minima positions.
+    Elctrd = leap.simulation.Electrode()
+    elctrd_thk = Elctrd.ELCTRD_THK / 10  # A -> nm.
+    bulk_start = Elctrd.BULK_START / 10  # A -> nm.
+
+    # Read free-energy peak positions from file.
     pkp_col = 1  # Column that contains the peak positions in nm.
     cols = (pkp_col,)
     pkp_col_ix = cols.index(pkp_col)
     prom_min = leap.misc.e_kin(prob_thresh)
     peak_pos, n_pks_max = leap.simulation.read_free_energy_extrema(
-        Sims, cmp, peak_type="minima", cols=cols, prom_min=prom_min
+        Sims, cmp, peak_type="maxima", cols=cols, prom_min=prom_min
     )
+
+    # Cluster peak positions.
+    (
+        peak_pos,
+        clstr_ix,
+        linkage_matrices,
+        n_clstrs,
+        n_pks_per_sim,
+        clstr_dist_thresh,
+    ) = leap.clstr.peak_pos(peak_pos, pkp_col_ix, return_dist_thresh=True)
+
+    # Sort clusters by ascending average peak position and get cluster
+    # boundaries.
+    clstr_bounds = [None for clstr_ix_pkt in clstr_ix]
+    for pkt_ix, clstr_ix_pkt in enumerate(clstr_ix):
+        _clstr_dists, clstr_ix[pkt_ix], bounds = leap.clstr.dists_succ(
+            peak_pos[pkp_col_ix][pkt_ix],
+            clstr_ix_pkt,
+            return_ix=True,
+            return_bounds=True,
+        )
+        clstr_bounds[pkt_ix] = np.append(bounds, bulk_start)
+
+    if np.any(n_clstrs < n_pks_max):
+        warnings.warn(
+            "Any `n_clstrs` ({}) < `n_pks_max` ({}).  This means different"
+            " peaks of the same simulation were assigned to the same cluster."
+            "  Try to decrease the threshold distance"
+            " ({})".format(n_clstrs, n_pks_max, clstr_dist_thresh),
+            RuntimeWarning,
+            stacklevel=2,
+        )
 
     # Get filenames of the files containing the bin edges in Angstrom.
     analysis = "density-z"
@@ -499,22 +537,20 @@ def bin_indices(Sims, cmp="Li", prob_thresh=0.5):
         Sims, analysis, tool, file_suffix
     )
 
-    # Assign bin indices to layers/free-energy minima.
-    Elctrd = leap.simulation.Electrode()
-    elctrd_thk = Elctrd.ELCTRD_THK / 10  # A -> nm.
-    bulk_start = Elctrd.BULK_START / 10  # A -> nm.
-
+    # Assign bin indices to clusters of free-energy extrema.
+    tolerance = 1e-6
     pk_pos_types = ("left", "right")
-    # Number of "columns" (i.e. data series that will be clustered).
-    n_cols = 5  # `peak_pos` and `bin_data`.
-    ydata = [
-        [[None for sim in Sims.sims] for pkp_type in pk_pos_types]
-        for col_ix in range(n_cols)
-    ]
+    bin_clstr_ix = [[None for sim in Sims.sims] for pkp_type in pk_pos_types]
     for sim_ix, Sim in enumerate(Sims.sims):
+        box_z = Sim.box[2] / 10  # A -> nm
+
         # Read bin edges.
         bins = np.loadtxt(infiles_bins[sim_ix], usecols=[0])
         bins /= 10  # A -> nm.
+        # Discard bin edges outside the region between the electrodes.
+        valid = bins > (elctrd_thk - tolerance)
+        valid &= bins < (box_z - elctrd_thk + tolerance)
+        bins = bins[valid]
         bin_edges_lower = bins[:-1]
         bin_edges_upper = bins[1:]
         bin_mids = bins[1:] - np.diff(bins) / 2
@@ -522,7 +558,6 @@ def bin_indices(Sims, cmp="Li", prob_thresh=0.5):
         bin_data = np.row_stack(
             [bin_ix, bin_mids, bin_edges_lower, bin_edges_upper]
         )
-        box_z = Sim.box[2] / 10  # A -> nm
         bin_is_left = bin_mids <= (box_z / 2)
         if np.any(bin_mids <= elctrd_thk):
             raise ValueError(
@@ -566,7 +601,6 @@ def bin_indices(Sims, cmp="Li", prob_thresh=0.5):
                 raise ValueError(
                     "Unknown peak position type: '{}'".format(pkp_type)
                 )
-            tolerance = 1e-6
             if np.any(bin_edges_sim_valid_assign < -tolerance):
                 raise ValueError(
                     "Simulation: '{}'.\n".format(Sim.path)
@@ -577,65 +611,39 @@ def bin_indices(Sims, cmp="Li", prob_thresh=0.5):
                     + "Electrode: 0"
                 )
 
-            # Assign bins to layers/free-energy minima.
-            pk_pos = peak_pos[pkp_col_ix][pkt_ix][sim_ix]
-            ix = np.searchsorted(pk_pos, bin_edges_sim_valid_assign)
-            # Bins that are sorted after the last free-energy minimum
-            # lie inside the bulk or near the opposite electrode and are
-            # therefore discarded.
-            layer_ix = ix[ix < len(pk_pos)]
-            if not np.array_equal(layer_ix, np.arange(len(pk_pos))):
-                raise ValueError(
-                    "Simulation: '{}'.\n".format(Sim.path)
-                    + "Peak-position type: '{}'.\n".format(pkp_type)
-                    + "Could not match each layer/free-energy minimum to"
-                    + " exactly one bin.\n"
-                    + "Bin edges: {}.\n".format(bin_edges_sim_valid_assign)
-                    + "Free-energy minima: {}.\n".format(pk_pos)
-                    + "Assignment: {}".format(layer_ix)
-                )
-            bin_data_valid = bin_data_valid[:, layer_ix]
+            clstr_bounds[pkt_ix]
+            print()
+            print("clstr_bounds[pkt_ix]         =", clstr_bounds[pkt_ix])
+            print(
+                "peak_pos[pkp_col_ix][pkt_ix] =", peak_pos[pkp_col_ix][pkt_ix]
+            )
+            print("clstr_ix[pkt_ix]             =", clstr_ix[pkt_ix])
+            print("bin_ix                       =", bin_data_valid[0])
+            print("bin_mids                     =", bin_data_valid[1])
+            print("bin_edges_lower              =", bin_data_valid[2])
+            print("bin_edges_upper              =", bin_data_valid[3])
 
-            ydata[pkp_col_ix][pkt_ix][sim_ix] = pk_pos
-            col_indices = np.arange(n_cols)
-            col_indices = np.delete(col_indices, pkp_col_ix)
-            for col_ix, bin_data_col_valid in zip(col_indices, bin_data_valid):
-                ydata[col_ix][pkt_ix][sim_ix] = bin_data_col_valid
+            # # Assign bins to layers/free-energy minima.
+            # pk_pos = peak_pos[pkp_col_ix][pkt_ix][sim_ix]
+            # ix = np.searchsorted(pk_pos, bin_edges_sim_valid_assign)
+            # # Bins that are sorted after the last free-energy minimum
+            # # lie inside the bulk or near the opposite electrode and are
+            # # therefore discarded.
+            # layer_ix = ix[ix < len(pk_pos)]
+            # if not np.array_equal(layer_ix, np.arange(len(pk_pos))):
+            #     raise ValueError(
+            #         "Simulation: '{}'.\n".format(Sim.path)
+            #         + "Peak-position type: '{}'.\n".format(pkp_type)
+            #         + "Could not match each layer/free-energy minimum to"
+            #         + " exactly one bin.\n"
+            #         + "Bin edges: {}.\n".format(bin_edges_sim_valid_assign)
+            #         + "Free-energy minima: {}.\n".format(pk_pos)
+            #         + "Assignment: {}".format(layer_ix)
+            #     )
+            # bin_data_valid = bin_data_valid[:, layer_ix]
 
-    # Cluster peak positions.
-    # The method to use for calculating the distance between clusters.
-    # See `scipy.cluster.hierarchy.linkage`.
-    clstr_dist_method = "single"
-    (
-        ydata,
-        clstr_ix,
-        linkage_matrices,
-        n_clstrs,
-        n_pks_per_sim,
-        clstr_dist_thresh,
-    ) = leap.clstr.peak_pos(
-        ydata, pkp_col_ix, return_dist_thresh=True, method=clstr_dist_method
-    )
-
-    # Sort clusters by ascending average peak position and get cluster
-    # boundaries.
-    clstr_bounds = [None for clstr_ix_pkt in clstr_ix]
-    for pkt_ix, clstr_ix_pkt in enumerate(clstr_ix):
-        _clstr_dists, clstr_ix[pkt_ix], bounds = leap.clstr.dists_succ(
-            ydata[pkp_col_ix][pkt_ix],
-            clstr_ix_pkt,
-            method=clstr_dist_method,
-            return_ix=True,
-            return_bounds=True,
-        )
-        clstr_bounds[pkt_ix] = np.append(bounds, bulk_start)
-
-    if np.any(n_clstrs < n_pks_max):
-        warnings.warn(
-            "Any `n_clstrs` ({}) < `n_pks_max` ({}).  This means different"
-            " peaks of the same simulation were assigned to the same cluster."
-            "  Try to decrease the threshold distance"
-            " ({})".format(n_clstrs, n_pks_max, clstr_dist_thresh),
-            RuntimeWarning,
-            stacklevel=2,
-        )
+            # ydata[pkp_col_ix][pkt_ix][sim_ix] = pk_pos
+            # col_indices = np.arange(n_cols)
+            # col_indices = np.delete(col_indices, pkp_col_ix)
+            # for col_ix, bin_data_col_valid in zip(col_indices, bin_data_valid):
+            #     ydata[col_ix][pkt_ix][sim_ix] = bin_data_col_valid
