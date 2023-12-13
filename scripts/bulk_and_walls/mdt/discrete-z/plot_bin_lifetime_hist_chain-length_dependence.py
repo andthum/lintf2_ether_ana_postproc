@@ -96,18 +96,6 @@ parser.add_argument(
     help="Compound.  Default: %(default)s",
 )
 parser.add_argument(
-    "--prob-thresh",
-    type=float,
-    required=False,
-    default=0.5,
-    help=(
-        "Only calculate the lifetime histogram for layers/free-energy minima"
-        " whose prominence is at least such high that only 100*PROB_THRESH"
-        " percent of the particles have a higher 1-dimensional kinetic energy."
-        "  Default: %(default)s"
-    ),
-)
-parser.add_argument(
     "--uncensored",
     required=False,
     default=False,
@@ -129,10 +117,6 @@ parser.add_argument(
     ),
 )
 args = parser.parse_args()
-if args.prob_thresh < 0 or args.prob_thresh > 1:
-    raise ValueError(
-        "--prob-thresh ({}) must be between 0 and 1".format(args.prob_thresh)
-    )
 
 settings = "pr_nvt423_nh"  # Simulation settings.
 analysis = "discrete-z"  # Analysis name.
@@ -151,19 +135,13 @@ if args.uncensored:
     outfile += "_uncensored"
 if args.intermittency > 0:
     outfile += "_intermittency_%d" % args.intermittency
-outfile += "_pthresh_%.2f.pdf" % args.prob_thresh
+outfile += ".pdf"
 
 # Time conversion factor to convert from trajectory steps to ns.
 time_conv = 2e-3
 # The method to use for calculating the distance between clusters.  See
 # `scipy.cluster.hierarchy.linkage`.
 clstr_dist_method = "single"
-
-# Columns to read from the file containing the free-energy extrema
-# (output file of `scripts/gmx/density-z/get_free-energy_extrema.py`).
-pkp_col = 1  # Column that contains the peak positions in nm.
-cols_fe = (pkp_col,)  # Peak positions [nm].
-pkp_col_ix = cols_fe.index(pkp_col)
 
 
 print("Creating Simulation instance(s)...")
@@ -175,12 +153,6 @@ Sims = leap.simulation.get_sims(
 
 
 print("Reading data...")
-# Read free-energy minima positions.
-prom_min = leap.misc.e_kin(args.prob_thresh)
-peak_pos, n_pks_max = leap.simulation.read_free_energy_extrema(
-    Sims, args.cmp, peak_type="minima", cols=cols_fe, prom_min=prom_min
-)
-
 # Get filenames of the discrete trajectories.
 file_suffix = analysis + "_" + args.cmp + "_dtrj.npz"
 infiles_dtrj = leap.simulation.get_ana_files(Sims, analysis, tool, file_suffix)
@@ -198,7 +170,6 @@ if n_infiles_bins != n_infiles_dtrj:
         )
     )
 
-# Assign state indices to layers/free-energy minima.
 Elctrd = leap.simulation.Electrode()
 elctrd_thk = Elctrd.ELCTRD_THK / 10  # A -> nm.
 bulk_start = Elctrd.BULK_START / 10  # A -> nm.
@@ -217,7 +188,13 @@ hists_layer_state_ix = [
 # Don't confuse position bins (used to generate the discrete trajectory)
 # with time bins (used to generate the lifetime histograms).  Time bins
 # will always be prefixed with "hist_" or "hists_".
-bin_edges = [[[None, None] for sim in Sims.sims] for pkp_type in pk_pos_types]
+bin_edges = [[None for sim in Sims.sims] for pkp_type in pk_pos_types]
+# Data to be clustered: Bin midpoints, Simulation indices, bin indices.
+n_data_clstr = 3
+data_clstr = [
+    [[None for sim in Sims.sims] for pkp_type in pk_pos_types]
+    for col_ix in range(n_data_clstr)
+]
 for sim_ix, Sim in enumerate(Sims.sims):
     box_z = Sim.box[2] / 10  # A -> nm
     bulk_region = Sim.bulk_region / 10  # A -> nm
@@ -229,93 +206,93 @@ for sim_ix, Sim in enumerate(Sims.sims):
         uncensored=args.uncensored,
         intermittency=args.intermittency,
     )
-    hists_bulk[sim_ix] = hists_sim[len(states_sim) // 2]
     hists_bins[sim_ix] = hists_bins_sim
+    hists_bulk[sim_ix] = hists_sim[len(states_sim) // 2]
     del hists_bins_sim
 
     # Read bin edges.
-    bins_sim = np.loadtxt(infiles_bins[sim_ix], dtype=np.float32)
-    bins_sim /= 10  # A -> nm.
-    # Lower and upper bin edges.
-    bin_edges_sim = np.column_stack([bins_sim[:-1], bins_sim[1:]])
-    bin_mids = bins_sim[1:] - np.diff(bins_sim) / 2
-    del bins_sim
+    bins = np.loadtxt(infiles_bins[sim_ix], dtype=np.float32)
+    if len(bins) - 1 < len(states_sim):
+        raise ValueError(
+            "Simulation: '{}'.\n".format(Sim.path)
+            + "The number of bins in the bin file is less than the number of"
+            + " states in the discrete trajectory.\n"
+            + "Bins:   {}.\n".format(bins)
+            + "States: {}.".format(states_sim)
+        )
+    bins /= 10  # A -> nm.
+    bin_edges_lower = bins[:-1]
+    bin_edges_upper = bins[1:]
+    bin_mids = bins[1:] - np.diff(bins) / 2
+    bin_data = np.column_stack([bin_edges_lower, bin_edges_upper, bin_mids])
+    del bin_edges_lower, bin_edges_upper, bin_mids
     # Select all bins for which lifetime histograms are available.
-    bin_edges_sim = bin_edges_sim[states_sim]
-    bin_mids = bin_mids[states_sim]
-    bin_is_left = bin_mids <= (box_z / 2)
-    del states_sim
-    if np.any(bin_mids <= elctrd_thk):
+    bin_data = bin_data[states_sim]
+    bin_is_left = bin_data[:, -1] <= (box_z / 2)
+    tolerance = 1e-6
+    if np.any(bin_data <= -tolerance):
         raise ValueError(
-            "Simulation: '{}'.\n"
-            "At least one bin lies within the left electrode.  Bin mid points:"
-            " {}.  Left electrode: {}".format(Sim.path, bin_mids, elctrd_thk)
+            "Simulation: '{}'.\n".format(Sim.path)
+            + "At least one bin edge is less than zero.\n"
+            + "Bin edges: {}.".format(bins)
         )
-    if np.any(bin_mids >= box_z - elctrd_thk):
+    if np.any(bin_data >= box_z + tolerance):
         raise ValueError(
-            "Simulation: '{}'.\n"
-            "At least one bin lies within the right electrode.  Bin mid"
-            " points: {}.  Right electrode:"
-            " {}".format(Sim.path, bin_mids, box_z - elctrd_thk)
+            "Simulation: '{}'.\n".format(Sim.path)
+            + "At least one bin edge is greater than the box length"
+            + " ({}).\n".format(box_z)
+            + "Bin edges: {}.".format(bins)
         )
-    del bin_mids
+    del bins
 
     for pkt_ix, pkp_type in enumerate(pk_pos_types):
         if pkp_type == "left":
             valid_bins = bin_is_left
             hists_sim_valid = hists_sim[valid_bins]
-            bin_edges_sim_valid = bin_edges_sim[valid_bins]
+            states_sim_valid = states_sim[valid_bins]
+            bin_data_valid = bin_data[valid_bins]
             # Convert absolute bin positions to distances to the
             # electrodes.
-            bin_edges_sim_valid -= elctrd_thk
-            # Use lower bin edges for assigning bins to layers.
-            bin_edges_sim_valid_assign = bin_edges_sim_valid[:, 0]
+            bin_data_valid -= elctrd_thk
         elif pkp_type == "right":
             valid_bins = ~bin_is_left
             hists_sim_valid = hists_sim[valid_bins]
-            bin_edges_sim_valid = bin_edges_sim[valid_bins]
-            # Reverse the order of rows to sort bins as function of
-            # the distance to the electrodes in ascending order.
+            states_sim_valid = states_sim[valid_bins]
+            bin_data_valid = bin_data[valid_bins]
+            # Reverse the order of rows to sort bins as function of the
+            # distance to the electrodes in ascending order.
             hists_sim_valid = hists_sim_valid[::-1]
-            bin_edges_sim_valid = bin_edges_sim_valid[::-1]
+            states_sim_valid = states_sim_valid[::-1]
+            bin_data_valid = bin_data_valid[::-1]
             # Convert absolute bin positions to distances to the
             # electrodes.
-            bin_edges_sim_valid += elctrd_thk
-            bin_edges_sim_valid -= box_z
-            bin_edges_sim_valid *= -1  # Ensure positive distance values
-            # Use upper bin edges for assigning bins to layers.
-            bin_edges_sim_valid_assign = bin_edges_sim_valid[:, 1]
+            bin_data_valid += elctrd_thk
+            bin_data_valid -= box_z
+            bin_data_valid *= -1  # Ensure positive distance values.
         else:
             raise ValueError(
                 "Unknown peak position type: '{}'".format(pkp_type)
             )
-        tolerance = 1e-6
-        if np.any(bin_edges_sim_valid_assign < -tolerance):
+        if np.any(bin_data_valid < -tolerance):
             raise ValueError(
                 "Simulation: '{}'.\n".format(Sim.path)
                 + "Peak-position type: '{}'.\n".format(pkp_type)
                 + "At least one bin lies within the electrode.  This should"
                 + " not have happened.\n"
-                + "Bin edges: {}.\n".format(bin_edges_sim_valid_assign)
+                + "Bin edges: {}.\n".format(bin_data_valid)
                 + "Electrode: 0"
             )
 
-        # Assign bins to layers/free-energy minima.
-        pk_pos = peak_pos[pkp_col_ix][pkt_ix][sim_ix]
-        ix = np.searchsorted(pk_pos, bin_edges_sim_valid_assign)
-        # Bins that are sorted after the last free-energy minimum lie
-        # inside the bulk or near the opposite electrode and are
-        # therefore discarded.
-        layer_ix = ix[ix < len(pk_pos)]
-        if not np.array_equal(layer_ix, np.arange(len(pk_pos))):
-            raise ValueError(
-                "Simulation: '{}'.\n".format(Sim.path)
-                + "Peak-position type: '{}'.\n".format(pkp_type)
-                + "Could not match each layer/free-energy minimum to exactly"
-                + " one bin.\n"
-                + "Bin edges: {}.\n".format(bin_edges_sim_valid_assign)
-                + "Free-energy minima: {}.\n".format(pk_pos)
-                + "Assignment: {}".format(layer_ix)
-            )
-        hists_layer[pkt_ix][sim_ix] = hists_sim_valid[layer_ix]
-        bin_edges[pkt_ix][sim_ix] = bin_edges_sim_valid[layer_ix]
+        hists_layer[pkt_ix][sim_ix] = hists_sim_valid
+        hists_layer_state_ix[pkt_ix][sim_ix] = states_sim_valid
+        bin_edges[pkt_ix][sim_ix] = bin_data_valid[:, :2]
+
+        n_states_valid = len(states_sim_valid)
+        data_clstr[0][pkt_ix][sim_ix] = bin_data_valid[:, -1]
+        data_clstr[1][pkt_ix][sim_ix] = np.full(
+            n_states_valid, sim_ix, dtype=np.uint16
+        )
+        data_clstr[2][pkt_ix][sim_ix] = states_sim_valid
+
+
+print("Clustering peak positions...")
