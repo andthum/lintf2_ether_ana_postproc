@@ -30,6 +30,8 @@ def legend_title(surfq_sign, position):
     ----------
     surfq_sign : {"+", "-", r"\pm"}
         The sign of the surface charge.
+    position : float or str
+        The position (distance to the electrode) of the peak cluster.
 
     Returns
     -------
@@ -366,6 +368,7 @@ ylabel = "PDF"
 xlim = (time_conv, 1e3)
 ylim = (1e-8, 1e0)
 
+legend_loc = "upper right"
 n_legend_cols = 1 + Sims.n_sims // (4 + 1)
 
 cmap = plt.get_cmap()
@@ -406,7 +409,7 @@ with PdfPages(outfile) as pdf:
     )
     legend = ax.legend(
         title=legend_title(r"\pm", "bulk"),
-        loc="upper right",
+        loc=legend_loc,
         ncol=n_legend_cols,
         **mdtplt.LEGEND_KWARGS_XSMALL,
     )
@@ -481,7 +484,7 @@ with PdfPages(outfile) as pdf:
             )
             legend = ax.legend(
                 title=legend_title(surfq_sign, clstr_position),
-                loc="best",
+                loc=legend_loc,
                 ncol=n_legend_cols,
                 **mdtplt.LEGEND_KWARGS_XSMALL,
             )
