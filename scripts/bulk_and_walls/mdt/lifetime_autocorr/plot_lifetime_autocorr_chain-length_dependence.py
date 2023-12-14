@@ -22,47 +22,6 @@ from scipy.optimize import curve_fit
 import lintf2_ether_ana_postproc as leap
 
 
-def fit_acf(times, acf, start=0, stop=-1):
-    r"""
-    Fit the linear autocorrelation function as function of the
-    logarithmic lag times with a straight line.
-
-    The obtained fit parameters are converted from the parameters of a
-    straight line to the parameters of a power law.
-
-    The fit is done assuming that the exponent of the power law is
-    small (:math:`| \epsilon | \ll 1`).  In this case the following
-    relation holds:
-
-    .. math::
-
-        y = a x^\epsilon
-          = a \exp\left[ \ln\left( x^\epsilon \right) \right]
-          = a \exp\left[ \epsilon \ln(x) \right]
-          \approx a \left[ 1 + \epsilon \ln(x) \right]
-          = a \epsilon \ln(x) + a
-
-    """
-    popt, pcov = curve_fit(
-        f=leap.misc.straight_line,
-        xdata=np.log(times[start:stop]),
-        ydata=acf[start:stop],
-        p0=(1e-3, 2),
-    )
-    perr = np.sqrt(np.diag(pcov))
-    # Convert straight-line parameters to the corresponding power-law
-    # parameters.
-    # Propagation of uncertainty.
-    # Std[A/B] =
-    #   |A/B| * sqrt{(Std[A]/A)^2 + (Std[B]/B)^2 - 2 Cov[A,b]/(AB)}
-    popt_0 = popt[0] / popt[1]
-    perr_0 = np.abs(popt_0)
-    perr_0 *= np.sqrt((perr[0] / popt[0]) ** 2 + (perr[1] / popt[1]) ** 2)
-    perr = np.array([perr_0, perr[1]])
-    popt = np.array([popt_0, popt[1]])
-    return popt, perr
-
-
 # Input parameters.
 parser = argparse.ArgumentParser(
     description=(
@@ -183,10 +142,32 @@ with PdfPages(outfile) as pdf:
         )
         if args.cmp == "Li-OE" and sim_ix == Sims.n_sims - 1:
             start, stop = leap.misc.find_nearest(times, [1e0, 2e1])
-            popt, perr = fit_acf(times, acf, start=start, stop=stop)
             times_fit = times[start:stop]
-            fit = leap.misc.power_law(times_fit, *popt)
-            ax.plot(times_fit, fit, color="black", linestyle="dashed")
+            popt, pcov = curve_fit(
+                f=leap.misc.straight_line,
+                xdata=np.log(times_fit),
+                ydata=acf[start:stop],
+                p0=(0.1, 2),
+            )
+            acf_fit = leap.misc.straight_line(np.log(times_fit), *popt)
+            ax.plot(
+                times_fit,
+                acf_fit,
+                color="black",
+                linestyle="dashed",
+                alpha=leap.plot.ALPHA,
+            )
+            ax.text(
+                times_fit[0],
+                acf_fit[0] + 0.01,
+                r"$%.2f \ln(t) + %.2f$" % tuple(popt),
+                rotation=-50,
+                rotation_mode="anchor",
+                transform_rotates_text=False,
+                horizontalalignment="left",
+                verticalalignment="bottom",
+                fontsize="small",
+            )
     ax.set_xscale("log", base=10, subs=np.arange(2, 10))
     ax.set(xlabel=xlabel, ylabel=ylabel, xlim=xlim, ylim=ylim)
     legend = ax.legend(
