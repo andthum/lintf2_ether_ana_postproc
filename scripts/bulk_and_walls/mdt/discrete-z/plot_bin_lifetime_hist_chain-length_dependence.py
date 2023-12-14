@@ -50,7 +50,7 @@ def legend_title(surfq_sign, position):
         + "\n"
     )
     if position == "bulk":
-        title += "Bulk\n"
+        title += "Bulk Region\n"
     else:
         title += r"Dist. to Electrode: $\sim %.2f$ nm" % position + "\n"
     title += r"$n_{EO}$"
@@ -76,8 +76,6 @@ def histograms(dtrj_file, uncensored=False, intermittency=0, time_conv=1):
     )
     states = states.astype(np.uint16)
     n_states = len(states)
-    if n_states == 0:
-        raise ValueError("`n_states` == 0")
     del dtrj
 
     # Calculate lifetime histogram for each state.
@@ -215,21 +213,19 @@ bulk_start = Elctrd.BULK_START / 10  # A -> nm.
 
 pk_pos_types = ("left", "right")
 # Bin edges used for generating the lifetime histograms.
+# Don't confuse position bins (used to generate the discrete trajectory)
+# with time bins (used to generate the lifetime histograms).  Time bins
+# will always be prefixed with "hist_" or "hists_".
 hists_bins = [None for sim in Sims.sims]
 # Lifetime histograms in the bulk and for each layer/free-energy minimum
 hists_bulk = [None for sim in Sims.sims]
 hists_layer = [[None for sim in Sims.sims] for pkp_type in pk_pos_types]
-hist_layer_states = [[None for sim in Sims.sims] for pkp_type in pk_pos_types]
+hists_layer_states = [[None for sim in Sims.sims] for pkp_type in pk_pos_types]
 n_states_max = [0 for pkp_type in pk_pos_types]
-# Lower and upper bin edges used for generating the discrete trajectory
-# -> Free-energy maxima.
-# Don't confuse position bins (used to generate the discrete trajectory)
-# with time bins (used to generate the lifetime histograms).  Time bins
-# will always be prefixed with "hist_" or "hists_".
-bin_edges = [[None for sim in Sims.sims] for pkp_type in pk_pos_types]
-# Data to be clustered: Bin midpoints, Simulation indices, bin indices.
+# Data to be clustered: Bin midpoints, Simulation indices,
+# state/bin indices.
 n_data_clstr = 3
-pkp_col_ix = 0
+bin_mid_ix = 0
 data_clstr = [
     [[None for sim in Sims.sims] for pkp_type in pk_pos_types]
     for col_ix in range(n_data_clstr)
@@ -249,6 +245,7 @@ for sim_ix, Sim in enumerate(Sims.sims):
 
     # Read bin edges.
     bins = np.loadtxt(infiles_bins[sim_ix], dtype=np.float32)
+    bins /= 10  # A -> nm.
     if len(bins) - 1 < len(states_sim):
         raise ValueError(
             "Simulation: '{}'.\n".format(Sim.path)
@@ -257,77 +254,75 @@ for sim_ix, Sim in enumerate(Sims.sims):
             + "Bins:   {}.\n".format(bins)
             + "States: {}.".format(states_sim)
         )
-    bins /= 10  # A -> nm.
-    bin_edges_lower = bins[:-1]
-    bin_edges_upper = bins[1:]
-    bin_mids = bins[1:] - np.diff(bins) / 2
-    bin_data = np.column_stack([bin_edges_lower, bin_edges_upper, bin_mids])
-    del bin_edges_lower, bin_edges_upper, bin_mids
-    # Select all bins for which lifetime histograms are available.
-    bin_data = bin_data[states_sim]
     box_z = Sim.box[2] / 10  # A -> nm
-    bin_is_left = bin_data[:, -1] <= (box_z / 2)
-    tolerance = 1e-6
-    if np.any(bin_data <= -tolerance):
+    tolerance = 1e-4
+    if np.any(bins <= -tolerance):
         raise ValueError(
             "Simulation: '{}'.\n".format(Sim.path)
             + "At least one bin edge is less than zero.\n"
             + "Bin edges: {}.".format(bins)
         )
-    if np.any(bin_data >= box_z + tolerance):
+    if np.any(bins >= box_z + tolerance):
         raise ValueError(
             "Simulation: '{}'.\n".format(Sim.path)
             + "At least one bin edge is greater than the box length"
             + " ({}).\n".format(box_z)
             + "Bin edges: {}.".format(bins)
         )
+    bin_mids = bins[1:] - np.diff(bins) / 2
     del bins
+    # Select all bins for which lifetime histograms are available.
+    bin_mids = bin_mids[states_sim]
+    bin_is_left = bin_mids <= (box_z / 2)
 
     for pkt_ix, pkp_type in enumerate(pk_pos_types):
         if pkp_type == "left":
             valid_bins = bin_is_left
+            # Discard bins in the bulk region.
+            valid_bins &= bin_mids < elctrd_thk + bulk_start
             hists_sim_valid = hists_sim[valid_bins]
             states_sim_valid = states_sim[valid_bins]
-            bin_data_valid = bin_data[valid_bins]
+            bin_mids_valid = bin_mids[valid_bins]
             # Convert absolute bin positions to distances to the
             # electrodes.
-            bin_data_valid -= elctrd_thk
+            bin_mids_valid -= elctrd_thk
         elif pkp_type == "right":
             valid_bins = ~bin_is_left
+            # Discard bins in the bulk region.
+            valid_bins &= bin_mids > box_z - elctrd_thk - bulk_start
             hists_sim_valid = hists_sim[valid_bins]
             states_sim_valid = states_sim[valid_bins]
-            bin_data_valid = bin_data[valid_bins]
+            bin_mids_valid = bin_mids[valid_bins]
             # Reverse the order of rows to sort bins as function of the
             # distance to the electrodes in ascending order.
             hists_sim_valid = hists_sim_valid[::-1]
             states_sim_valid = states_sim_valid[::-1]
-            bin_data_valid = bin_data_valid[::-1]
+            bin_mids_valid = bin_mids_valid[::-1]
             # Convert absolute bin positions to distances to the
             # electrodes.
-            bin_data_valid += elctrd_thk
-            bin_data_valid -= box_z
-            bin_data_valid *= -1  # Ensure positive distance values.
+            bin_mids_valid += elctrd_thk
+            bin_mids_valid -= box_z
+            bin_mids_valid *= -1  # Ensure positive distance values.
         else:
             raise ValueError(
                 "Unknown peak position type: '{}'".format(pkp_type)
             )
-        if np.any(bin_data_valid < -tolerance):
+        if np.any(bin_mids_valid <= 0):
             raise ValueError(
                 "Simulation: '{}'.\n".format(Sim.path)
                 + "Peak-position type: '{}'.\n".format(pkp_type)
                 + "At least one bin lies within the electrode.  This should"
                 + " not have happened.\n"
-                + "Bin edges: {}.\n".format(bin_data_valid)
+                + "Bin edges: {}.\n".format(bin_mids_valid)
                 + "Electrode: 0"
             )
 
         hists_layer[pkt_ix][sim_ix] = hists_sim_valid
-        hist_layer_states[pkt_ix][sim_ix] = states_sim_valid
-        bin_edges[pkt_ix][sim_ix] = bin_data_valid[:, :2]
+        hists_layer_states[pkt_ix][sim_ix] = states_sim_valid
 
         n_states_valid = len(states_sim_valid)
         n_states_max[pkt_ix] = max(n_states_valid, n_states_max[pkt_ix])
-        data_clstr[pkp_col_ix][pkt_ix][sim_ix] = bin_data_valid[:, -1]
+        data_clstr[bin_mid_ix][pkt_ix][sim_ix] = bin_mids_valid
         data_clstr[1][pkt_ix][sim_ix] = np.full(
             n_states_valid, sim_ix, dtype=np.uint16
         )
@@ -342,13 +337,13 @@ print("Clustering peak positions...")
     n_clstrs,
     n_pks_per_sim,
     clstr_dist_thresh,
-) = leap.clstr.peak_pos(data_clstr, pkp_col_ix, return_dist_thresh=True)
+) = leap.clstr.peak_pos(data_clstr, bin_mid_ix, return_dist_thresh=True)
 clstr_ix_unq = [np.unique(clstr_ix_pkt) for clstr_ix_pkt in clstr_ix]
 
 # Sort clusters by ascending average peak position.
 for pkt_ix, clstr_ix_pkt in enumerate(clstr_ix):
     _clstr_dists, clstr_ix[pkt_ix] = leap.clstr.dists_succ(
-        data_clstr[pkp_col_ix][pkt_ix],
+        data_clstr[bin_mid_ix][pkt_ix],
         clstr_ix_pkt,
         method=clstr_dist_method,
         return_ix=True,
@@ -369,7 +364,7 @@ print("Creating plot(s)...")
 xlabel = "Residence Time / ns"
 ylabel = "PDF"
 xlim = (time_conv, 1e3)
-ylim = (None, None)
+ylim = (1e-8, 1e0)
 
 n_legend_cols = 1 + Sims.n_sims // (4 + 1)
 
@@ -421,10 +416,6 @@ with PdfPages(outfile) as pdf:
 
     # Plot lifetime histograms for each bin.
     for pkt_ix, pkp_type in enumerate(pk_pos_types):
-        hists_layer_pkt = hists_layer[pkt_ix]
-        hist_layer_states_pkt = hist_layer_states[pkt_ix]
-        bin_edges_pkt = bin_edges[pkt_ix]
-
         if pkp_type == "left":
             surfq_sign = "+"
         elif pkp_type == "right":
@@ -439,7 +430,7 @@ with PdfPages(outfile) as pdf:
                     "No valid peaks for peak type '{}' and cluster index"
                     " {}".format(pkp_type, cix_pkt)
                 )
-            clstr_bin_mids = data_clstr[pkp_col_ix][pkt_ix][valid_clstr]
+            clstr_bin_mids = data_clstr[bin_mid_ix][pkt_ix][valid_clstr]
             clstr_position = np.mean(clstr_bin_mids)
             clstr_sim_indices = data_clstr[1][pkt_ix][valid_clstr]
             clstr_states = data_clstr[2][pkt_ix][valid_clstr]
@@ -454,14 +445,14 @@ with PdfPages(outfile) as pdf:
             fig, ax = plt.subplots(clear=True)
             for six, sim_ix in enumerate(clstr_sim_indices):
                 hist_state = clstr_states[six]
-                valid_hist = hist_layer_states_pkt[sim_ix] == hist_state
+                valid_hist = hists_layer_states[pkt_ix][sim_ix] == hist_state
                 if np.count_nonzero(valid_hist) != 1:
                     raise ValueError(
                         "The number of valid histograms in the current cluster"
                         " for the current simulation is not one"
                     )
                 hist_ix = np.flatnonzero(valid_hist)[0]
-                hist = hists_layer_pkt[sim_ix][hist_ix]
+                hist = hists_layer[pkt_ix][sim_ix][hist_ix]
                 ax.stairs(
                     hist,
                     hists_bins[sim_ix],
@@ -490,7 +481,7 @@ with PdfPages(outfile) as pdf:
             )
             legend = ax.legend(
                 title=legend_title(surfq_sign, clstr_position),
-                loc="upper right",
+                loc="best",
                 ncol=n_legend_cols,
                 **mdtplt.LEGEND_KWARGS_XSMALL,
             )
