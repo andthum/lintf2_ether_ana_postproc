@@ -17,12 +17,13 @@ import mdtools.plot as mdtplt  # Load MDTools plot style  # noqa: F401
 import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
+from scipy.cluster.hierarchy import dendrogram
 
 # First-party libraries
 import lintf2_ether_ana_postproc as leap
 
 
-def legend_title(surfq_sign, position):
+def legend_title(surfq_sign):
     r"""
     Create a legend title string.
 
@@ -30,8 +31,6 @@ def legend_title(surfq_sign, position):
     ----------
     surfq_sign : {"+", "-", r"\pm"}
         The sign of the surface charge.
-    position : float or str
-        The position (distance to the electrode) of the peak cluster.
 
     Returns
     -------
@@ -44,19 +43,13 @@ def legend_title(surfq_sign, position):
     """
     if surfq_sign not in ("+", "-", r"\pm"):
         raise ValueError("Unknown `surfq_sign`: '{}'".format(surfq_sign))
-    title = (
+    return (
         r"$\sigma_s = "
         + surfq_sign
         + r" %.2f$ $e$/nm$^2$, " % Sims.surfqs[0]
         + r"$r = %.2f$" % Sims.Li_O_ratios[0]
         + "\n"
     )
-    if position == "bulk":
-        title += "Bulk Region\n"
-    else:
-        title += r"Dist. to Electrode: $\sim %.2f$ nm" % position + "\n"
-    title += r"$n_{EO}$"
-    return title
 
 
 def histograms(dtrj_file, uncensored=False, intermittency=0, time_conv=1):
@@ -392,6 +385,22 @@ if np.any(n_clstrs < n_states_max):
         stacklevel=2,
     )
 
+xdata = [None for n_pks_per_sim_pkt in n_pks_per_sim]
+for pkt_ix, n_pks_per_sim_pkt in enumerate(n_pks_per_sim):
+    if np.max(n_pks_per_sim_pkt) != n_states_max[pkt_ix]:
+        raise ValueError(
+            "`np.max(n_pks_per_sim[{}])` ({}) != `n_states_max[{}]` ({})."
+            "  This should not have happened".format(
+                pkt_ix, np.max(n_pks_per_sim_pkt), pkt_ix, n_states_max[pkt_ix]
+            )
+        )
+    xdata[pkt_ix] = [
+        Sims.O_per_chain[sim_ix]
+        for sim_ix, n_pks_sim in enumerate(n_pks_per_sim_pkt)
+        for _ in range(n_pks_sim)
+    ]
+    xdata[pkt_ix] = np.array(xdata[pkt_ix])
+
 
 print("Creating plot(s)...")
 xlabel = "Residence Time / ns"
@@ -399,6 +408,7 @@ ylabel = "PDF"
 xlim = (time_conv, 1e3)
 ylim = (1e-8, 1e0)
 
+legend_title_suffix = "\n" + r"$n_{EO}$"
 legend_loc = "upper right"
 n_legend_cols = 1 + Sims.n_sims // (4 + 1)
 
@@ -438,8 +448,11 @@ with PdfPages(outfile) as pdf:
         xlim=xlim,
         ylim=ylim,
     )
+    legend_title_pdf = (
+        legend_title(r"\pm") + "Bulk Region" + legend_title_suffix
+    )
     legend = ax.legend(
-        title=legend_title(r"\pm", "bulk"),
+        title=legend_title_pdf,
         loc=legend_loc,
         ncol=n_legend_cols,
         **mdtplt.LEGEND_KWARGS_XSMALL,
@@ -451,9 +464,9 @@ with PdfPages(outfile) as pdf:
     # Plot lifetime histograms for each bin.
     for pkt_ix, pkp_type in enumerate(pk_pos_types):
         if pkp_type == "left":
-            surfq_sign = "+"
+            legend_title_pdf_base = legend_title("+")
         elif pkp_type == "right":
-            surfq_sign = "-"
+            legend_title_pdf_base = legend_title("-")
         else:
             raise ValueError("Unknown `pkp_type`: '{}'".format(pkp_type))
 
@@ -513,8 +526,16 @@ with PdfPages(outfile) as pdf:
                 xlim=xlim,
                 ylim=ylim,
             )
+            legend_title_pdf = (
+                legend_title_pdf_base
+                # + r"$F_{"
+                # + leap.plot.ATOM_TYPE2DISPLAY_NAME[args.cmp]
+                # + r"}$ Minimum $\sim %.2f$ nm" % clstr_position
+                + r"Dist. to Electrode $\sim %.2f$ nm" % clstr_position
+                + legend_title_suffix
+            )
             legend = ax.legend(
-                title=legend_title(surfq_sign, clstr_position),
+                title=legend_title_pdf,
                 loc=legend_loc,
                 ncol=n_legend_cols,
                 **mdtplt.LEGEND_KWARGS_XSMALL,
@@ -522,6 +543,105 @@ with PdfPages(outfile) as pdf:
             legend.get_title().set_multialignment("center")
             pdf.savefig()
             plt.close()
+
+    # Plot clustering results.
+    xlabel = r"Ether Oxygens per Chain $n_{EO}$"
+    ylabel = "Distance to Electrode / nm"
+    xlim = (1, 200)
+    ylim = (0, bulk_start)
+    legend_title_suffix = "Bin Positions / nm"
+    markers = ("<", ">")
+    for pkt_ix, pkp_type in enumerate(pk_pos_types):
+        if pkp_type == "left":
+            legend_title_clstrng = legend_title("+")
+        elif pkp_type == "right":
+            legend_title_clstrng = legend_title("-")
+        else:
+            raise ValueError("Unknown `pkp_type`: '{}'".format(pkp_type))
+        cmap_norm = plt.Normalize(vmin=0, vmax=np.max(n_clstrs) - 1)
+
+        # Dendrogram.
+        fig, ax = plt.subplots(clear=True)
+        dendrogram(
+            linkage_matrices[pkt_ix],
+            ax=ax,
+            distance_sort="ascending",
+            color_threshold=clstr_dist_thresh[pkt_ix],
+        )
+        ax.axhline(
+            clstr_dist_thresh[pkt_ix],
+            color="tab:gray",
+            linestyle="dashed",
+            label=r"Threshold $%.2f$ nm" % clstr_dist_thresh[pkt_ix],
+        )
+        ax.set(xlabel="Bin Number", ylabel="Bin Distance / nm", ylim=(0, None))
+        legend = ax.legend(
+            title=legend_title_clstrng + "Bins",
+            loc="best",
+            **mdtplt.LEGEND_KWARGS_XSMALL,
+        )
+        legend.get_title().set_multialignment("center")
+        pdf.savefig()
+        plt.close()
+
+        # Scatter plot: Bin Positions vs. Bin Positions.
+        fig, ax = plt.subplots(clear=True)
+        for cix_pkt in clstr_ix_unq[pkt_ix]:
+            valid_clstr = clstr_ix[pkt_ix] == cix_pkt
+            if not np.any(valid_clstr):
+                raise ValueError(
+                    "No valid bins for bin type '{}' and cluster index"
+                    " {}".format(pkp_type, cix_pkt)
+                )
+            clstr_bin_mids = data_clstr[bin_mid_ix][pkt_ix][valid_clstr]
+            clstr_position = np.mean(clstr_bin_mids)
+            ax.scatter(
+                clstr_bin_mids,
+                clstr_bin_mids,
+                color=cmap(cmap_norm(cix_pkt)),
+                marker=markers[pkt_ix],
+                label=r"$\sim %.2f$" % clstr_position,
+            )
+        ax.set(xlabel=ylabel, ylabel=ylabel, xlim=ylim, ylim=ylim)
+        legend = ax.legend(
+            title=legend_title_clstrng + legend_title_suffix,
+            ncol=2,
+            loc="upper left",
+            **mdtplt.LEGEND_KWARGS_XSMALL,
+        )
+        legend.get_title().set_multialignment("center")
+        pdf.savefig()
+        plt.close()
+
+        # Scatter plot: Bin Positions vs. `xdata`.
+        fig, ax = plt.subplots(clear=True)
+        for cix_pkt in clstr_ix_unq[pkt_ix]:
+            valid_clstr = clstr_ix[pkt_ix] == cix_pkt
+            if not np.any(valid_clstr):
+                raise ValueError(
+                    "No valid bins for bin type '{}' and cluster index"
+                    " {}".format(pkp_type, cix_pkt)
+                )
+            clstr_bin_mids = data_clstr[bin_mid_ix][pkt_ix][valid_clstr]
+            clstr_position = np.mean(clstr_bin_mids)
+            ax.scatter(
+                xdata[pkt_ix][valid_clstr],
+                clstr_bin_mids,
+                color=cmap(cmap_norm(cix_pkt)),
+                marker=markers[pkt_ix],
+                label=r"$\sim %.2f$" % clstr_position,
+            )
+        ax.set_xscale("log", base=10, subs=np.arange(2, 10))
+        ax.set(xlabel=xlabel, ylabel=ylabel, xlim=xlim, ylim=ylim)
+        legend = ax.legend(
+            title=legend_title_clstrng + legend_title_suffix,
+            ncol=2,
+            loc="best",
+            **mdtplt.LEGEND_KWARGS_XSMALL,
+        )
+        legend.get_title().set_multialignment("center")
+        pdf.savefig()
+        plt.close()
 
 print("Created {}".format(outfile))
 print("Done")
