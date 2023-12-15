@@ -53,90 +53,6 @@ def legend_title(surfq_sign):
     )
 
 
-def histograms(dtrj_file, uncensored=False, intermittency=0, time_conv=1):
-    """
-    Calculate the lifetime histogram for each state in a discrete
-    trajectory.
-
-    Parameters
-    ----------
-    dtrj_file : str or bytes or os.PathLike
-        The filename of the discrete trajectory.
-    uncensored : bool, optional
-        If ``True`` only take into account uncensored states, i.e.
-        states whose start and end lie within the trajectory.  In other
-        words, discard the truncated (censored) states at the beginning
-        and end of the trajectory.  For these states the start/end time
-        is unknown.
-    intermittency : int, optional
-        Maximum number of frames a compound is allowed to leave its
-        state while still being considered to be in this state provided
-        that it returns to this state after the given number of frames.
-    time_conv : float, optional
-        Time conversion factor to convert trajectory steps to a physical
-        time unit (like ns).
-
-    Returns
-    -------
-    hists : numpy.ndarray
-        Array of histograms (one for each state in the discrete
-        trajectory).
-    bins : numpy.ndarray
-        Bin edges used to generate the histograms.
-    states : numpy.ndarray
-        Array containing the state indices.
-    """
-    # Read discrete trajectory.
-    dtrj = mdt.fh.load_dtrj(dtrj_file)
-    n_frames = dtrj.shape[-1]
-
-    if intermittency > 0:
-        print("Correcting for intermittency...")
-        dtrj = mdt.dyn.correct_intermittency(
-            dtrj.T, args.intermittency, inplace=True, verbose=True
-        )
-        dtrj = dtrj.T
-
-    # Get list of all lifetimes for each state.
-    lts_per_state, states = mdt.dtrj.lifetimes_per_state(
-        dtrj, uncensored=uncensored, return_states=True
-    )
-    states = states.astype(np.uint16)
-    n_states = len(states)
-    del dtrj
-
-    # Calculate lifetime histogram for each state.
-    # Binning is done in trajectory steps.
-    # Linear bins.
-    # step = 1
-    # bins = np.arange(1, n_frames, step, dtype=np.float64)
-    # Logarithmic bins.
-    stop = int(np.ceil(np.log2(n_frames))) + 1
-    bins = np.logspace(0, stop, stop + 1, base=2, dtype=np.float64)
-    bins -= 0.5
-    hists = np.full((n_states, len(bins) - 1), np.nan, dtype=np.float32)
-    for state_ix, lts_state in enumerate(lts_per_state):
-        if np.any(lts_state < bins[0]) or np.any(lts_state > bins[-1]):
-            raise ValueError(
-                "At least one lifetime lies outside the binned region"
-            )
-        hists[state_ix], _bins = np.histogram(
-            lts_state, bins=bins, density=True
-        )
-        if not np.allclose(_bins, bins, rtol=0):
-            raise ValueError(
-                "`_bins` != `bins`.  This should not have happened"
-            )
-        if not np.isclose(np.sum(hists[state_ix] * np.diff(bins)), 1):
-            raise ValueError(
-                "The integral of the histogram ({}) is not close to"
-                " one".format(np.sum(hists[state_ix] * np.diff(bins)))
-            )
-    del lts_per_state, lts_state, _bins
-    bins *= time_conv
-    return hists, bins.astype(np.float32), states
-
-
 # Input parameters.
 parser = argparse.ArgumentParser(
     description=(
@@ -260,7 +176,7 @@ data_clstr = [
 for sim_ix, Sim in enumerate(Sims.sims):
     # Calculate the lifetime histogram for each state from the discrete
     # trajectory.
-    hists_sim, hists_bins_sim, states_sim = histograms(
+    hists_sim, hists_bins_sim, states_sim = leap.lifetimes.histograms(
         infiles_dtrj[sim_ix],
         uncensored=args.uncensored,
         intermittency=args.intermittency,
