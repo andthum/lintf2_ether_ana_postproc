@@ -18,6 +18,7 @@ import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 from scipy.cluster.hierarchy import dendrogram
+from scipy.optimize import curve_fit
 
 # First-party libraries
 import lintf2_ether_ana_postproc as leap
@@ -406,10 +407,10 @@ print("Creating plot(s)...")
 xlabel = "Residence Time / ns"
 ylabel = "PDF"
 xlim = (time_conv, 1e3)
-ylim = (1e-8, 1e0)
+ylim = (1e-9, 1e0)
 
 legend_title_suffix = "\n" + r"$n_{EO}$"
-legend_loc = "upper right"
+legend_loc = "best"
 n_legend_cols = 1 + Sims.n_sims // (4 + 1)
 
 cmap = plt.get_cmap()
@@ -440,6 +441,40 @@ with PdfPages(outfile) as pdf:
         #     alpha=leap.plot.ALPHA,
         #     rasterized=False,
         # )
+        if Sims.O_per_chain[sim_ix] == 64:
+            # Fit histogram by power law.
+            start, stop = 0, 10
+            hist_fit = hist[start:stop]
+            hist_bin_mids_fit = np.copy(hists_bins[sim_ix][1:])
+            hist_bin_mids_fit -= np.diff(hists_bins[sim_ix]) / 2
+            hist_bin_mids_fit = hist_bin_mids_fit[start:stop]
+            popt, pcov = curve_fit(
+                f=leap.misc.straight_line,
+                xdata=np.log(hist_bin_mids_fit),
+                ydata=np.log(hist_fit),
+                p0=(-1.5, np.log(hist_fit[0])),
+            )
+            hist_fit = leap.misc.power_law(
+                hist_bin_mids_fit, popt[0], np.exp(popt[1])
+            )
+    ax.plot(
+        hist_bin_mids_fit,
+        hist_fit,
+        color="black",
+        linestyle="dashed",
+        alpha=leap.plot.ALPHA,
+    )
+    ax.text(
+        hist_bin_mids_fit[1] / 1.2,
+        hist_fit[1] * 1.3,
+        r"$\propto t^{%.2f}$" % popt[0],
+        # rotation=np.rad2deg(np.arctan(popt[0])) / 1.5,
+        rotation_mode="anchor",
+        transform_rotates_text=False,
+        horizontalalignment="left",
+        verticalalignment="bottom",
+        fontsize="small",
+    )
     ax.set_xscale("log", base=10, subs=np.arange(2, 10))
     ax.set_yscale("log", base=10, subs=np.arange(2, 10))
     ax.set(
@@ -518,6 +553,25 @@ with PdfPages(outfile) as pdf:
                 #     alpha=leap.plot.ALPHA,
                 #     rasterized=False,
                 # )
+            # Plot Fit of bulk histogram.
+            ax.plot(
+                hist_bin_mids_fit,
+                hist_fit,
+                color="black",
+                linestyle="dashed",
+                alpha=leap.plot.ALPHA,
+            )
+            ax.text(
+                hist_bin_mids_fit[1] / 1.2,
+                hist_fit[1] * 1.3,
+                r"$\propto t^{%.2f}$" % popt[0],
+                # rotation=np.rad2deg(np.arctan(popt[0])) / 1.5,
+                rotation_mode="anchor",
+                transform_rotates_text=False,
+                horizontalalignment="left",
+                verticalalignment="bottom",
+                fontsize="small",
+            )
             ax.set_xscale("log", base=10, subs=np.arange(2, 10))
             ax.set_yscale("log", base=10, subs=np.arange(2, 10))
             ax.set(
