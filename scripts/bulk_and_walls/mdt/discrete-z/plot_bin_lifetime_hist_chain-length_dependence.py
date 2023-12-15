@@ -60,7 +60,38 @@ def legend_title(surfq_sign, position):
 
 
 def histograms(dtrj_file, uncensored=False, intermittency=0, time_conv=1):
-    """TODO"""
+    """
+    Calculate the lifetime histogram for each state in a discrete
+    trajectory.
+
+    Parameters
+    ----------
+    dtrj_file : str or bytes or os.PathLike
+        The filename of the discrete trajectory.
+    uncensored : bool, optional
+        If ``True`` only take into account uncensored states, i.e.
+        states whose start and end lie within the trajectory.  In other
+        words, discard the truncated (censored) states at the beginning
+        and end of the trajectory.  For these states the start/end time
+        is unknown.
+    intermittency : int, optional
+        Maximum number of frames a compound is allowed to leave its
+        state while still being considered to be in this state provided
+        that it returns to this state after the given number of frames.
+    time_conv : float, optional
+        Time conversion factor to convert trajectory steps to a physical
+        time unit (like ns).
+
+    Returns
+    -------
+    hists : numpy.ndarray
+        Array of histograms (one for each state in the discrete
+        trajectory).
+    bins : numpy.ndarray
+        Bin edges used to generate the histograms.
+    states : numpy.ndarray
+        Array containing the state indices.
+    """
     # Read discrete trajectory.
     dtrj = mdt.fh.load_dtrj(dtrj_file)
     n_frames = dtrj.shape[-1]
@@ -307,12 +338,12 @@ for sim_ix, Sim in enumerate(Sims.sims):
             bin_mids_valid *= -1  # Ensure positive distance values.
         else:
             raise ValueError(
-                "Unknown peak position type: '{}'".format(pkp_type)
+                "Unknown bin position type: '{}'".format(pkp_type)
             )
         if np.any(bin_mids_valid <= 0):
             raise ValueError(
                 "Simulation: '{}'.\n".format(Sim.path)
-                + "Peak-position type: '{}'.\n".format(pkp_type)
+                + "Bin-position type: '{}'.\n".format(pkp_type)
                 + "At least one bin lies within the electrode.  This should"
                 + " not have happened.\n"
                 + "Bin edges: {}.\n".format(bin_mids_valid)
@@ -331,7 +362,7 @@ for sim_ix, Sim in enumerate(Sims.sims):
         data_clstr[2][pkt_ix][sim_ix] = states_sim_valid
 
 
-print("Clustering peak positions...")
+print("Clustering bin positions...")
 (
     data_clstr,
     clstr_ix,
@@ -342,7 +373,7 @@ print("Clustering peak positions...")
 ) = leap.clstr.peak_pos(data_clstr, bin_mid_ix, return_dist_thresh=True)
 clstr_ix_unq = [np.unique(clstr_ix_pkt) for clstr_ix_pkt in clstr_ix]
 
-# Sort clusters by ascending average peak position.
+# Sort clusters by ascending average bin position.
 for pkt_ix, clstr_ix_pkt in enumerate(clstr_ix):
     _clstr_dists, clstr_ix[pkt_ix] = leap.clstr.dists_succ(
         data_clstr[bin_mid_ix][pkt_ix],
@@ -430,7 +461,7 @@ with PdfPages(outfile) as pdf:
             valid_clstr = clstr_ix[pkt_ix] == cix_pkt
             if not np.any(valid_clstr):
                 raise ValueError(
-                    "No valid peaks for peak type '{}' and cluster index"
+                    "No valid bins for bin type '{}' and cluster index"
                     " {}".format(pkp_type, cix_pkt)
                 )
             clstr_bin_mids = data_clstr[bin_mid_ix][pkt_ix][valid_clstr]
