@@ -297,6 +297,22 @@ for sim_ix, Sim in enumerate(Sims.sims):
 
 
 print("Clustering bin positions...")
+if args.sol == "g4" and args.surfq == "q0":
+    # Setting `dist_thresh` to None would result in a distance threshold
+    # of 0.21747493743896484.  However, with this threshold, different
+    # bins of the same simulation are assigned to the same cluster.  The
+    # reason why this threshold does not work for bins but for
+    # free-energy extrema is probably that for systems with high salt
+    # concentration, there is only one bin that corresponds to an actual
+    # free-energy minimum while the following bins are already bulk
+    # bins.  These bulk bins lie between layer bins of the systems with
+    # low-salt concentration and connect actually distinct layers.  A
+    # distance threshold of 0.17 is the highest possible threshold that
+    # ensures that different bins of the same simulation are assigned to
+    # different clusters.
+    dist_thresh = 0.17
+else:
+    dist_thresh = None
 (
     data_clstr,
     clstr_ix,
@@ -304,7 +320,9 @@ print("Clustering bin positions...")
     n_clstrs,
     n_pks_per_sim,
     clstr_dist_thresh,
-) = leap.clstr.peak_pos(data_clstr, bin_mid_ix, return_dist_thresh=True)
+) = leap.clstr.peak_pos(
+    data_clstr, bin_mid_ix, dist_thresh=dist_thresh, return_dist_thresh=True
+)
 clstr_ix_unq = [np.unique(clstr_ix_pkt) for clstr_ix_pkt in clstr_ix]
 
 # Sort clusters by ascending average bin position.
