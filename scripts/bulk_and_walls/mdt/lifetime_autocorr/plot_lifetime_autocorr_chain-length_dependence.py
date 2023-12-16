@@ -91,6 +91,8 @@ if args.cmp in ("Li-OE", "Li-ether"):
 else:
     legend_loc = "upper right"
 
+created_fit = False
+
 cmap = plt.get_cmap()
 c_vals = np.arange(n_infiles)
 c_norm = max(n_infiles - 1, 1)
@@ -140,7 +142,7 @@ with PdfPages(outfile) as pdf:
             color=color,
             alpha=leap.plot.ALPHA,
         )
-        if args.cmp == "Li-OE" and sim_ix == Sims.n_sims - 1:
+        if args.cmp == "Li-OE" and Sim.O_per_chain == 64:
             start, stop = leap.misc.find_nearest(times, [1e0, 2e1])
             times_fit = times[start:stop]
             popt, pcov = curve_fit(
@@ -150,24 +152,26 @@ with PdfPages(outfile) as pdf:
                 p0=(0.1, 2),
             )
             acf_fit = leap.misc.straight_line(np.log(times_fit), *popt)
-            ax.plot(
-                times_fit,
-                acf_fit,
-                color="black",
-                linestyle="dashed",
-                alpha=leap.plot.ALPHA,
-            )
-            ax.text(
-                times_fit[0],
-                acf_fit[0] + 0.01,
-                r"$%.2f \ln(t) + %.2f$" % tuple(popt),
-                rotation=-50,
-                rotation_mode="anchor",
-                transform_rotates_text=False,
-                horizontalalignment="left",
-                verticalalignment="bottom",
-                fontsize="small",
-            )
+            created_fit = True
+    if created_fit:
+        ax.plot(
+            times_fit,
+            acf_fit,
+            color="black",
+            linestyle="dashed",
+            alpha=leap.plot.ALPHA,
+        )
+        ax.text(
+            times_fit[0],
+            acf_fit[0] + 0.01,
+            r"$%.2f \ln(t) + %.2f$" % tuple(popt),
+            rotation=-49,
+            rotation_mode="anchor",
+            transform_rotates_text=False,
+            horizontalalignment="left",
+            verticalalignment="bottom",
+            fontsize="small",
+        )
     ax.set_xscale("log", base=10, subs=np.arange(2, 10))
     ax.set(xlabel=xlabel, ylabel=ylabel, xlim=xlim, ylim=ylim)
     legend = ax.legend(
