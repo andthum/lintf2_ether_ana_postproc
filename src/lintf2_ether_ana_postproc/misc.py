@@ -306,22 +306,28 @@ def fit_goodness(data, fit):
     Returns
     -------
     r2 : scalar
-        Coefficient of determination.
+        (Pseudo) coefficient of determination.  See
+        https://www.r-bloggers.com/2021/03/the-r-squared-and-nonlinear-regression-a-difficult-marriage.
     rmse : scalar
         The root-mean-square error, also known as root-mean-square
         residuals.
     """
     data = np.asarray(data)
     fit = np.asarray(fit)
+    if fit.shape != data.shape:
+        raise ValueError(
+            "`fit.shape` ({}) != `data.shape`"
+            " ({})".format(fit.shape, data.shape)
+        )
+
     # Residual sum of squares.
     ss_res = np.sum((data - fit) ** 2)
     # Root-mean-square error / root-mean-square residuals.
-    rmse = np.sqrt(ss_res / len(fit))
+    rmse = np.sqrt(np.divide(ss_res, len(fit)))
     # Total sum of squares.
     ss_tot = np.sum((data - np.mean(data)) ** 2)
     # (Pseudo) coefficient of determination (R^2).
-    # https://www.r-bloggers.com/2021/03/the-r-squared-and-nonlinear-regression-a-difficult-marriage/
-    r2 = 1 - (ss_res / ss_tot)
+    r2 = 1 - np.divide(ss_res, ss_tot)
     return r2, rmse
 
 

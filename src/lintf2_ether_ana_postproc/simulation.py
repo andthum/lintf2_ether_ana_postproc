@@ -2507,7 +2507,7 @@ def get_sim(sys_pat, set_pat, path_key, exclude_pat=None):
 
     Returns
     -------
-    Sim : lintf2_ether_ana_postproc.simulation.Simulations
+    Sim : lintf2_ether_ana_postproc.simulation.Simulation
         A :class:`~lintf2_ether_ana_postproc.simulation.Simulation`
         instance.
 
@@ -3074,7 +3074,14 @@ def read_free_energy_extrema(Sims, cmp, peak_type, cols, prom_min=None):
 
 
 def read_time_state_matrix(
-    fname, fname_var=None, time_conv=1, amin=None, amax=None
+    fname,
+    fname_var=None,
+    time_conv=1,
+    amin=None,
+    amax=None,
+    n_rows_check=None,
+    n_cols_check=None,
+    states_check=None,
 ):
     """
     Read a time-state matrix from file.
@@ -3097,6 +3104,16 @@ def read_time_state_matrix(
         A minimum value that the data in the matrix must not undermine.
     amax : scalar, optional
         A maximum value that the data in the matrix must not exceed.
+    n_rows_check, n_cols_check : int or None, optional
+        Expected number of rows/columns of the matrix.  If provided, the
+        number of rows/columns of the matrix differs from the given
+        number, an exception will be raised.
+    states_check : array_like or None, optional
+        Expected state indices.  If provided, the state indices that
+        were read from the input file are checked against the provided
+        state indices.  If they differ, an exception will be raised.
+        The length of `states_check` must be equal to `n_cols_check` if
+        both are provided.
 
     Returns
     -------
@@ -3128,20 +3145,41 @@ def read_time_state_matrix(
             "At least one value of the data is greater than {}.  Input file:"
             " {}".format(amax, fname)
         )
+    if n_rows_check is not None and data.shape[0] != n_rows_check:
+        raise ValueError(
+            "The number of rows in the data matrix ({}) does not match the"
+            " expected number of rows ({}).  Input file:"
+            " {}".format(n_rows_check, data.shape[0], fname)
+        )
+    if n_cols_check is not None and data.shape[1] != n_cols_check:
+        raise ValueError(
+            "The number of columns in the data matrix ({}) does not match the"
+            " expected number of columns ({}).  Input file:"
+            " {}".format(n_cols_check, data.shape[1], fname)
+        )
     if np.any(np.modf(states)[0] != 0):
         raise ValueError(
             "Some state indices are not integers but floats.  `states` ="
             " {}.  Input file: {}".format(states, fname)
         )
     states = states.astype(np.int64)
+    if states_check is not None and not np.array_equal(states, states_check):
+        raise ValueError(
+            "The state indices from the input file ({}) do not match with the"
+            " provided state indices ({}).  Input file:"
+            " {}".format(states, states_check, fname)
+        )
 
     if fname_var is not None:
         data_var, times_var, states_var = read_time_state_matrix(
             fname=fname_var,
             fname_var=None,
             time_conv=time_conv,
-            amin=amin,
-            amax=amax,
+            amin=0,
+            amax=None,
+            n_rows_check=n_rows_check,
+            n_cols_check=n_cols_check,
+            states_check=states_check,
         )
         if data_var.shape != data.shape:
             raise ValueError(
@@ -3152,7 +3190,7 @@ def read_time_state_matrix(
             raise ValueError(
                 "`times_var` != `times`.  Input file: {}".format(fname_var)
             )
-        if not np.array_equal(states_var, states, rtol=0):
+        if not np.array_equal(states_var, states):
             raise ValueError(
                 "`states_var` != `states`.  Input file: {}".format(fname_var)
             )

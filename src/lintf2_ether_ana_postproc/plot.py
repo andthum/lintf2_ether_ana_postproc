@@ -25,6 +25,34 @@ ATOM_TYPE2DISPLAY_NAME = {
 }
 
 
+def get_ydata_min_max(ax):
+    """
+    Get the minimum and maximum y value of the data plotted in an
+    :class:`matplotlib.axes.Axes`.
+
+    Parameters
+    ----------
+    ax : matplotlib.axes.Axes
+        The :class:`~matplotlib.axes.Axes` from which to get the data.
+
+    Returns
+    -------
+    yd_min, yd_max : numpy.ndarray
+        Array of minimum and maximum values of the y data plotted in the
+        given :class:`~matplotlib.axes.Axes`.  Each value in the array
+        corresponds to one plotted :class:`matplotlib.lines.Line2D` in
+        the :class:`~matplotlib.axes.Axes`.
+    """
+    ydata = [line.get_ydata() for line in ax.get_lines()]
+    yd_min, yd_max = [], []
+    for yd in ydata:
+        if isinstance(yd, np.ndarray) and np.any(yd > 0):
+            yd_min.append(np.min(yd[yd > 0]))
+            yd_max.append(np.max(yd[yd > 0]))
+    yd_min, yd_max = np.array(yd_min), np.array(yd_max)
+    return yd_min, yd_max
+
+
 def change_brightness(color, amount=1):
     """
     Change the brightness of a given color.
