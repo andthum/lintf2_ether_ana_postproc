@@ -55,10 +55,7 @@ parser.add_argument(
     type=str,
     required=True,
     choices=("Li-OE", "Li-OBT", "Li-O"),
-    help=(
-        "Compounds for which to plot the coordination numbers.  Default:"
-        " %(default)s"
-    ),
+    help="Compounds for which to plot the coordination numbers.",
 )
 args = parser.parse_args()
 
