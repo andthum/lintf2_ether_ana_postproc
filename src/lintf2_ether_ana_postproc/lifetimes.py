@@ -365,8 +365,8 @@ def kurtosis(mu2, mu4):
     return np.divide(mu4, np.power(mu2, 2)) - 3
 
 
-def integral_method(surv_funcs, times, n_moms=4, int_thresh=0.01):
-    r"""
+def integral_method_single(surv_func, times, n_moms=4, int_thresh=0.01):
+    """
     Estimate characteristics of the underlying lifetime distribution by
     numerically integrating/evaluating the survival function.
 
@@ -378,13 +378,15 @@ def integral_method(surv_funcs, times, n_moms=4, int_thresh=0.01):
     moments.  The median is estimated as the lag time at which the
     survival function decays below 0.5.
 
+    The difference to
+    :func:`lintf2_ether_ana_postproc.lifetimes.integral_method` is that
+    this function takes a single survival function.
+
     Parameters
     ----------
-    surv_funcs : array_like
-        Array of shape ``(t, s)`` where ``t`` is the number of lag times
-        and ``s`` is the number of different states.  The ij-th element
-        of `surv_funcs` is the value of the survival function of state
-        j after a lag time of i frames.
+    surv_func : array_like
+        Array of shape ``(t,)``, where ``t`` is the number of lag times,
+        containing the values of the survival function.
     times : array_like
         Array of shape ``(t,)`` containing the corresponding lag times.
     n_moms : int, optional
@@ -413,6 +415,93 @@ def integral_method(surv_funcs, times, n_moms=4, int_thresh=0.01):
         The number of calculated raw moments depends on `n_moms`.  The
         first raw moment (mean) is always calculated.
     """
+    surv_func = np.asarray(surv_func)
+    times = np.asarray(times)
+    if surv_func.ndim != 1:
+        raise ValueError(
+            "`surv_func` must be 1-dimensional but is"
+            " {}-dimensional".format(surv_func.ndim)
+        )
+    if times.shape != surv_func.shape[:1]:
+        raise ValueError(
+            "`times.shape` ({}) != `surv_func.shape[:1]`"
+            " ({})".format(times.shape, surv_func.shape[:1])
+        )
+    if n_moms < 1:
+        raise ValueError(
+            "`n_moms` ({}) must be greater than zero".format(n_moms)
+        )
+
+    raw_moms = np.full(n_moms, np.nan, dtype=np.float64)
+    cen_moms = np.full_like(raw_moms, np.nan)
+    if np.any(surv_func <= int_thresh):
+        # Only calculate the moments by numerical integration if the
+        # survival function decays below the given threshold.
+        for n in range(len(raw_moms)):
+            raw_moms[n] = leap.lifetimes.raw_moment_integrate(
+                sf=surv_func, x=times, n=n + 1
+            )
+            cen_moms[n] = mdt.stats.moment_raw2cen(raw_moms[: n + 1])
+    skew = leap.lifetimes.skewness(mu2=cen_moms[1], mu3=cen_moms[2])
+    kurt = leap.lifetimes.kurtosis(mu2=cen_moms[1], mu4=cen_moms[3])
+    std = np.sqrt(cen_moms[1])
+    cv = std / raw_moms[0]
+    median = leap.lifetimes.cross(y=0.5, x=times, f=surv_func)
+    skew_non_param = np.divide((raw_moms[0] - median), std)
+    characs = np.array(
+        [
+            raw_moms[0],  # Mean.
+            std,  # Standard deviation.
+            cv,  # Coefficient of variation.
+            skew,  # Skewness (Fisher).
+            kurt,  # Excess kurtosis (Fisher).
+            median,  # Median
+            skew_non_param,  # Non-parametric skewness.
+            *raw_moms[1:],  # 2nd to `n_moms`-th raw moment.
+        ]
+    )
+    return characs
+
+
+def integral_method(surv_funcs, times, n_moms=4, int_thresh=0.01):
+    """
+    Estimate characteristics of the underlying lifetime distribution by
+    numerically integrating/evaluating the survival function.
+
+    Take a survival function and calculate the raw moments of the
+    underlying lifetime distribution by numerically integrating the
+    survival function according to the alternative expectation formula
+    (see :func:`raw_moment_integrate` for more details).  The standard
+    deviation, skewness and excess kurtosis are calculated from the raw
+    moments.  The median is estimated as the lag time at which the
+    survival function decays below 0.5.
+
+    The difference to
+    :func:`lintf2_ether_ana_postproc.lifetimes.integral_method_single`
+    is that this function takes an array of survival functions.
+
+    Parameters
+    ----------
+    surv_funcs : array_like
+        Array of shape ``(t, s)`` where ``t`` is the number of lag times
+        and ``s`` is the number of different states.  The ij-th element
+        of `surv_funcs` is the value of the survival function of state
+        j after a lag time of i frames.
+    times : array_like
+        Array of shape ``(t,)`` containing the corresponding lag times.
+    n_moms : int, optional
+        Number of moments to calculate.  Must be greater than zero.
+    int_thresh : float, optional
+        Only calculate raw moments by numerical integration if the
+        survival function decays below the given threshold.
+
+    Returns
+    -------
+    characs : numpy.ndarray
+        Estimated distribution characteristics.  See
+        :func:`lintf2_ether_ana_postproc.lifetimes.integral_method_single`
+        for more details.
+    """
     surv_funcs = np.asarray(surv_funcs)
     times = np.asarray(times)
     if surv_funcs.ndim != 2:
@@ -433,33 +522,8 @@ def integral_method(surv_funcs, times, n_moms=4, int_thresh=0.01):
     n_frames, n_states = surv_funcs.shape
     characs = np.full((n_states, 6 + n_moms), np.nan, dtype=np.float64)
     for i, sf in enumerate(surv_funcs.T):
-        raw_moms = np.full(n_moms, np.nan, dtype=np.float64)
-        cen_moms = np.full_like(raw_moms, np.nan)
-        if np.any(sf <= int_thresh):
-            # Only calculate the moments by numerical integration if the
-            # survival function decays below the given threshold.
-            for n in range(len(raw_moms)):
-                raw_moms[n] = leap.lifetimes.raw_moment_integrate(
-                    sf=sf, x=times, n=n + 1
-                )
-                cen_moms[n] = mdt.stats.moment_raw2cen(raw_moms[: n + 1])
-        skew = leap.lifetimes.skewness(mu2=cen_moms[1], mu3=cen_moms[2])
-        kurt = leap.lifetimes.kurtosis(mu2=cen_moms[1], mu4=cen_moms[3])
-        std = np.sqrt(cen_moms[1])
-        cv = std / raw_moms[0]
-        median = leap.lifetimes.cross(y=0.5, x=times, f=sf)
-        skew_non_param = np.divide((raw_moms[0] - median), std)
-        characs[i] = np.array(
-            [
-                raw_moms[0],  # Mean.
-                std,  # Standard deviation.
-                cv,  # Coefficient of variation.
-                skew,  # Skewness (Fisher).
-                kurt,  # Excess kurtosis (Fisher).
-                median,  # Median
-                skew_non_param,  # Non-parametric skewness.
-                *raw_moms[1:],  # 2nd to `n_moms`-th raw moment.
-            ]
+        characs[i] = integral_method_single(
+            sf, times, n_moms=n_moms, int_thresh=int_thresh
         )
     return characs
 
