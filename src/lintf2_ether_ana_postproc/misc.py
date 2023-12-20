@@ -819,7 +819,13 @@ def rdf2free_energy(x, rdf, bulk_start=None, tol=0.005):
 
 
 def free_energy_barriers(
-    minima, maxima, pkp_col_ix, pkh_col_ix, thresh=0, absolute_pos=False
+    minima,
+    maxima,
+    pkp_col_ix,
+    pkh_col_ix,
+    thresh=None,
+    absolute_pos=False,
+    return_maxima=True,
 ):
     """
     Calculate the barrier heights between the minima and maxima of a
@@ -852,15 +858,23 @@ def free_energy_barriers(
         given as absolute coordinates rather than as distance to the
         electrode as returned by
         :func:`lintf2_ether_ana_postproc.simulation.read_free_energy_extrema`.
+    return_maxima : bool, optional
+        If ``True``, return same list list as `maxima` but with the
+        maxima heights (index `pkh_col_ix`) replaced by the barrier
+        heights.  If ``False``, , return same list list as `minima` but
+        with the minima heights (index `pkh_col_ix`) replaced by the
+        barrier heights.
 
     Returns
     -------
     barriers_l2r : list
-        Same list as `maxima`, but with the maxima heights (index
+        Same list as `minima` or `maxima` (depending on the value of
+        `return_maxima`), but with the minima/maxima heights (index
         `pkh_col_ix`) replaced by the barrier heights as they appear
         when moving from left to right.
     barriers_r2l : list
-        Same list as `maxima`, but with the maxima heights (index
+        Same list as `minima` or `maxima` (depending on the value of
+        `return_maxima`), but with the minima/maxima heights (index
         `pkh_col_ix`) replaced by the barrier heights as they appear
         when moving from right to left.
     """
@@ -921,8 +935,12 @@ def free_energy_barriers(
             " type(s)".format(len(pk_pos_types), n_pkp_types)
         )
 
-    barriers_l2r = deepcopy(maxima)
-    barriers_r2l = deepcopy(maxima)
+    if return_maxima:
+        barriers_l2r = deepcopy(maxima)
+        barriers_r2l = deepcopy(maxima)
+    else:
+        barriers_l2r = deepcopy(minima)
+        barriers_r2l = deepcopy(minima)
     if thresh is not None:
         bars_l2r_valid = [
             [None for pkh_sim in pkh_pkt] for pkh_pkt in pk_height_maxima
