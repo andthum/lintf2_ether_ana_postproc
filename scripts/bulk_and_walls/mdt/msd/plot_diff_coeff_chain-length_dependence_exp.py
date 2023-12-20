@@ -270,7 +270,9 @@ with PdfPages(outfile) as pdf:
     ax.set_yscale("log", base=10, subs=np.arange(2, 10))
     ax.set(xlabel=xlabel, ylabel=ylabel, xlim=xlim, ylim=ylim)
     ax.legend(
-        loc="upper right", title="$303$ K", **mdtplt.LEGEND_KWARGS_XSMALL
+        loc="upper right",
+        title="$r = 0.05$, $303$ K",
+        **mdtplt.LEGEND_KWARGS_XSMALL,
     )
     pdf.savefig()
     plt.close()
@@ -352,7 +354,7 @@ with PdfPages(outfile) as pdf:
     ax.set(xlabel=xlabel, ylabel=ylabel, xlim=xlim, ylim=ylim)
     legend = ax.legend(
         loc="upper right",
-        title="Hayamizu $333$ K",
+        title="$r = 0.05$\nHayamizu $333$ K",
         ncol=1,
         **mdtplt.LEGEND_KWARGS_XSMALL,
     )
@@ -396,7 +398,9 @@ with PdfPages(outfile) as pdf:
     ax.set_yscale("log", base=10, subs=np.arange(2, 10))
     ax.set(xlabel=xlabel, ylabel=ylabel, xlim=xlim, ylim=ylim)
     ax.legend(
-        loc="upper right", title="$343$ K", **mdtplt.LEGEND_KWARGS_XSMALL
+        loc="upper right",
+        title="$r = 0.05$, $343$ K",
+        **mdtplt.LEGEND_KWARGS_XSMALL,
     )
     pdf.savefig()
     ax.set(xlabel=xlabel, ylabel=ylabel, xlim=xlim_Shi, ylim=ylim)
@@ -439,7 +443,9 @@ with PdfPages(outfile) as pdf:
     ax.set_yscale("log", base=10, subs=np.arange(2, 10))
     ax.set(xlabel=xlabel, ylabel=ylabel, xlim=xlim, ylim=ylim)
     ax.legend(
-        loc="upper right", title="$363$ K", **mdtplt.LEGEND_KWARGS_XSMALL
+        loc="upper right",
+        title="$r = 0.05$, $363$ K",
+        **mdtplt.LEGEND_KWARGS_XSMALL,
     )
     pdf.savefig()
     ax.set(xlabel=xlabel, ylabel=ylabel, xlim=xlim_Shi, ylim=ylim)
@@ -608,7 +614,9 @@ with PdfPages(outfile) as pdf:
     ax.set_xscale("log", base=10, subs=np.arange(2, 10))
     ax.set_yscale("log", base=10, subs=np.arange(2, 10))
     ax.set(xlabel=xlabel, ylabel=ylabel, xlim=xlim, ylim=ylim)
-    ax.legend(loc="upper right", **mdtplt.LEGEND_KWARGS_XSMALL)
+    ax.legend(
+        loc="upper right", title="$r = 0.05$", **mdtplt.LEGEND_KWARGS_XSMALL
+    )
     pdf.savefig()
     ax.set(xlabel=xlabel, ylabel=ylabel, xlim=xlim_Shi, ylim=ylim)
     pdf.savefig()
