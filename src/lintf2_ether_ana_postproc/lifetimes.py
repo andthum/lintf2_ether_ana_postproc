@@ -123,9 +123,7 @@ def count_method_state_average(dtrj, n_moms=4, time_conv=1, **kwargs):
     return characs
 
 
-def count_method(
-    dtrj, uncensored=False, n_moms=4, time_conv=1, states_check=None
-):
+def count_method(dtrj, n_moms=4, time_conv=1, states_check=None, **kwargs):
     """
     Estimate characteristics of the underlying lifetime distribution
     from a sample of lifetimes.
@@ -148,12 +146,6 @@ def count_method(
         expanded to shape ``(1, f)``.   The elements of `dtrj` are
         interpreted as the indices of the states in which a given
         compound is at a given frame.
-    uncensored : bool, optional
-        If ``True`` only take into account uncensored states, i.e.
-        states whose start and end lie within the trajectory.  In other
-        words, discard the truncated (censored) states at the beginning
-        and end of the trajectory.  For these states the start/end time
-        is unknown.
     n_moms : int, optional
         Number of raw moments to calculate.
     time_conv : scalar, optional
@@ -163,6 +155,11 @@ def count_method(
         Expected state indices.  If provided, the state indices in the
         discrete trajectory are checked against the provided state
         indices.
+    kwargs : dict, optional
+        Keyword arguments to parse to :func:`mdtools.dtrj.lifetimes`.
+        See there for possible choices.  Not allowed are keyword
+        arguments that change the number of return values of
+        :func:`mdtools.dtrj.lifetimes`.
 
     Returns
     -------
@@ -179,8 +176,9 @@ def count_method(
         If the state indices in the given discrete trajectory are not
         contained in the given array of state indices.
     """
+    uncensored = kwargs.get("uncensored", False)
     lts_per_state, states = mdt.dtrj.lifetimes_per_state(
-        dtrj, uncensored=uncensored, return_states=True
+        dtrj, return_states=True, **kwargs
     )
     lts_per_state = [lts * time_conv for lts in lts_per_state]
     if states_check is not None and not np.all(np.isin(states, states_check)):
