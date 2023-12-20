@@ -77,6 +77,52 @@ def dist_characs(a, axis=-1, n_moms=4):
     return characs
 
 
+def count_method_state_average(dtrj, n_moms=4, time_conv=1, **kwargs):
+    """
+    Estimate characteristics of the underlying lifetime distribution
+    from a sample of lifetimes.
+
+    Take a discrete trajectory and count the number of frames that a
+    given compound stays in a given state.  Estimate characteristics of
+    the underlying lifetime distribution from the obtained sample.
+
+    The difference to
+    :func:`lintf2_ether_ana_postproc.lifetimes.count_method` is that
+    this function returns a mean lifetime averaged over all states.
+
+    Parameters
+    ----------
+    dtrj : array_like
+        The discrete trajectory.  Array of shape ``(n, f)``, where ``n``
+        is the number of compounds and ``f`` is the number of frames.
+        The shape can also be ``(f,)``, in which case the array is
+        expanded to shape ``(1, f)``.   The elements of `dtrj` are
+        interpreted as the indices of the states in which a given
+        compound is at a given frame.
+    n_moms : int, optional
+        Number of raw moments to calculate.
+    time_conv : scalar, optional
+        Time conversion factor.  All lifetimes are multiplied by this
+        factor.
+    kwargs : dict, optional
+        Keyword arguments to parse to :func:`mdtools.dtrj.lifetimes`.
+        See there for possible choices.  Not allowed are keyword
+        arguments that change the number of return values of
+        :func:`mdtools.dtrj.lifetimes`.
+
+    Returns
+    -------
+    characs : numpy.ndarray
+        Estimated distribution characteristics.  See
+        :func:`lintf2_ether_ana_postproc.lifetimes.dist_characs` for
+        more details.
+    """
+    lts = mdt.dtrj.lifetimes(dtrj, **kwargs)
+    lts = lts * time_conv
+    characs = leap.lifetimes.dist_characs(lts, n_moms=n_moms)
+    return characs
+
+
 def count_method(
     dtrj, uncensored=False, n_moms=4, time_conv=1, states_check=None
 ):
@@ -87,6 +133,11 @@ def count_method(
     Take a discrete trajectory and count the number of frames that a
     given compound stays in a given state.  Estimate characteristics of
     the underlying lifetime distribution from the obtained sample.
+
+    The difference to
+    :func:`lintf2_ether_ana_postproc.lifetimes.count_method_state_average`
+    is that this function returns a mean lifetime for each individual
+    state.
 
     Parameters
     ----------
@@ -117,7 +168,8 @@ def count_method(
     -------
     characs : numpy.ndarray
         Estimated distribution characteristics.  See
-        :func:`dist_characs` for more details.
+        :func:`lintf2_ether_ana_postproc.lifetimes.dist_characs` for
+        more details.
     states : numpy.ndarray
         The state indices.
 
