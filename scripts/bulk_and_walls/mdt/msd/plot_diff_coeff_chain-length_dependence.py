@@ -192,6 +192,7 @@ xlim = (1, 200)
 labels = ("PEO", "TFSI", "Li")
 colors = ("tab:blue", "tab:orange", "tab:green")
 markers = ("o", "s", "^")
+legend_title = r"$r = %.2f$" % Sims.Li_O_ratios[0]
 
 mdt.fh.backup(outfile)
 with PdfPages(outfile) as pdf:
@@ -298,7 +299,7 @@ with PdfPages(outfile) as pdf:
         xlim=xlim,
         ylim=(1e-3, 2e1),
     )
-    ax.legend(loc="upper right")
+    ax.legend(title=legend_title, loc="upper right")
     pdf.savefig()
     plt.close()
 
@@ -314,7 +315,7 @@ with PdfPages(outfile) as pdf:
         )
     ax.set_xscale("log", base=10, subs=np.arange(2, 10))
     ax.set(xlabel=xlabel, ylabel="Fit Start / ns", xlim=xlim)
-    ax.legend()
+    ax.legend(title=legend_title)
     pdf.savefig()
     # Log scale y.
     ax.set_yscale("log", base=10, subs=np.arange(2, 10))
@@ -333,7 +334,7 @@ with PdfPages(outfile) as pdf:
         )
     ax.set_xscale("log", base=10, subs=np.arange(2, 10))
     ax.set(xlabel=xlabel, ylabel="Fit Stop / ns", xlim=xlim)
-    ax.legend()
+    ax.legend(title=legend_title)
     pdf.savefig()
     # Log scale y.
     ax.set_yscale("log", base=10, subs=np.arange(2, 10))
@@ -352,7 +353,7 @@ with PdfPages(outfile) as pdf:
         )
     ax.set_xscale("log", base=10, subs=np.arange(2, 10))
     ax.set(xlabel=xlabel, ylabel="Fit Stop - Start / ns", xlim=xlim)
-    ax.legend()
+    ax.legend(title=legend_title)
     pdf.savefig()
     # Log scale y.
     ax.set_yscale("log", base=10, subs=np.arange(2, 10))
@@ -371,7 +372,7 @@ with PdfPages(outfile) as pdf:
         )
     ax.set_xscale("log", base=10, subs=np.arange(2, 10))
     ax.set(xlabel=xlabel, ylabel=r"Coeff. of Determ. $R^2$", xlim=xlim)
-    ax.legend()
+    ax.legend(title=legend_title)
     pdf.savefig()
     # Log scale y.
     ax.set_yscale("log", base=10, subs=np.arange(2, 10))
@@ -391,7 +392,7 @@ with PdfPages(outfile) as pdf:
         )
     ax.set_xscale("log", base=10, subs=np.arange(2, 10))
     ax.set(xlabel=xlabel, ylabel=r"RMSE / nm$^2$", xlim=xlim)
-    ax.legend()
+    ax.legend(title=legend_title)
     pdf.savefig()
     # Log scale y.
     ax.set_yscale("log", base=10, subs=np.arange(2, 10))
