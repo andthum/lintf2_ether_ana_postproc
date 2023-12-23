@@ -99,14 +99,11 @@ analysis = "renewal_events"  # Analysis name.
 analysis_suffix = "_" + args.cmp  # Analysis name specification.
 ana_path = os.path.join(analysis, analysis + analysis_suffix)
 tool = "mdt"  # Analysis software.
-outfile = (  # Output file name.
-    settings
-    + "_lintf2_peoN_20-1_sc80_"
-    + analysis
-    + analysis_suffix
-    + con
-    + ".pdf"
+outfile_base = (  # Output file name.
+    settings + "_lintf2_peoN_20-1_sc80_" + analysis + analysis_suffix + con
 )
+outfile_txt = outfile_base + ".txt.gz"
+outfile_pdf = outfile_base + ".pdf"
 
 # Time conversion factor to convert trajectory steps to ns.
 time_conv = 2e-3
@@ -177,6 +174,10 @@ lts_rp_wbl_characs = np.full_like(lts_rp_int_characs, np.nan)
 lts_rp_wbl_fit_goodness = np.full((Sims.n_sims, 2), np.nan, dtype=np.float32)
 popt_rp_wbl = np.full((Sims.n_sims, 2), np.nan, dtype=np.float32)
 perr_rp_wbl = np.full_like(popt_rp_wbl, np.nan)
+tau0_rp_wbl = np.full(Sims.n_sims, np.nan, dtype=np.float32)
+tau0_rp_wbl_sd = np.full_like(tau0_rp_wbl, np.nan)
+beta_rp_wbl = np.full_like(tau0_rp_wbl, np.nan)
+beta_rp_wbl_sd = np.full_like(tau0_rp_wbl, np.nan)
 
 lts_rp_brr_characs = np.full_like(lts_rp_int_characs, np.nan)
 lts_rp_brr_fit_goodness = np.full_like(lts_rp_wbl_fit_goodness, np.nan)
@@ -184,6 +185,12 @@ popt_rp_brr = np.full((Sims.n_sims, 3), np.nan, dtype=np.float32)
 perr_rp_brr = np.full_like(popt_rp_brr, np.nan)
 popt_conv_rp_brr = np.full_like(popt_rp_brr, np.nan)
 perr_conv_rp_brr = np.full_like(popt_rp_brr, np.nan)
+tau0_rp_brr = np.full(Sims.n_sims, np.nan, dtype=np.float32)
+tau0_rp_brr_sd = np.full_like(tau0_rp_brr, np.nan)
+beta_rp_brr = np.full_like(tau0_rp_brr, np.nan)
+beta_rp_brr_sd = np.full_like(tau0_rp_brr, np.nan)
+delta_rp_brr = np.full_like(tau0_rp_brr, np.nan)
+delta_rp_brr_sd = np.full_like(tau0_rp_brr, np.nan)
 
 for sim_ix, Sim in enumerate(Sims.sims):
     # Read remain probability.
@@ -239,6 +246,8 @@ for sim_ix, Sim in enumerate(Sims.sims):
     lts_rp_wbl_fit_goodness[sim_ix] = np.squeeze(lts_rp_wbl_fit_goodness_sim)
     popt_rp_wbl[sim_ix] = np.squeeze(popt_rp_wbl_sim)
     perr_rp_wbl[sim_ix] = np.squeeze(perr_rp_wbl_sim)
+    tau0_rp_wbl[sim_ix], beta_rp_wbl[sim_ix] = popt_rp_wbl[sim_ix].T
+    tau0_rp_wbl_sd[sim_ix], beta_rp_wbl_sd[sim_ix] = perr_rp_wbl[sim_ix].T
     # Method 6: Burr Type XII fit of the remain probability.
     (
         lts_rp_brr_characs_sim,
@@ -261,6 +270,16 @@ for sim_ix, Sim in enumerate(Sims.sims):
     perr_rp_brr[sim_ix] = np.squeeze(perr_rp_brr_sim)
     popt_conv_rp_brr[sim_ix] = np.squeeze(popt_conv_rp_brr_sim)
     perr_conv_rp_brr[sim_ix] = np.squeeze(perr_conv_rp_brr_sim)
+    (
+        tau0_rp_brr[sim_ix],
+        beta_rp_brr[sim_ix],
+        delta_rp_brr[sim_ix],
+    ) = popt_conv_rp_brr[sim_ix].T
+    (
+        tau0_rp_brr_sd[sim_ix],
+        beta_rp_brr_sd[sim_ix],
+        delta_rp_brr_sd[sim_ix],
+    ) = perr_conv_rp_brr[sim_ix].T
 del remain_prob_sim
 del lts_rp_int_characs_sim
 del fit_start_rp_sim, fit_stop_rp_sim
@@ -296,6 +315,10 @@ lts_km_wbl_characs = np.full_like(lts_km_int_characs, np.nan)
 lts_km_wbl_fit_goodness = np.full((Sims.n_sims, 2), np.nan, dtype=np.float32)
 popt_km_wbl = np.full((Sims.n_sims, 2), np.nan, dtype=np.float32)
 perr_km_wbl = np.full_like(popt_km_wbl, np.nan)
+tau0_km_wbl = np.full(Sims.n_sims, np.nan, dtype=np.float32)
+tau0_km_wbl_sd = np.full_like(tau0_km_wbl, np.nan)
+beta_km_wbl = np.full_like(tau0_km_wbl, np.nan)
+beta_km_wbl_sd = np.full_like(tau0_km_wbl, np.nan)
 
 lts_km_brr_characs = np.full_like(lts_km_int_characs, np.nan)
 lts_km_brr_fit_goodness = np.full_like(lts_km_wbl_fit_goodness, np.nan)
@@ -303,6 +326,12 @@ popt_km_brr = np.full((Sims.n_sims, 3), np.nan, dtype=np.float32)
 perr_km_brr = np.full_like(popt_km_brr, np.nan)
 popt_conv_km_brr = np.full_like(popt_km_brr, np.nan)
 perr_conv_km_brr = np.full_like(popt_km_brr, np.nan)
+tau0_km_brr = np.full(Sims.n_sims, np.nan, dtype=np.float32)
+tau0_km_brr_sd = np.full_like(tau0_km_brr, np.nan)
+beta_km_brr = np.full_like(tau0_km_brr, np.nan)
+beta_km_brr_sd = np.full_like(tau0_km_brr, np.nan)
+delta_km_brr = np.full_like(tau0_km_brr, np.nan)
+delta_km_brr_sd = np.full_like(tau0_km_brr, np.nan)
 
 for sim_ix, Sim in enumerate(Sims.sims):
     # Read Kaplan-Meier survival function.
@@ -358,6 +387,8 @@ for sim_ix, Sim in enumerate(Sims.sims):
     lts_km_wbl_fit_goodness[sim_ix] = np.squeeze(lts_km_wbl_fit_goodness_sim)
     popt_km_wbl[sim_ix] = np.squeeze(popt_km_wbl_sim)
     perr_km_wbl[sim_ix] = np.squeeze(perr_km_wbl_sim)
+    tau0_km_wbl[sim_ix], beta_km_wbl[sim_ix] = popt_km_wbl[sim_ix].T
+    tau0_km_wbl_sd[sim_ix], beta_km_wbl_sd[sim_ix] = perr_km_wbl[sim_ix].T
     # Method 9: Burr Type XII fit of the Kaplan-Meier estimator.
     (
         lts_km_brr_characs_sim,
@@ -381,6 +412,16 @@ for sim_ix, Sim in enumerate(Sims.sims):
     perr_km_brr[sim_ix] = np.squeeze(perr_km_brr_sim)
     popt_conv_km_brr[sim_ix] = np.squeeze(popt_conv_km_brr_sim)
     perr_conv_km_brr[sim_ix] = np.squeeze(perr_conv_km_brr_sim)
+    (
+        tau0_km_brr[sim_ix],
+        beta_km_brr[sim_ix],
+        delta_km_brr[sim_ix],
+    ) = popt_conv_km_brr[sim_ix].T
+    (
+        tau0_km_brr_sd[sim_ix],
+        beta_km_brr_sd[sim_ix],
+        delta_km_brr_sd[sim_ix],
+    ) = perr_conv_km_brr[sim_ix].T
 del km_surv_func_sim, km_surv_func_var_sim
 del lts_km_int_characs_sim
 del fit_start_km_sim, fit_stop_km_sim
@@ -399,6 +440,157 @@ del (
     perr_conv_km_brr_sim,
 )
 km_surv_funcs = np.asarray(km_surv_funcs)
+
+
+print("Creating output file(s)...")
+xdata = Sims.O_per_chain
+data = np.column_stack(
+    [
+        xdata,  # 1
+        # Method 1: Censored counting.
+        lts_cnt_cen_characs,  # 2-15
+        # Method 2: Uncensored counting.
+        lts_cnt_unc_characs,  # 16-29
+        # Method 3: Inverse transition rate.
+        lts_k,  # 30
+        # Method 4: Numerical integration of the remain probability.
+        lts_rp_int_characs,  # 31-40
+        # Method 5: Weibull fit of the remain probability.
+        lts_rp_wbl_characs,  # 41-50
+        tau0_rp_wbl,  # 51
+        tau0_rp_wbl_sd,  # 52
+        beta_rp_wbl,  # 53
+        beta_rp_wbl_sd,  # 54
+        lts_rp_wbl_fit_goodness,  # 55-56
+        # Method 6: Burr Type XII fit of the remain probability.
+        lts_rp_brr_characs,  # 57-66
+        tau0_rp_brr,  # 67
+        tau0_rp_brr_sd,  # 68
+        beta_rp_brr,  # 69
+        beta_rp_brr_sd,  # 70
+        delta_rp_brr,  # 71
+        delta_rp_brr_sd,  # 72
+        lts_rp_brr_fit_goodness,  # 73-74
+        # Fit region for the remain probability.
+        fit_start_rp * time_conv,  # 75
+        (fit_stop_rp - 1) * time_conv,  # 76
+        # Method 7: Numerical integration of the Kaplan-Meier estimator.
+        lts_km_int_characs,  # 77-86
+        # Method 8: Weibull fit of the Kaplan-Meier estimator.
+        lts_km_wbl_characs,  # 87-96
+        tau0_km_wbl,  # 97
+        tau0_km_wbl_sd,  # 98
+        beta_km_wbl,  # 99
+        beta_km_wbl_sd,  # 100
+        lts_km_wbl_fit_goodness,  # 101-102
+        # Method 9: Burr Type XII fit of the Kaplan-Meier estimator.
+        lts_km_brr_characs,  # 103-112
+        tau0_km_brr,  # 113
+        tau0_km_brr_sd,  # 114
+        beta_km_brr,  # 115
+        beta_km_brr_sd,  # 116
+        delta_km_brr,  # 117
+        delta_km_brr_sd,  # 118
+        lts_km_brr_fit_goodness,  # 119-120
+        # Fit region for the Kaplan-Meier estimator.
+        fit_start_km * time_conv,  # 121
+        (fit_stop_km - 1) * time_conv,  # 122
+    ]
+)
+header = (
+    "{} renewal times.\n".format(args.cmp)
+    + "The renewal time is the average time after which the selection\n"
+    + "compound ('{}') that was continuously bound the longest to\n".format(
+        cmp2
+    )
+    + "a reference compound ('{}') dissociates from it.\n".format(cmp1)
+    + "\n"
+    + "Lithium-to-ether-oxygen ratio: {:.2f}\n".format(Sims.Li_O_ratios[0])
+    + "int_thresh = {:.4f}\n".format(args.int_thresh)
+    + "end_fit  = {}\n".format(args.end_fit)
+    + "stop_fit = {:.4f}\n".format(args.stop_fit)
+    + "\n"
+    + "\n"
+    + "The columns contain:\n"
+    + "  1 Number of ether oxygens per PEO chain\n"
+    + "\n"
+    + "Methods based on counting frames:\n"
+    + "  Method 1: Censored counting\n"
+    + "  2 Sample mean (1st raw moment) / ns\n"
+    + "  3 Uncertainty of the sample mean (standard error) / ns\n"
+    + "  4 Corrected sample standard deviation / ns\n"
+    + "  5 Corrected coefficient of variation\n"
+    + "  6 Unbiased sample skewness (Fisher)\n"
+    + "  7 Unbiased sample excess kurtosis (Fisher)\n"
+    + "  8 Sample median / ns\n"
+    + "  9 Non-parametric skewness\n"
+    + " 10 2nd raw moment (biased estimate) / ns^2\n"
+    + " 11 3rd raw moment (biased estimate) / ns^3\n"
+    + " 12 4th raw moment (biased estimate) / ns^4\n"
+    + " 13 Sample minimum / ns\n"
+    + " 14 Sample maximum / ns\n"
+    + " 15 Number of observations/samples\n"
+    + "\n"
+    + "  Method 2: Uncensored counting.\n"
+    + " 16-29 As Method 1\n"
+    + "\n"
+    + "  Method 3: Inverse transition rate\n"
+    + " 30 Mean renewal time / ns\n"
+    + "\n"
+    + "Methods based on the ACF:\n"
+    + "  Method 4: Numerical integration of the ACF\n"
+    + " 31 Mean renewal time (1st raw moment) / ns\n"
+    + " 32 Standard deviation / ns\n"
+    + " 33 Coefficient of variation"
+    + " 34 Skewness (Fisher)\n"
+    + " 35 Excess kurtosis (Fisher)\n"
+    + " 36 Median / ns\n"
+    + " 37 Non-parametric skewness\n"
+    + " 38 2nd raw moment / ns^2\n"
+    + " 39 3rd raw moment / ns^3\n"
+    + " 40 4th raw moment / ns^4\n"
+    + "\n"
+    + "  Method 5: Weibull fit of the ACF\n"
+    + " 41-50 As Method 4\n"
+    + " 51 Fit parameter tau0_wbl / ns\n"
+    + " 52 Standard deviation of tau0_wbl / ns\n"
+    + " 53 Fit parameter beta_wbl\n"
+    + " 54 Standard deviation of beta_wbl\n"
+    + " 55 Coefficient of determination of the fit (R^2 value)\n"
+    + " 56 Root-mean-square error (RMSE) of the fit\n"
+    + "\n"
+    + "  Method 6: Burr Type XII fit of the ACF\n"
+    + " 57-70 As Method 5\n"
+    + " 71 Fit parameter delta_brr\n"
+    + " 72 Standard deviation of delta_brr\n"
+    + " 73 Coefficient of determination of the fit (R^2 value)\n"
+    + " 74 Root-mean-square error (RMSE) of the fit\n"
+    + "\n"
+    + "  Fit region for all ACF fitting methods\n"
+    + " 75 Start of fit region (inclusive) / ns\n"
+    + " 76 End of fit region (inclusive) / ns\n"
+    + "\n"
+    + "Methods based on the Kaplan-Meier estimator:\n"
+    + "  Method 7: Numerical integration of the Kaplan-Meier estimator\n"
+    + " 77-86 As Method 4\n"
+    + "\n"
+    + "  Method 8: Weibull fit of the Kaplan-Meier estimator\n"
+    + " 87-102 As Method 5\n"
+    + "\n"
+    + "  Method 9: Burr Type XII fit of the Kaplan-Meier estimator\n"
+    + " 103-120 As Method 6\n"
+    + "\n"
+    + "  Fit region for all Kaplan-Meier estimator fitting methods\n"
+    + " 121 Start of fit region (inclusive) / ns\n"
+    + " 122 End of fit region (inclusive) / ns\n"
+    + "\n"
+    + "Column number:\n"
+)
+header += "{:>14d}".format(1)
+for i in range(2, data.shape[-1] + 1):
+    header += " {:>16d}".format(i)
+leap.io_handler.savetxt(outfile_txt, data, header=header)
+print("Created {}".format(outfile_txt))
 
 
 print("Creating plot(s)...")
@@ -444,7 +636,6 @@ ylabel_acf = "Autocorrelation Function"
 ylabel_km = "Kaplan-Meier Estimate"
 
 xlabel = r"Ether Oxygens per Chain $n_{EO}$"
-xdata = Sims.O_per_chain
 xlim = (1, 200)
 legend_title = (
     r"$"
@@ -464,8 +655,8 @@ c_norm = max(1, Sims.n_sims - 1)
 c_vals_normed = c_vals / c_norm
 colors = cmap(c_vals_normed)
 
-mdt.fh.backup(outfile)
-with PdfPages(outfile) as pdf:
+mdt.fh.backup(outfile_pdf)
+with PdfPages(outfile_pdf) as pdf:
     # Plot distribution characteristics vs. chain length.
     ylabels = (
         "Renewal Time / ns",
@@ -1159,5 +1350,5 @@ with PdfPages(outfile) as pdf:
     pdf.savefig()
     plt.close()
 
-print("Created {}".format(outfile))
+print("Created {}".format(outfile_pdf))
 print("Done")
