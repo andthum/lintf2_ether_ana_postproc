@@ -846,8 +846,14 @@ with PdfPages(outfile_pdf) as pdf:
         "Min. Renewal Time / ns",
         "Max. Renewal Time / ns",
         "No. of Renewal Events",
+        "Renewal Events per Li Ion",
     )
     for i, ylabel in enumerate(ylabels):
+        if ylabel == "Renewal Events per Li Ion":
+            divisor = Sims.res_nums["cation"]
+            i = 2
+        else:
+            divisor = 1
         # Figure containing all methods.
         fig, ax = plt.subplots(clear=True)
         # Figure containing only the finally chosen method.
@@ -855,7 +861,7 @@ with PdfPages(outfile_pdf) as pdf:
         # Method 1: Censored counting.
         ax.plot(
             xdata,
-            lts_cnt_cen_characs[:, 11 + i],
+            lts_cnt_cen_characs[:, 11 + i] / divisor,
             label=label_cnt_cen,
             color=color_cnt_cen,
             marker=marker_cnt_cen,
@@ -863,7 +869,7 @@ with PdfPages(outfile_pdf) as pdf:
         )
         ax_sm.plot(
             xdata,
-            lts_cnt_cen_characs[:, 11 + i],
+            lts_cnt_cen_characs[:, 11 + i] / divisor,
             label=label_sm,
             color=color_sm,
             marker=marker_sm,
@@ -871,7 +877,7 @@ with PdfPages(outfile_pdf) as pdf:
         # Method 2: Uncensored counting.
         ax.plot(
             xdata,
-            lts_cnt_unc_characs[:, 11 + i],
+            lts_cnt_unc_characs[:, 11 + i] / divisor,
             label=label_cnt_unc,
             color=color_cnt_unc,
             marker=marker_cnt_unc,
