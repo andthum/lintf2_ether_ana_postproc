@@ -159,7 +159,10 @@ lts_k = np.full(Sims.n_sims, np.nan, dtype=np.float32)
 for sim_ix, Sim in enumerate(Sims.sims):
     # Read discrete trajectory.
     file_suffix = analysis + analysis_suffix + "_dtrj.npz"
-    infile = leap.simulation.get_ana_file(Sim, ana_path, tool, file_suffix)
+    try:
+        infile = leap.simulation.get_ana_file(Sim, ana_path, tool, file_suffix)
+    except FileNotFoundError:
+        continue
     dtrj = mdt.fh.load_dtrj(infile)
     # Method 1: Censored counting.
     lts_cnt_cen_characs[sim_ix] = leap.lifetimes.count_method_state_average(
@@ -228,7 +231,10 @@ for sim_ix, Sim in enumerate(Sims.sims):
         + con
         + ".txt.gz"
     )
-    infile = leap.simulation.get_ana_file(Sim, ana_path, tool, file_suffix)
+    try:
+        infile = leap.simulation.get_ana_file(Sim, ana_path, tool, file_suffix)
+    except FileNotFoundError:
+        continue
     times, remain_prob_sim = np.loadtxt(
         infile, usecols=(0, 1), unpack=True, dtype=np.float32
     )
@@ -324,7 +330,6 @@ del (
     popt_conv_rp_brr_sim,
     perr_conv_rp_brr_sim,
 )
-remain_probs = np.asarray(remain_probs)
 
 
 print("Calculating renewal times from the Kaplan-Meier estimator...")
@@ -365,7 +370,10 @@ for sim_ix, Sim in enumerate(Sims.sims):
     file_suffix = (
         analysis + analysis_suffix + "_kaplan_meier_discard-neg-start.txt.gz"
     )
-    infile = leap.simulation.get_ana_file(Sim, ana_path, tool, file_suffix)
+    try:
+        infile = leap.simulation.get_ana_file(Sim, ana_path, tool, file_suffix)
+    except FileNotFoundError:
+        continue
     times, km_surv_func_sim, km_surv_func_var_sim = np.loadtxt(
         infile, unpack=True, dtype=np.float32
     )
@@ -466,7 +474,6 @@ del (
     popt_conv_km_brr_sim,
     perr_conv_km_brr_sim,
 )
-km_surv_funcs = np.asarray(km_surv_funcs)
 
 
 print("Creating output file(s)...")
@@ -757,9 +764,15 @@ with PdfPages(outfile_pdf) as pdf:
                 marker=marker_k,
                 alpha=leap.plot.ALPHA,
             )
-            ax_sm.plot(
-                xdata, lts_k, label=label_sm, color=color_sm, marker=marker_sm
-            )
+            valid = np.isfinite(lts_k)
+            if np.any(valid):
+                ax_sm.plot(
+                    xdata[valid],
+                    lts_k[valid],
+                    label=label_sm,
+                    color=color_sm,
+                    marker=marker_sm,
+                )
         # Method 4: Numerical integration of the remain probability.
         ax.errorbar(
             xdata,
@@ -894,13 +907,19 @@ with PdfPages(outfile_pdf) as pdf:
             marker=marker_cnt_cen,
             alpha=leap.plot.ALPHA,
         )
-        ax_sm.plot(
-            xdata,
-            lts_cnt_cen_characs[:, 11 + i] / divisor,
-            label=label_sm,
-            color=color_sm,
-            marker=marker_sm,
-        )
+        valid = np.isfinite(lts_cnt_cen_characs[:, 11 + i])
+        if np.any(valid):
+            if ylabel == "Renewal Events per Li Ion":
+                div = divisor[valid]
+            else:
+                div = divisor
+            ax_sm.plot(
+                xdata,
+                lts_cnt_cen_characs[:, 11 + i] / divisor,
+                label=label_sm,
+                color=color_sm,
+                marker=marker_sm,
+            )
         # Method 2: Uncensored counting.
         ax.plot(
             xdata,
@@ -1124,6 +1143,8 @@ with PdfPages(outfile_pdf) as pdf:
     ax.set_prop_cycle(color=colors)
     for sim_ix, Sim in enumerate(Sims.sims):
         rp = remain_probs[sim_ix]
+        if rp is None or not np.any(np.isfinite(rp)):
+            continue
         times_fit = times[fit_start_rp[sim_ix] : fit_stop_rp[sim_ix]]
         fit = mdt.func.kww(times_fit, *popt_rp_wbl[sim_ix])
         lines = ax.plot(
@@ -1161,6 +1182,8 @@ with PdfPages(outfile_pdf) as pdf:
     ax.set_prop_cycle(color=colors)
     for sim_ix, Sim in enumerate(Sims.sims):
         rp = remain_probs[sim_ix]
+        if rp is None or not np.any(np.isfinite(rp)):
+            continue
         times_fit = times[fit_start_rp[sim_ix] : fit_stop_rp[sim_ix]]
         fit = mdt.func.kww(times_fit, *popt_rp_wbl[sim_ix])
         res = rp[fit_start_rp[sim_ix] : fit_stop_rp[sim_ix]] - fit
@@ -1190,6 +1213,8 @@ with PdfPages(outfile_pdf) as pdf:
     ax.set_prop_cycle(color=colors)
     for sim_ix, Sim in enumerate(Sims.sims):
         km = km_surv_funcs[sim_ix]
+        if km is None or not np.any(np.isfinite(km)):
+            continue
         times_fit = times[fit_start_km[sim_ix] : fit_stop_km[sim_ix]]
         fit = mdt.func.kww(times_fit, *popt_km_wbl[sim_ix])
         lines = ax.plot(
@@ -1227,6 +1252,8 @@ with PdfPages(outfile_pdf) as pdf:
     ax.set_prop_cycle(color=colors)
     for sim_ix, Sim in enumerate(Sims.sims):
         km = km_surv_funcs[sim_ix]
+        if km is None or not np.any(np.isfinite(km)):
+            continue
         times_fit = times[fit_start_km[sim_ix] : fit_stop_km[sim_ix]]
         fit = mdt.func.kww(times_fit, *popt_km_wbl[sim_ix])
         res = km[fit_start_km[sim_ix] : fit_stop_km[sim_ix]] - fit
@@ -1256,6 +1283,8 @@ with PdfPages(outfile_pdf) as pdf:
     ax.set_prop_cycle(color=colors)
     for sim_ix, Sim in enumerate(Sims.sims):
         rp = remain_probs[sim_ix]
+        if rp is None or not np.any(np.isfinite(rp)):
+            continue
         times_fit = times[fit_start_rp[sim_ix] : fit_stop_rp[sim_ix]]
         fit = mdt.func.burr12_sf_alt(times_fit, *popt_rp_brr[sim_ix])
         lines = ax.plot(
@@ -1293,6 +1322,8 @@ with PdfPages(outfile_pdf) as pdf:
     ax.set_prop_cycle(color=colors)
     for sim_ix, Sim in enumerate(Sims.sims):
         rp = remain_probs[sim_ix]
+        if rp is None or not np.any(np.isfinite(rp)):
+            continue
         times_fit = times[fit_start_rp[sim_ix] : fit_stop_rp[sim_ix]]
         fit = mdt.func.burr12_sf_alt(times_fit, *popt_rp_brr[sim_ix])
         res = rp[fit_start_rp[sim_ix] : fit_stop_rp[sim_ix]] - fit
@@ -1322,6 +1353,8 @@ with PdfPages(outfile_pdf) as pdf:
     ax.set_prop_cycle(color=colors)
     for sim_ix, Sim in enumerate(Sims.sims):
         km = km_surv_funcs[sim_ix]
+        if km is None or not np.any(np.isfinite(km)):
+            continue
         times_fit = times[fit_start_km[sim_ix] : fit_stop_km[sim_ix]]
         fit = mdt.func.burr12_sf_alt(times_fit, *popt_km_brr[sim_ix])
         lines = ax.plot(
@@ -1359,6 +1392,8 @@ with PdfPages(outfile_pdf) as pdf:
     ax.set_prop_cycle(color=colors)
     for sim_ix, Sim in enumerate(Sims.sims):
         km = km_surv_funcs[sim_ix]
+        if km is None or not np.any(np.isfinite(km)):
+            continue
         times_fit = times[fit_start_km[sim_ix] : fit_stop_km[sim_ix]]
         fit = mdt.func.burr12_sf_alt(times_fit, *popt_km_brr[sim_ix])
         res = km[fit_start_km[sim_ix] : fit_stop_km[sim_ix]] - fit
