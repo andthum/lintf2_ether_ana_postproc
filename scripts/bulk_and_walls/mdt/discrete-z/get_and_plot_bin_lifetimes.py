@@ -7,8 +7,8 @@ Calculate bin residence times / lifetimes.
 For a single simulation, calculate the average time that a given
 compound stays in a given bin directly from the discrete trajectory
 (Method 1-3), from the corresponding remain probability function
-(Method 4-7) of from the corresponding Kaplan-Meier estimate of the
-survival function.
+(Method 4-6) of from the corresponding Kaplan-Meier estimate of the
+survival function (Method 7-9).
 """
 
 
