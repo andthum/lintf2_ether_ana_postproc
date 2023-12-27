@@ -69,7 +69,7 @@ if len(args.cmps) == 0:
 settings = "pr_nvt423_nh"  # Simulation settings.
 analysis = "lifetime_autocorr"  # Analysis name.
 tool = "mdt"  # Analysis software.
-outfile = (  # Output file name.
+outfile_base = (  # Output file name.
     settings
     + "_lintf2_"
     + args.sol
@@ -77,8 +77,9 @@ outfile = (  # Output file name.
     + analysis
     + "_combined_"
     + "_".join(args.cmps)
-    + ".pdf"
 )
+outfile_txt = outfile_base + ".txt.gz"
+outfile_pdf = outfile_base + ".pdf"
 
 cols = (  # Columns to read from the input file(s).
     0,  # Lag times in [ps].
@@ -128,8 +129,8 @@ c_norm = max(Sims.n_sims - 1, 1)
 c_vals_normed = c_vals / c_norm
 colors = cmap(c_vals_normed)
 
-mdt.fh.backup(outfile)
-with PdfPages(outfile) as pdf:
+mdt.fh.backup(outfile_pdf)
+with PdfPages(outfile_pdf) as pdf:
     # Plot autocorrelation functions.
     for cmp_ix, cmp in enumerate(args.cmps):
         cmp1, cmp2 = cmp.split("-")
@@ -227,6 +228,22 @@ with PdfPages(outfile) as pdf:
         ax.set_xlim(xlim)
         pdf.savefig()
     plt.close()
+    print("Created {}".format(outfile_pdf))
 
-print("Created {}".format(outfile))
+
+print("Creating output file(s)...")
+header = (
+    "Coordination relaxation times.\n"
+    + "\n"
+    + "Average coordination relaxation times are calculated by numerical\n"
+    + "integration of the lifetime autocorrelation function."
+    + "\n\n"
+    + "The columns contain:\n"
+    + " 1 Number of ether oxygens per PEO chain\n"
+)
+for col, cmp in enumerate(args.cmps, start=2):
+    header += " {:d} {:s} relaxation time / ns\n".format(col, cmp)
+data = np.column_stack([Sims.Li_O_ratios, lifetimes.T])
+leap.io_handler.savetxt(outfile_txt, data, header=header)
+print("Created {}".format(outfile_txt))
 print("Done")
