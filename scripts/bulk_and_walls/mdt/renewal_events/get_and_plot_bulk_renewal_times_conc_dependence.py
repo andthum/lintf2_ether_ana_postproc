@@ -124,8 +124,7 @@ outfile_base = (  # Output file name.
     settings
     + "_lintf2_"
     + args.sol
-    + "_r_sc80_"
-    + analysis
+    + "_r_sc80_renewal_times"
     + analysis_suffix
     + con
 )

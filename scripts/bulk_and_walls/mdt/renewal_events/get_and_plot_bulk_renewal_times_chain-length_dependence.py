@@ -100,7 +100,7 @@ analysis_suffix = "_" + args.cmp  # Analysis name specification.
 ana_path = os.path.join(analysis, analysis + analysis_suffix)
 tool = "mdt"  # Analysis software.
 outfile_base = (  # Output file name.
-    settings + "_lintf2_peoN_20-1_sc80_" + analysis + analysis_suffix + con
+    settings + "_lintf2_peoN_20-1_sc80_renewal_times" + analysis_suffix + con
 )
 outfile_txt = outfile_base + ".txt.gz"
 outfile_pdf = outfile_base + ".pdf"
