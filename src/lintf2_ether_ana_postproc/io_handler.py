@@ -310,3 +310,70 @@ def peek_edr(fname):
     if fname_decompressed != fname:
         # Remove decompressed file.
         os.remove(fname_decompressed)
+
+
+def read_edr(fname, observables, begin=0, end=-1, every=1, verbose=True):
+    """
+    Read data from a `Gromacs .edr file
+    <https://manual.gromacs.org/current/reference-manual/file-formats.html#edr>`_.
+
+    Parameters
+    ----------
+    fname : str or os.PathLike
+        Name of the Gromacs .edr file.
+    observables : array_like
+        List of energy terms to read from the .edr file, e.g.
+        ``["Time", "Potential", "Kinetic En.", "Total Energy",
+        "Temperature", "Pressure", "Volume", "Density"]``.  Use
+        :func:`lintf2_ether_ana_postproc.io_handler.peek_edr` to get an
+        overview of all energy terms that are contained in the .edr
+        file.
+    begin : int, optional
+        First frame to use from the .edr file.  Frame numbering starts
+        at zero.
+    end : int, optional
+        Last frame to use from the .edr file (exclusive).
+    every : int, optional
+        Use every n-th frame from the .edr file.
+    verbose : bool, optional
+        If ``True``, print progress information to standard output.
+
+    Returns
+    -------
+    data : dict
+        A Dictionary that holds the times and the selected observables.
+    units : dict
+        A dictionary containing the time unit and the units of the
+        selected observables.
+    """
+    # Decompress .edr file if necessary.
+    fname_decompressed = leap.io_handler.decompress_edr(fname)
+
+    # Read file.
+    data = pyedr.edr_to_dict(fname_decompressed, verbose=verbose)
+    units = pyedr.get_unit_dictionary(fname_decompressed)
+
+    if fname_decompressed != fname:
+        # Remove decompressed file.
+        os.remove(fname_decompressed)
+
+    # Get desired frames.
+    n_frames_tot = len(data["Time"])
+    begin, end, every, n_frames = mdt.check.frame_slicing(
+        start=begin,
+        stop=end,
+        step=every,
+        n_frames_tot=n_frames_tot,
+        verbose=verbose,
+    )
+
+    # Get desired observables.
+    observables = list(observables)
+    for key in tuple(data.keys()):
+        if key not in observables:
+            data.pop(key)
+            units.pop(key)
+        else:
+            data[key] = data[key][begin:end:every]
+
+    return data, units
