@@ -2,7 +2,9 @@
 
 # Standard libraries
 import os
+import shutil
 import sys
+import uuid
 from datetime import datetime
 
 # Third-party libraries
@@ -225,3 +227,61 @@ def savetxt(fname, data, rename=True, **kwargs):
     if rename:
         mdt.fh.backup(fname)
     np.savetxt(fname, data, **kwargs)
+
+
+def decompress_edr(fname):
+    """
+    Decompress a compressed `Gromacs .edr file
+    <https://manual.gromacs.org/current/reference-manual/file-formats.html#edr>`_.
+
+    Check if the given .edr file is compressed and if so, decompress it.
+
+    Parameters
+    ----------
+    fname : str or os.PathLike
+        Name of the Gromacs .edr file.
+
+    Returns
+    -------
+    fname_decompressed : str or os.PathLike
+        Name of the decompressed .edr file.  If the input file is
+        already decompressed, `fname` is returned.
+
+    Notes
+    -----
+    The check for compression relies on the file extension.  If the
+    given file name ends with ".edr", it is considered to be already
+    decompressed, else it is considered to be compressed.
+
+    If the input file is decompressed, the name of the decompressed file
+    is given by the name of the compressed file prefixed by a dot and
+    appended by a universally unique identifier (UUID) and the current
+    timestamp.
+    """
+    root, ext = os.path.splitext(fname)
+    if ext == ".edr":
+        # Input file is not compressed.
+        fname_decompressed = fname
+    else:
+        root_decompressed, ext_decompressed = os.path.splitext(root)
+        if ext_decompressed != ".edr":
+            raise ValueError(
+                "The input file does not contain the '.edr' extension:"
+                " '{}'".format(fname)
+            )
+        path, basename = os.path.split(root_decompressed)
+        timestamp = datetime.now()
+        fname_decompressed = (
+            "."
+            + basename
+            + "_uuid_"
+            + str(uuid.uuid4())
+            + "_date_"
+            + str(timestamp.strftime("%Y-%m-%d_%H-%M-%S"))
+            + ext_decompressed
+        )
+        fname_decompressed = os.path.join(path, fname_decompressed)
+        with mdt.fh.xopen(fname, "rb") as file_in:
+            with open(fname_decompressed, "wb") as file_out:
+                shutil.copyfileobj(file_in, file_out)
+    return fname_decompressed
