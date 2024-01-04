@@ -10,6 +10,7 @@ from datetime import datetime
 # Third-party libraries
 import mdtools as mdt
 import numpy as np
+import pyedr
 
 # First-party libraries
 import lintf2_ether_ana_postproc as leap
@@ -285,3 +286,27 @@ def decompress_edr(fname):
             with open(fname_decompressed, "wb") as file_out:
                 shutil.copyfileobj(file_in, file_out)
     return fname_decompressed
+
+
+def peek_edr(fname):
+    """
+    Print all energy terms contained in a `Gromacs .edr file
+    <https://manual.gromacs.org/current/reference-manual/file-formats.html#edr>`_
+    to standard output.
+
+    Parameters
+    ----------
+    fname : str or os.PathLike
+        Name of the Gromacs .edr file.
+    """
+    # Decompress .edr file if necessary.
+    fname_decompressed = leap.io_handler.decompress_edr(fname)
+
+    unit_dict = pyedr.get_unit_dictionary(fname_decompressed)
+    print("Energy terms contained in '{}':".format(fname))
+    for observable, unit in unit_dict.items():
+        print("{} / {}".format(observable, unit))
+
+    if fname_decompressed != fname:
+        # Remove decompressed file.
+        os.remove(fname_decompressed)
