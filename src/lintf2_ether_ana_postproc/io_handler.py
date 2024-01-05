@@ -305,7 +305,11 @@ def peek_edr(fname):
     unit_dict = pyedr.get_unit_dictionary(fname_decompressed)
     print("Energy terms contained in '{}':".format(fname))
     for observable, unit in unit_dict.items():
-        print("{} / {}".format(observable, unit))
+        # Remove "/mol" from units, because I did not specify the number
+        # of molecules with the `-nmol` option when calling
+        # `gmx energy`.  Thus, the energies in the .edr files are the
+        # total energies of the system and not energies per molecule.
+        print("{} / {}".format(observable, unit.replace("/mol", "")))
 
     if fname_decompressed != fname:
         # Remove decompressed file.
@@ -375,5 +379,11 @@ def read_edr(fname, observables, begin=0, end=-1, every=1, verbose=True):
             units.pop(key)
         else:
             data[key] = data[key][begin:end:every]
+            # Remove "/mol" from units, because I did not specify the
+            # number of molecules with the `-nmol` option when calling
+            # `gmx energy`.  Thus, the energies in the .edr files are
+            # the total energies of the system and not energies per
+            # molecule.
+            units[key] = units[key].replace("/mol", "")
 
     return data, units
