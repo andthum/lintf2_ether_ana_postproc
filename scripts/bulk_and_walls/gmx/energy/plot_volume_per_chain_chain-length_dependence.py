@@ -22,7 +22,7 @@ from scipy.optimize import curve_fit
 import lintf2_ether_ana_postproc as leap
 
 
-def fit_volume(xdata, ydata, ydata_sd, start=0, stop=-1):
+def fit_energy(xdata, ydata, ydata_sd, start=0, stop=-1):
     """
     Fit the linear `ydata` as function of the linear `xdata` with a
     straight line.
@@ -59,8 +59,10 @@ args = parser.parse_args()
 temps = (303, 423)
 # Simulation settings.
 settings_lst = ["eq_npt%d_pr_nh" % temp for temp in temps]
-# Output filename.
-outfile = "eq_npt_pr_nh_lintf2_peoN_20-1_sc80_volume_per_chain.pdf"
+# Output filenames.
+outfile_base = "eq_npT_pr_nh_lintf2_peoN_20-1_sc80_volume_per_chain"
+outfile_txt = outfile_base + ".txt.gz"
+outfile_pdf = outfile_base + ".pdf"
 
 
 observables = ("Volume",)
@@ -73,10 +75,9 @@ print("Creating Simulation instance(s)...")
 Sims_lst = []
 for settings in settings_lst:
     sys_pat = "lintf2_[gp]*[0-9]*_20-1_sc80"
-    if settings == "eq_npt303_pr_nh":
-        set_pat = "[0-9][0-9]_"
-    elif settings == "eq_npt423_pr_nh":
-        set_pat = "[0-9][0-9]_[3-9]_"
+    set_pat = "[0-9][0-9]_"
+    if settings == "eq_npt423_pr_nh":
+        set_pat += "[3-9]_"
     set_pat += settings + "_" + sys_pat
     Sims = leap.simulation.get_sims(
         sys_pat, set_pat, path_key="bulk", sort_key="O_per_chain"
@@ -85,10 +86,12 @@ for settings in settings_lst:
 
 
 print("Reading data...")
-vol_lst, vol_sd_lst = [], []
+energies_lst, energies_sd_lst = [], []
 for Sims in Sims_lst:
-    vol = np.full(Sims.n_sims, np.nan, dtype=np.float64)
-    vol_sd = np.full_like(vol, np.nan)
+    energies = np.full(
+        (len(observables), Sims.n_sims), np.nan, dtype=np.float64
+    )
+    energies_sd = np.full_like(energies, np.nan)
     for sim_ix, Sim in enumerate(Sims.sims):
         infile = Sim.settings + "_out_" + Sim.system + ".edr.gz"
         infile = os.path.join(Sim.path, infile)
@@ -99,31 +102,75 @@ for Sims in Sims_lst:
         for obs_ix, obs in enumerate(observables):
             energies[obs_ix, sim_ix] = np.mean(data[obs]) / n_chains
             energies_sd[obs_ix, sim_ix] = np.std(data[obs]) / n_chains
-    del data, units
-del vol, vol_sd
+    del data
+    energies_lst.append(energies)
+    energies_sd_lst.append(energies_sd)
+del energies, energies_sd
 
 
 print("Fitting straight line...")
 fit_energy_starts = (0,)
 fit_energy_stops = (len(Sims.O_per_chain),)
 popt_energy = np.full(
-    (len(observables), len(fit_energy_starts), 2), np.nan, dtype=np.float64
+    (len(Sims_lst), len(observables), len(fit_energy_starts), 2),
+    np.nan,
+    dtype=np.float64,
 )
 perr_energy = np.full_like(popt_energy, np.nan)
 fit_quality = np.full_like(popt_energy, np.nan)
-for obs_ix, energy in enumerate(energies):
-    for fit_ix, start in enumerate(fit_energy_starts):
-        (
-            popt_energy[obs_ix, fit_ix],
-            perr_energy[obs_ix, fit_ix],
-            fit_quality[obs_ix, fit_ix],
-        ) = fit_volume(
-            xdata=Sims.O_per_chain,
-            ydata=energy,
-            ydata_sd=energies_sd[obs_ix],
-            start=start,
-            stop=fit_energy_stops[fit_ix],
+for sims_ix, Sims in enumerate(Sims_lst):
+    for obs_ix, vol in enumerate(energies_lst[sims_ix]):
+        for fit_ix, start in enumerate(fit_energy_starts):
+            (
+                popt_energy[sims_ix, obs_ix, fit_ix],
+                perr_energy[sims_ix, obs_ix, fit_ix],
+                fit_quality[sims_ix, obs_ix, fit_ix],
+            ) = fit_energy(
+                xdata=Sims.O_per_chain,
+                ydata=vol,
+                ydata_sd=energies_sd_lst[sims_ix][obs_ix],
+                start=start,
+                stop=fit_energy_stops[fit_ix],
+            )
+
+
+print("Creating output...")
+header = (
+    "Average total volume of the system divided by the total number of PEO\n"
+    + "chains as function of the PEO chain length.\n"
+    + "\n\n"
+    + "Li-to-EO ratio r = {:.2f}" % Sims_lst[0].Li_O_ratios[0]
+    + "\n\n"
+    + "The columns contain:\n"
+    + "  1 n_EO: Number of ether oxygens per PEO chain\n"
+    + "  2 N_Chain: Total number of PEO chains in the system\n"
+    + "  3 N_Salt: Total number of LiTFSI ion pairs in the system\n"
+)
+data = np.column_stack(
+    [
+        Sims_lst[0].O_per_chain,
+        Sims_lst[0].res_nums["solvent"],
+        Sims_lst[0].res_nums["cation"],
+    ]
+)
+col_num = 4
+for sims_ix, temp in enumerate(temps):
+    header += "\n"
+    header += " Data at {} K\n".format(temp)
+    for obs_ix, obs in enumerate(observables):
+        header += "  {} {} / N_Chain / {}\n".format(col_num, obs, units[obs])
+        header += "  {} Standard deviation / {}\n".format(
+            col_num + 1, units[obs]
         )
+        col_num += 2
+        data_obs = np.column_stack(
+            [energies_lst[sims_ix][obs_ix], energies_sd_lst[sims_ix][obs_ix]]
+        )
+        data = np.column_stack([data, data_obs])
+    del data_obs
+leap.io_handler.savetxt(outfile_txt, data, header=header)
+print("Created {}".format(outfile_txt))
+del data
 
 
 print("Creating plot(s)...")
@@ -150,8 +197,8 @@ if len(linestyles) != len(fit_energy_starts):
         " ({})".format(len(linestyles), len(fit_energy_starts))
     )
 
-mdt.fh.backup(outfile)
-with PdfPages(outfile) as pdf:
+mdt.fh.backup(outfile_pdf)
+with PdfPages(outfile_pdf) as pdf:
     # Plot energies.
     fig, ax = plt.subplots(clear=True)
     for obs_ix, label in enumerate(labels):
@@ -264,5 +311,5 @@ with PdfPages(outfile) as pdf:
     pdf.savefig()
     plt.close()
 
-print("Created {}".format(outfile))
+print("Created {}".format(outfile_pdf))
 print("Done")
