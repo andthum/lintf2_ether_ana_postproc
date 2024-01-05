@@ -541,13 +541,11 @@ class Simulation:
                 " the end but nowhere"
                 " else".format(os.path.basename(self.path), self.system)
             )
-        if len(self.settings) < 4:
-            raise ValueError(
-                "Unexpected error: Could not infer the settings string from"
-                " the path ('{}')".format(self.path)
-            )
-        # Remove preceding number and trailing underscore.
-        self.settings = self.settings[3:-1]
+        # Remove preceding numbers and underscores.
+        while self.settings[0].isdigit() or self.settings.startswith("_"):
+            self.settings = self.settings[1:]
+        # Remove preceding and trailing underscores.
+        self.settings = self.settings.strip("_")
         return self.settings
 
     def get_path_ana(self):
