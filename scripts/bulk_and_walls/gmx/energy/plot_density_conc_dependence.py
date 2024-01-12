@@ -70,19 +70,34 @@ infiles = [
     settings + "_" + system + "_energy.txt.gz" for settings in settings_lst
 ]
 n_infiles = len(infiles)
-xdata = [None for infile in infiles]
-ydata = [None for infile in infiles]
-ydata_sd = [None for infiles in infiles]
+xdata = [[None for infile in infiles] for i in range(2)]
+ydata = [[None for infile in infiles] for i in range(2)]
+ydata_sd = [[None for infile in infiles] for i in range(2)]
 for set_ix, infile in enumerate(infiles):
-    xdata[set_ix], ydata[set_ix], ydata_sd[set_ix] = np.loadtxt(
+    xdata[0][set_ix], ydata[0][set_ix], ydata_sd[0][set_ix] = np.loadtxt(
         infile, usecols=cols, unpack=True
     )
+    ydata[0][set_ix] /= 1e3  # kg/m^3 -> g/cm^3.
+    ydata_sd[0][set_ix] /= 1e3  # Std[c*A] = c * Std[A].
+
+    # Calculate the specific volume (= inverse density).
+    xdata[1][set_ix] = 1 / xdata[0][set_ix]
+    ydata[1][set_ix] = 1 / ydata[0][set_ix]
+    # Propagation of uncertainty.
+    # https://en.wikipedia.org/wiki/Propagation_of_uncertainty#Example_formulae
+    # Std[1/A] = 1/|A| * Std[A]/|A| = Std[A]/A^2
+    ydata_sd[1][set_ix] = ydata_sd[0][set_ix] / ydata[0][set_ix] ** 2
+    # Sort data in ascending x order.
+    xdata[1][set_ix] = xdata[1][set_ix][::-1]
+    ydata[1][set_ix] = ydata[1][set_ix][::-1]
+    ydata_sd[1][set_ix] = ydata_sd[1][set_ix][::-1]
 
 
 print("Creating plot(s)...")
-xlabel = r"Li-to-EO Ratio $r$"
-xlim_lin = (0, 0.4 + 0.0125)
-xlim_log = (1e-2, 5e-1)
+xlabels = (r"Li-to-EO Ratio $r$", r"EO-to-Li Ratio $1/r$")
+ylabels = (r"Density / g cm$^{-3}$", r"Specific Volume / cm$^3$ g$^{-1}$")
+xlims_lin = [(0, 0.4 + 0.0125), (0, 85)]
+xlims_log = [(1e-2, 5e-1), (2e0, 9e1)]
 if args.sol == "g1":
     legend_title = r"$n_{EO} = 2$"
 elif args.sol == "g4":
@@ -101,41 +116,44 @@ if len(markers) != n_infiles:
 
 mdt.fh.backup(outfile)
 with PdfPages(outfile) as pdf:
-    fig, ax = plt.subplots(clear=True)
-    for set_ix, temp in enumerate(temps):
-        ax.errorbar(
-            xdata[set_ix],
-            ydata[set_ix],
-            yerr=ydata_sd[set_ix],
-            label=r"$%d$" % temp,
-            marker=markers[set_ix],
-        )
-    ax.set(xlabel=xlabel, ylabel=r"Density / kg m$^{-3}$", xlim=xlim_lin)
-    equalize_xticks(ax)
-    legend = ax.legend(title=legend_title)
-    legend.get_title().set_multialignment("center")
-    pdf.savefig()
-    # Log scale x.
-    ax.relim()
-    ax.autoscale()
-    ax.set_xscale("log", base=10, subs=np.arange(2, 10))
-    ax.set_xlim(xlim_log)
-    pdf.savefig()
-    # Log scale y.
-    ax.relim()
-    ax.autoscale()
-    ax.set_xscale("linear")
-    ax.set_yscale("log", base=10, subs=np.arange(2, 10))
-    ax.set_xlim(xlim_lin)
-    equalize_xticks(ax)
-    pdf.savefig()
-    # Log scale xy.
-    ax.relim()
-    ax.autoscale()
-    ax.set_xscale("log", base=10, subs=np.arange(2, 10))
-    ax.set_xlim(xlim_log)
-    pdf.savefig()
-    plt.close()
+    for data_ix, xlabel in enumerate(xlabels):
+        fig, ax = plt.subplots(clear=True)
+        for set_ix, temp in enumerate(temps):
+            ax.errorbar(
+                xdata[data_ix][set_ix],
+                ydata[data_ix][set_ix],
+                yerr=ydata_sd[data_ix][set_ix],
+                label=r"$%d$" % temp,
+                marker=markers[set_ix],
+            )
+        ax.set(xlabel=xlabel, ylabel=ylabels[data_ix], xlim=xlims_lin[data_ix])
+        if data_ix == 0:  # Density.
+            equalize_xticks(ax)
+        legend = ax.legend(title=legend_title)
+        legend.get_title().set_multialignment("center")
+        pdf.savefig()
+        # Log scale x.
+        ax.relim()
+        ax.autoscale()
+        ax.set_xscale("log", base=10, subs=np.arange(2, 10))
+        ax.set_xlim(xlims_log[data_ix])
+        pdf.savefig()
+        # Log scale y.
+        ax.relim()
+        ax.autoscale()
+        ax.set_xscale("linear")
+        ax.set_yscale("log", base=10, subs=np.arange(2, 10))
+        ax.set_xlim(xlims_lin[data_ix])
+        if data_ix == 0:  # Density.
+            equalize_xticks(ax)
+        pdf.savefig()
+        # Log scale xy.
+        ax.relim()
+        ax.autoscale()
+        ax.set_xscale("log", base=10, subs=np.arange(2, 10))
+        ax.set_xlim(xlims_log[data_ix])
+        pdf.savefig()
+        plt.close()
 
 print("Created {}".format(outfile))
 print("Done")
