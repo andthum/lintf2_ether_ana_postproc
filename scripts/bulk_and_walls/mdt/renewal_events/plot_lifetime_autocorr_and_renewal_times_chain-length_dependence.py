@@ -38,15 +38,15 @@ infile_acf = (
     + prefix
     + "lifetime_autocorr_combined_Li-OE_Li-OBT_Li-ether_Li-NTf2.txt.gz"
 )
-infile_renew_peo = prefix + "renewal_events_Li-ether_continuous.txt.gz"
-infile_renew_tfsi = prefix + "renewal_events_Li-NTf2_continuous.txt.gz"
+infile_renew_peo = prefix + "renewal_times_Li-ether_continuous.txt.gz"
+infile_renew_tfsi = prefix + "renewal_times_Li-NTf2_continuous.txt.gz"
 outfile = prefix + "lifetime_autocorr_and_renewal_times.pdf"
 
 
 print("Reading data...")
-acf_data = np.loadtxt(infile_acf, usecols=(0, 1, 2))
+acf_data = np.loadtxt(infile_acf)
 rnw_peo_data = np.loadtxt(infile_renew_peo, usecols=(0, 29))
-rnw_tfsi_data = np.loadtxt(infile_renew_tfsi, usecols=(0, 29))
+# rnw_tfsi_data = np.loadtxt(infile_renew_tfsi, usecols=(0, 29))
 
 
 print("Creating plot(s)...")
@@ -56,31 +56,46 @@ legend_title = r"$r = 0.05$"
 labels = (
     r"$Li-O_{PEO}$ Relaxation",
     r"$Li-O_{TFSI}$ Relaxation",
+    r"$Li-PEO$ Relaxation",
+    r"$Li-TFSI$ Relaxation",
     r"$Li-PEO$ Renewal",
-    r"$Li-TFSI$ Renewal",
+    # r"$Li-TFSI$ Renewal",
 )
-colors = ("tab:blue", "tab:cyan", "tab:red", "tab:orange")
-markers = ("^", "v", "s", "D")
+colors = ("tab:blue", "tab:cyan", "tab:red", "tab:orange", "tab:purple")
+markers = ("^", "v", "s", "D", "o")
+linestyles = ("solid",) * 4 + ("dashed",)
 
 mdt.fh.backup(outfile)
 with PdfPages(outfile) as pdf:
     fig, ax = plt.subplots(clear=True)
     for i, label in enumerate(labels):
-        if label.startswith(r"$Li-O_{PEO}$"):
+        if label.startswith(r"$Li-O_{PEO}$ Relaxation"):
             xdata, ydata = acf_data[:, 0], acf_data[:, 1]
-        elif label.startswith(r"$Li-O_{TFSI}$"):
+        elif label.startswith(r"$Li-O_{TFSI}$ Relaxation"):
             xdata, ydata = acf_data[:, 0], acf_data[:, 2]
-        elif label.startswith(r"$Li-PEO$"):
+        elif label.startswith(r"$Li-PEO$ Relaxation"):
+            xdata, ydata = acf_data[:, 0], acf_data[:, 3]
+        elif label.startswith(r"$Li-TFSI$ Relaxation"):
+            xdata, ydata = acf_data[:, 0], acf_data[:, 4]
+        elif label.startswith(r"$Li-PEO$ Renewal"):
             xdata, ydata = rnw_peo_data[:, 0], rnw_peo_data[:, 1]
-        elif label.startswith(r"$Li-TFSI$"):
-            xdata, ydata = rnw_tfsi_data[:, 0], rnw_tfsi_data[:, 1]
+        # elif label.startswith(r"$Li-TFSI$ Renewal"):
+        #     xdata, ydata = rnw_tfsi_data[:, 0], rnw_tfsi_data[:, 1]
         else:
             raise ValueError("Unknown 'label': '{}'".format(label))
         valid = np.isfinite(ydata)
         xdata, ydata = xdata[valid], ydata[valid]
-        ax.plot(xdata, ydata, label=label, color=colors[i], marker=markers[i])
+        ax.plot(
+            xdata,
+            ydata,
+            label=label,
+            color=colors[i],
+            marker=markers[i],
+            linestyle=linestyles[i],
+            alpha=leap.plot.ALPHA,
+        )
     ax.set_xscale("log", base=10, subs=np.arange(2, 10))
-    ax.set(xlabel=xlabel, ylabel="Lifetime / ns", xlim=xlim)
+    ax.set(xlabel=xlabel, ylabel="Time Scale / ns", xlim=xlim)
     ylim = ax.get_ylim()
     if ylim[0] < 0:
         ax.set_ylim(0, ylim[1])
