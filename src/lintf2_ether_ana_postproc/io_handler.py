@@ -2,12 +2,15 @@
 
 # Standard libraries
 import os
+import shutil
 import sys
+import uuid
 from datetime import datetime
 
 # Third-party libraries
 import mdtools as mdt
 import numpy as np
+import pyedr
 
 # First-party libraries
 import lintf2_ether_ana_postproc as leap
@@ -225,3 +228,162 @@ def savetxt(fname, data, rename=True, **kwargs):
     if rename:
         mdt.fh.backup(fname)
     np.savetxt(fname, data, **kwargs)
+
+
+def decompress_edr(fname):
+    """
+    Decompress a compressed `Gromacs .edr file
+    <https://manual.gromacs.org/current/reference-manual/file-formats.html#edr>`_.
+
+    Check if the given .edr file is compressed and if so, decompress it.
+
+    Parameters
+    ----------
+    fname : str or os.PathLike
+        Name of the Gromacs .edr file.
+
+    Returns
+    -------
+    fname_decompressed : str or os.PathLike
+        Name of the decompressed .edr file.  If the input file is
+        already decompressed, `fname` is returned.
+
+    Notes
+    -----
+    The check for compression relies on the file extension.  If the
+    given file name ends with ".edr", it is considered to be already
+    decompressed, else it is considered to be compressed.
+
+    If the input file is decompressed, the name of the decompressed file
+    is given by the name of the compressed file prefixed by a dot and
+    appended by a universally unique identifier (UUID) and the current
+    timestamp.
+    """
+    root, ext = os.path.splitext(fname)
+    if ext == ".edr":
+        # Input file is not compressed.
+        fname_decompressed = fname
+    else:
+        root_decompressed, ext_decompressed = os.path.splitext(root)
+        if ext_decompressed != ".edr":
+            raise ValueError(
+                "The input file does not contain the '.edr' extension:"
+                " '{}'".format(fname)
+            )
+        path, basename = os.path.split(root_decompressed)
+        timestamp = datetime.now()
+        fname_decompressed = (
+            "."
+            + basename
+            + "_uuid_"
+            + str(uuid.uuid4())
+            + "_date_"
+            + str(timestamp.strftime("%Y-%m-%d_%H-%M-%S"))
+            + ext_decompressed
+        )
+        fname_decompressed = os.path.join(path, fname_decompressed)
+        with mdt.fh.xopen(fname, "rb") as file_in:
+            with open(fname_decompressed, "wb") as file_out:
+                shutil.copyfileobj(file_in, file_out)
+    return fname_decompressed
+
+
+def peek_edr(fname):
+    """
+    Print all energy terms contained in a `Gromacs .edr file
+    <https://manual.gromacs.org/current/reference-manual/file-formats.html#edr>`_
+    to standard output.
+
+    Parameters
+    ----------
+    fname : str or os.PathLike
+        Name of the Gromacs .edr file.
+    """
+    # Decompress .edr file if necessary.
+    fname_decompressed = leap.io_handler.decompress_edr(fname)
+
+    unit_dict = pyedr.get_unit_dictionary(fname_decompressed)
+    print("Energy terms contained in '{}':".format(fname))
+    for observable, unit in unit_dict.items():
+        # Remove "/mol" from units, because I did not specify the number
+        # of molecules with the `-nmol` option when calling
+        # `gmx energy`.  Thus, the energies in the .edr files are the
+        # total energies of the system and not energies per molecule.
+        print("{} / {}".format(observable, unit.replace("/mol", "")))
+
+    if fname_decompressed != fname:
+        # Remove decompressed file.
+        os.remove(fname_decompressed)
+
+
+def read_edr(fname, observables, begin=0, end=-1, every=1, verbose=True):
+    """
+    Read data from a `Gromacs .edr file
+    <https://manual.gromacs.org/current/reference-manual/file-formats.html#edr>`_.
+
+    Parameters
+    ----------
+    fname : str or os.PathLike
+        Name of the Gromacs .edr file.
+    observables : array_like
+        List of energy terms to read from the .edr file, e.g.
+        ``["Time", "Potential", "Kinetic En.", "Total Energy",
+        "Temperature", "Pressure", "Volume", "Density"]``.  Use
+        :func:`lintf2_ether_ana_postproc.io_handler.peek_edr` to get an
+        overview of all energy terms that are contained in the .edr
+        file.
+    begin : int, optional
+        First frame to use from the .edr file.  Frame numbering starts
+        at zero.
+    end : int, optional
+        Last frame to use from the .edr file (exclusive).
+    every : int, optional
+        Use every n-th frame from the .edr file.
+    verbose : bool, optional
+        If ``True``, print progress information to standard output.
+
+    Returns
+    -------
+    data : dict
+        A Dictionary that holds the times and the selected observables.
+    units : dict
+        A dictionary containing the time unit and the units of the
+        selected observables.
+    """
+    # Decompress .edr file if necessary.
+    fname_decompressed = leap.io_handler.decompress_edr(fname)
+
+    # Read file.
+    data = pyedr.edr_to_dict(fname_decompressed, verbose=verbose)
+    units = pyedr.get_unit_dictionary(fname_decompressed)
+
+    if fname_decompressed != fname:
+        # Remove decompressed file.
+        os.remove(fname_decompressed)
+
+    # Get desired frames.
+    n_frames_tot = len(data["Time"])
+    begin, end, every, n_frames = mdt.check.frame_slicing(
+        start=begin,
+        stop=end,
+        step=every,
+        n_frames_tot=n_frames_tot,
+        verbose=verbose,
+    )
+
+    # Get desired observables.
+    observables = list(observables)
+    for key in tuple(data.keys()):
+        if key not in observables:
+            data.pop(key)
+            units.pop(key)
+        else:
+            data[key] = data[key][begin:end:every]
+            # Remove "/mol" from units, because I did not specify the
+            # number of molecules with the `-nmol` option when calling
+            # `gmx energy`.  Thus, the energies in the .edr files are
+            # the total energies of the system and not energies per
+            # molecule.
+            units[key] = units[key].replace("/mol", "")
+
+    return data, units
