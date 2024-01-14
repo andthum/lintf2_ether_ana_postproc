@@ -2,8 +2,8 @@
 
 
 """
-Plot the coordination relaxation times and the renewal times as function
-of the salt concentration in one plot.
+Plot the coordination correlation times and the renewal times as
+function of the salt concentration in one plot.
 """
 
 
@@ -38,7 +38,7 @@ def equalize_xticks(ax):
 # Input parameters.
 parser = argparse.ArgumentParser(
     description=(
-        "Plot the coordination relaxation times and the renewal times as"
+        "Plot the coordination correlation times and the renewal times as"
         " function of the salt concentration in one plot."
     )
 )
@@ -82,10 +82,10 @@ elif args.sol == "peo63":
 else:
     raise ValueError("Unknown --sol: {}".format(args.sol))
 labels = (
-    r"$Li-O_{PEO}$ Relaxation",
-    r"$Li-O_{TFSI}$ Relaxation",
-    r"$Li-PEO$ Relaxation",
-    r"$Li-TFSI$ Relaxation",
+    r"$Li-O_{PEO}$ Correlation",
+    r"$Li-O_{TFSI}$ Correlation",
+    r"$Li-PEO$ Correlation",
+    r"$Li-TFSI$ Correlation",
     r"$Li-PEO$ Renewal",
     # r"$Li-TFSI$ Renewal",
 )
@@ -97,13 +97,13 @@ mdt.fh.backup(outfile)
 with PdfPages(outfile) as pdf:
     fig, ax = plt.subplots(clear=True)
     for i, label in enumerate(labels):
-        if label.startswith(r"$Li-O_{PEO}$ Relaxation"):
+        if label.startswith(r"$Li-O_{PEO}$ Correlation"):
             xdata, ydata = acf_data[:, 0], acf_data[:, 1]
-        elif label.startswith(r"$Li-O_{TFSI}$ Relaxation"):
+        elif label.startswith(r"$Li-O_{TFSI}$ Correlation"):
             xdata, ydata = acf_data[:, 0], acf_data[:, 2]
-        elif label.startswith(r"$Li-PEO$ Relaxation"):
+        elif label.startswith(r"$Li-PEO$ Correlation"):
             xdata, ydata = acf_data[:, 0], acf_data[:, 3]
-        elif label.startswith(r"$Li-TFSI$ Relaxation"):
+        elif label.startswith(r"$Li-TFSI$ Correlation"):
             xdata, ydata = acf_data[:, 0], acf_data[:, 4]
         elif label.startswith(r"$Li-PEO$ Renewal"):
             xdata, ydata = rnw_peo_data[:, 0], rnw_peo_data[:, 1]

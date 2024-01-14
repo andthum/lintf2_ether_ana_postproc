@@ -190,7 +190,7 @@ with PdfPages(outfile) as pdf:
     fig, ax = plt.subplots(clear=True)
     ax.plot(Sims.O_per_chain, lifetimes, marker="o")
     ax.set_xscale("log", base=10, subs=np.arange(2, 10))
-    ax.set(xlabel=xlabel, ylabel="Relaxation Time / ns", xlim=xlim)
+    ax.set(xlabel=xlabel, ylabel="Correlation Time / ns", xlim=xlim)
     ylim = ax.get_ylim()
     if ylim[0] < 0:
         ax.set_ylim(0, ylim[1])
