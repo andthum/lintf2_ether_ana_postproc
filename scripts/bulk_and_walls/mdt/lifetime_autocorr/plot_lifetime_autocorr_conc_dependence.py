@@ -170,7 +170,7 @@ with PdfPages(outfile) as pdf:
     xlim = (0, 0.4 + 0.0125)
     fig, ax = plt.subplots(clear=True)
     ax.plot(Sims.Li_O_ratios, lifetimes, marker="o")
-    ax.set(xlabel=xlabel, ylabel="Relaxation Time / ns", xlim=xlim)
+    ax.set(xlabel=xlabel, ylabel="Correlation Time / ns", xlim=xlim)
     equalize_xticks(ax)
     ylim = ax.get_ylim()
     if ylim[0] < 0:
