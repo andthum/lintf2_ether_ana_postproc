@@ -99,50 +99,30 @@ with PdfPages(outfile) as pdf:
     fig, ax = plt.subplots(clear=True)
     ax.errorbar(
         Sims.O_per_chain,
-        msd[0],
-        yerr=msd_sd[0],
-        label=leap.plot.ATOM_TYPE2DISPLAY_NAME[cmp1],
-        marker="^",
+        msd[1],
+        yerr=msd_sd[1],
+        label=leap.plot.ATOM_TYPE2DISPLAY_NAME[cmp2],
+        color="tab:blue",
+        marker="o",
+        alpha=leap.plot.ALPHA,
     )
     ax.errorbar(
         Sims.O_per_chain,
-        msd[1],
-        yerr=msd_sd[1],
-        label=leap.plot.ATOM_TYPE2DISPLAY_NAME[cmp2] + " COM",
-        marker="v",
+        msd[0],
+        yerr=msd_sd[0],
+        label=leap.plot.ATOM_TYPE2DISPLAY_NAME[cmp1],
+        color="tab:green",
+        marker="^",
+        alpha=leap.plot.ALPHA,
     )
-    ax.set_xscale("log", base=10, subs=np.arange(2, 10))
-    ax.set(xlabel=xlabel, ylabel=r"MSD($\tau_3$) / nm$^2$", xlim=xlim)
-    ylim = ax.get_ylim()
-    if ylim[0] < 0:
-        ax.set_ylim(0, ylim[1])
-    legend = ax.legend(title=legend_title)
-    legend.get_title().set_multialignment("center")
-    pdf.savefig()
-    yd_min, yd_max = leap.plot.get_ydata_min_max(ax)
-    if np.any(np.greater(yd_min, 0)):
-        # Log scale y.
-        ax.relim()
-        ax.autoscale()
-        ax.set_yscale("log", base=10, subs=np.arange(2, 10))
-        ax.set_xlim(xlim)
-        pdf.savefig()
-    plt.close()
-
-    fig, ax = plt.subplots(clear=True)
     ax.errorbar(
         Sims.O_per_chain,
         msd[2],
         yerr=msd_sd[2],
-        label=leap.plot.ATOM_TYPE2DISPLAY_NAME[cmp1] + " relative to",
-        marker="^",
-    )
-    ax.errorbar(
-        Sims.O_per_chain,
-        msd[1],
-        yerr=msd_sd[1],
-        label=leap.plot.ATOM_TYPE2DISPLAY_NAME[cmp2] + " COM",
-        marker="v",
+        label=leap.plot.ATOM_TYPE2DISPLAY_NAME[cmp1] + " Relative",
+        color="tab:orange",
+        marker="D",
+        alpha=leap.plot.ALPHA,
     )
     ax.set_xscale("log", base=10, subs=np.arange(2, 10))
     ax.set(xlabel=xlabel, ylabel=r"MSD($\tau_3$) / nm$^2$", xlim=xlim)
