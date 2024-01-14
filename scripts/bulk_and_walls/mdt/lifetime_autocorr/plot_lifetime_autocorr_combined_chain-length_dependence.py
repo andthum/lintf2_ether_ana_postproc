@@ -202,7 +202,7 @@ with PdfPages(outfile_pdf) as pdf:
             marker=markers[cmp_ix],
         )
     ax.set_xscale("log", base=10, subs=np.arange(2, 10))
-    ax.set(xlabel=xlabel, ylabel="Relaxation Time / ns", xlim=xlim)
+    ax.set(xlabel=xlabel, ylabel="Correlation Time / ns", xlim=xlim)
     ylim = ax.get_ylim()
     if ylim[0] < 0:
         ax.set_ylim(0, ylim[1])
@@ -223,16 +223,16 @@ with PdfPages(outfile_pdf) as pdf:
 
 print("Creating output file(s)...")
 header = (
-    "Coordination relaxation times.\n"
+    "Coordination correlation times.\n"
     + "\n"
-    + "Average coordination relaxation times are calculated by numerical\n"
+    + "Average coordination correlation times are calculated by numerical\n"
     + "integration of the lifetime autocorrelation function."
     + "\n\n"
     + "The columns contain:\n"
     + " 1 Number of ether oxygens per PEO chain\n"
 )
 for col, cmp in enumerate(args.cmps, start=2):
-    header += " {:d} {:s} relaxation time / ns\n".format(col, cmp)
+    header += " {:d} {:s} correlation time / ns\n".format(col, cmp)
 data = np.column_stack([Sims.O_per_chain, lifetimes.T])
 leap.io_handler.savetxt(outfile_txt, data, header=header)
 print("Created {}".format(outfile_txt))
