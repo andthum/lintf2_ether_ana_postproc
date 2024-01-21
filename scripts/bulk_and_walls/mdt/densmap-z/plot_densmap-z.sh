@@ -2,6 +2,7 @@
 
 settings="pr_nvt423_nh"
 top_path="${HOME}/ownCloud/WWU_Münster/Promotion/Simulationen/results/lintf2_peo/walls"
+flags=()
 
 ########################################################################
 # Information and Usage Functions                                      #
@@ -23,13 +24,17 @@ usage() {
     echo "        Default: '${settings}'."
     echo "  -t    Top-level simulation path containing all surface"
     echo "        simulations.  Default: '${top_path}'."
+    echo "  -f    Addtional options (besides --system, --settings,"
+    echo "        --cmp and --slab) to parse to 'plot_densmap.py' as"
+    echo "         one long, enquoted string.  See there for possible"
+    echo "         options.  Default: '${flags[*]}'"
 }
 
 ########################################################################
 # Argument Parsing                                                     #
 ########################################################################
 
-while getopts he:t: option; do
+while getopts he:t:f: option; do
     case ${option} in
         # Optional arguments.
         h)
@@ -42,6 +47,12 @@ while getopts he:t: option; do
             ;;
         t)
             top_path=${OPTARG}
+            ;;
+        f)
+            # See https://github.com/koalaman/shellcheck/wiki/SC2086#exceptions
+            # and https://github.com/koalaman/shellcheck/wiki/SC2206
+            # shellcheck disable=SC2206
+            flags=(${OPTARG})
             ;;
         # Handling of invalid options or missing arguments.
         *)
@@ -154,7 +165,8 @@ for surfq in q[0-9]*; do
                     --system "${system}" \
                     --settings "${settings}" \
                     --cmp "${cmp}" \
-                    --slab "${slab}" ||
+                    --slab "${slab}" \
+                    ${flags[*]} ||
                     exit
             done
 
