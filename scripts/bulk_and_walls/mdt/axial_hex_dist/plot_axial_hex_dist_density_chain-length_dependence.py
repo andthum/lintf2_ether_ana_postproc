@@ -195,7 +195,12 @@ ylabel = (
 xlim = (0, 6 * 0.142)
 ylim = (0.4, 4.2)
 
-legend_title = r"$r = %.2f$" % Sims.Li_O_ratios[0] + "\n" + r"$n_{EO}$"
+legend_title = (
+    r"$\sigma_s = -%.2f$ $e$/nm$^2$, " % Sims.surfqs[0]
+    + r"$r = %.2f$" % Sims.Li_O_ratios[0]
+    + "\n"
+    + r"$n_{EO}$"
+)
 legend_loc = "upper center"
 n_legend_cols = Sims.n_sims // 2
 
@@ -249,6 +254,7 @@ with PdfPages(outfile) as pdf:
             alpha=leap.plot.ALPHA,
         )
     ax.set(xlabel=xlabel, ylabel=ylabel, ylim=ylim)
+    ax.margins(x=0)
     legend = ax.legend(
         title=legend_title,
         loc=legend_loc,
