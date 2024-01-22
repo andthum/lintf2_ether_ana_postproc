@@ -113,18 +113,26 @@ Sims = leap.simulation.get_sims(
 
 
 print("Reading data...")
-# Get input files.
+# Get input files that contain the average compound density in each bin.
+analysis_bin_pop = "discrete-z"
+file_suffix_bin_pop = analysis_bin_pop + "_Li_bin_population.txt.gz"
+infiles_bin_pop = leap.simulation.get_ana_files(
+    Sims, analysis_bin_pop, tool, file_suffix_bin_pop
+)
+
+# Get the input files that contain the density along the hexagonal axes.
 file_extension = ".txt.gz"
 file_suffix_pattern = analysis_tot + "*.txt.gz"
 infiles = [None for Sim in Sims.sims]
 slab_widths = np.full(Sims.n_sims, np.nan, dtype=np.float64)
+slab_dens = np.full_like(slab_widths, np.nan)
 for sim_ix, path in enumerate(Sims.paths_ana):
     fname_pattern = Sims.fnames_ana_base[sim_ix] + file_suffix_pattern
     fpath_pattern = os.path.join(path, tool, ana_path, fname_pattern)
     files = glob.glob(fpath_pattern)
 
-    # Get the file that contains the data for the slab that is closest
-    # to the negative electrode.
+    # Get the file that contains the data for the slab/bin that is
+    # closest to the negative electrode.
     file_prefix = Sims.fnames_ana_base[sim_ix] + analysis_tot
     slab_starts = np.full(len(files), np.nan, dtype=np.float64)
     slab_stops = np.full_like(slab_starts, np.nan)
@@ -133,6 +141,34 @@ for sim_ix, path in enumerate(Sims.paths_ana):
     ix_max = np.argmax(slab_starts)
     infiles[sim_ix] = files[ix_max]
     slab_widths[sim_ix] = slab_stops[ix_max] - slab_starts[ix_max]
+
+    # Get the average compound density in the slab/bin.
+    tol = 0.02
+    bin_starts, bin_stops, bin_dens = np.loadtxt(
+        infiles_bin_pop[sim_ix], usecols=(0, 1, 6), unpack=True
+    )
+    bin_starts, bin_stops = np.round(bin_starts, 2), np.round(bin_stops, 2)
+    bin_ix_start = np.flatnonzero(
+        np.isclose(bin_starts, slab_starts[ix_max], rtol=0, atol=tol)
+    )
+    bin_ix_stop = np.flatnonzero(
+        np.isclose(bin_stops, slab_stops[ix_max], rtol=0, atol=tol)
+    )
+    if len(bin_ix_start) != 1:
+        raise ValueError(
+            "`len(bin_ix_start)` ({}) != 1".format(len(bin_ix_start))
+        )
+    if len(bin_ix_stop) != 1:
+        raise ValueError(
+            "`len(bin_ix_stop)` ({}) != 1".format(len(bin_ix_stop))
+        )
+    bin_ix_start, bin_ix_stop = bin_ix_start[0], bin_ix_stop[0]
+    if bin_ix_stop != bin_ix_start:
+        raise ValueError(
+            "`bin_ix_stop` ({}) != `bin_ix_start`"
+            " ({})".format(bin_ix_stop, bin_ix_start)
+        )
+    slab_dens[sim_ix] = bin_dens[bin_ix_start]  # 1/Angstrom^3.
 del files, slab_starts, slab_stops
 slab_widths /= 10  # Angstrom -> nm.
 
@@ -142,20 +178,26 @@ ydata = [None for Sim in Sims.sims]
 for sim_ix, infile in enumerate(infiles):
     data = np.loadtxt(infile, usecols=(0, 1, 2))
     xdata[sim_ix] = data[:, 0] / 10  # Angstrom -> nm.
-    ydata[sim_ix] = np.nanmean(data[:, 1:], axis=1)
-    ydata[sim_ix] *= 1e3  # 1/Angstrom^3 -> 1/nm^3
+    ydata[sim_ix] = np.nanmean(data[:, 1:], axis=1)  # 1/Angstrom^3.
+    ydata[sim_ix] /= slab_dens[sim_ix]
 del data
 
 
 print("Reading data and creating plot(s)...")
 xlabel = r"$r$ / nm"
-ylabel = r"Density $\rho(r)$ / nm$^{-3}$"
+ylabel = (
+    r"Density $\rho_{"
+    + leap.plot.ATOM_TYPE2DISPLAY_NAME[args.cmp]
+    + r"}(r) / \rho_{"
+    + leap.plot.ATOM_TYPE2DISPLAY_NAME[args.cmp]
+    + r"}^{layer}$"
+)
 xlim = (0, 6 * 0.142)
-ylim = (None, None)
+ylim = (0.4, 4.2)
 
 legend_title = r"$r = %.2f$" % Sims.Li_O_ratios[0] + "\n" + r"$n_{EO}$"
 legend_loc = "upper center"
-n_legend_cols = 1 + Sims.n_sims // (3 + 1)
+n_legend_cols = Sims.n_sims // 2
 
 cmap = plt.get_cmap()
 c_vals = np.arange(Sims.n_sims)
@@ -171,7 +213,7 @@ with PdfPages(outfile) as pdf:
     ax.set_xscale("log", base=10, subs=np.arange(2, 10))
     ax.set(
         xlabel=r"Ether Oxygens per Chain $n_{EO}$",
-        ylabel="Slab Width / nm",
+        ylabel="Layer Width / nm",
         xlim=(1, 200),
     )
     legend = ax.legend(title=legend_title.split("\n")[0])
@@ -183,13 +225,17 @@ with PdfPages(outfile) as pdf:
     fig, ax = plt.subplots(clear=True)
     ax.set_prop_cycle(color=colors)
     for sim_ix, Sim in enumerate(Sims.sims):
+        if Sim.O_per_chain == 3:
+            linestyle = "dashed"
+        else:
+            linestyle = None
         if Sim.O_per_chain == 4:
             color = "tab:red"
             ax.plot([], [])  # Increment color cycle.
         elif Sim.O_per_chain == 5:
             color = "tab:orange"
             ax.plot([], [])  # Increment color cycle.
-        elif Sim.O_per_chain == 64:
+        elif Sim.O_per_chain == 8:
             color = "tab:brown"
             ax.plot([], [])  # Increment color cycle.
         else:
@@ -199,9 +245,10 @@ with PdfPages(outfile) as pdf:
             ydata[sim_ix],
             label=r"$%d$" % Sims.O_per_chain[sim_ix],
             color=color,
+            linestyle=linestyle,
             alpha=leap.plot.ALPHA,
         )
-    ax.set(xlabel=xlabel, ylabel=ylabel)
+    ax.set(xlabel=xlabel, ylabel=ylabel, ylim=ylim)
     legend = ax.legend(
         title=legend_title,
         loc=legend_loc,
@@ -211,7 +258,7 @@ with PdfPages(outfile) as pdf:
     legend.get_title().set_multialignment("center")
     pdf.savefig(fig)
 
-    ax.set(xlabel=xlabel, ylabel=ylabel, xlim=xlim, ylim=ylim)
+    ax.set(xlabel=xlabel, ylabel=ylabel, xlim=xlim)
     pdf.savefig(fig)
     plt.close(fig)
 
