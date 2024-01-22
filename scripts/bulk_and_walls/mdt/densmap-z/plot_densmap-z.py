@@ -164,11 +164,16 @@ else:
 print("Creating plot(s)...")
 xlabel = r"$x$ / nm"
 ylabel = r"$y$ / nm"
+zlabel = (
+    r"Density $\rho_{"
+    + leap.plot.ATOM_TYPE2DISPLAY_NAME[args.cmp]
+    + r"}(x,y)$"
+)
 if args.normalize:
-    zlabel = r"Density $\rho_{xy}$ / Arb. Unit"
+    zlabel += r" / Arb. Unit"
     vmax = 1
 else:
-    zlabel = r"Density $\rho_{xy}$ / nm$^2$"
+    zlabel += r" / nm$^2$"
     vmax = None
 xlim = (0, 1)
 ylim = xlim
