@@ -40,27 +40,6 @@ from matplotlib.backends.backend_pdf import PdfPages
 import lintf2_ether_ana_postproc as leap
 
 
-def get_slab(fname, prefix):
-    """Get the position of the analyzed slab from the file name."""
-    if not os.path.isfile(fname):
-        raise FileNotFoundError("No such file: '{}'".format(fname))
-    fname = os.path.basename(fname)  # Remove path to the file.
-    fname = os.path.splitext(fname)[0]  # Remove (first) file extension.
-    if not fname.startswith(prefix):
-        raise ValueError(
-            "The file name '{}' does not start with '{}'".format(fname, prefix)
-        )
-    slab = fname[len(prefix) :]  # Remove `prefix`.
-    slab = re.sub("[^0-9|.|-]", "", slab)  # Remove non-numeric characters.
-    slab = slab.strip(".")  # Remove leading and trailing periods.
-    slab = slab.split("-")  # Split at hyphens.
-    if len(slab) != 2:
-        raise ValueError("Invalid slab: {}".format(slab))
-    slab = [float(slab) for slab in slab]
-    slab_start, slab_stop = min(slab), max(slab)
-    return slab_start, slab_stop
-
-
 # Input parameters.
 parser = argparse.ArgumentParser(
     description=(
@@ -98,6 +77,16 @@ parser.add_argument(
     required=True,
     help="The analyzed slab in xy plane, e.g. 0.12-3.45A.",
 )
+parser.add_argument(
+    "--normalize",
+    required=False,
+    default=False,
+    action="store_true",
+    help=(
+        "If provided, normalize the density values (z values) such that the"
+        " lowest value is zero and the highest value is one."
+    ),
+)
 args = parser.parse_args()
 
 analysis = "densmap-z"  # Analysis name.
@@ -114,8 +103,10 @@ outfile = (
     + args.cmp
     + "_"
     + args.slab
-    + ".pdf"
 )
+if args.normalize:
+    outfile += "_normalized"
+outfile += ".pdf"
 
 
 print("Creating Simulation instance(s)...")
@@ -130,66 +121,55 @@ Sim = leap.simulation.get_sim(args.system, set_pat, top_path)
 
 
 print("Reading data...")
-# Get input file that contain the average compound density in each bin.
-analysis_bin_pop = "discrete-z"
-file_suffix_bin_pop = analysis_bin_pop + "_Li_bin_population.txt.gz"
-infile_bin_pop = leap.simulation.get_ana_file(
-    Sim, analysis_bin_pop, tool, file_suffix_bin_pop
-)
-
-# Get input file that contains the 2D density map.
 file_suffix = analysis + analysis_suffix + "_" + args.slab + ".txt.gz"
 infile = leap.simulation.get_ana_file(Sim, ana_path, tool, file_suffix)
-
-# Get the average compound density in the slab/bin.
-file_prefix = Sim.fname_ana_base + analysis + analysis_suffix
-slab_start, slab_stop = get_slab(infile, file_prefix)
-tol = 0.02
-bin_starts, bin_stops, bin_dens = np.loadtxt(
-    infile_bin_pop, usecols=(0, 1, 6), unpack=True
-)
-bin_starts, bin_stops = np.round(bin_starts, 2), np.round(bin_stops, 2)
-bin_ix_start = np.flatnonzero(
-    np.isclose(bin_starts, slab_start, rtol=0, atol=tol)
-)
-bin_ix_stop = np.flatnonzero(
-    np.isclose(bin_stops, slab_stop, rtol=0, atol=tol)
-)
-if len(bin_ix_start) != 1:
-    raise ValueError("`len(bin_ix_start)` ({}) != 1".format(len(bin_ix_start)))
-if len(bin_ix_stop) != 1:
-    raise ValueError("`len(bin_ix_stop)` ({}) != 1".format(len(bin_ix_stop)))
-bin_ix_start, bin_ix_stop = bin_ix_start[0], bin_ix_stop[0]
-if bin_ix_stop != bin_ix_start:
-    raise ValueError(
-        "`bin_ix_stop` ({}) != `bin_ix_start`"
-        " ({})".format(bin_ix_stop, bin_ix_start)
-    )
-slab_dens = bin_dens[bin_ix_start]  # 1/Angstrom^3.
-
 data = np.loadtxt(infile)
 if np.any(data < 0):
     raise ValueError("At least one data point is less than zero.")
 x = data[1:, 0] / 10  # Angstrom -> nm.
 y = data[0, 1:] / 10  # Angstrom -> nm.
-z = data[1:, 1:] / slab_dens
+z = data[1:, 1:] * 1e3  # 1/Angstrom^3 -> 1/nm^3.
 del data
 # Transform the array from matrix convention (origin at upper left) to
 # coordinate convention (origin at lower left).
 z = np.ascontiguousarray(z.T[::-1])
 
+if args.normalize:
+    # Rescale the z values such that the lowest value is zero and the
+    # hightest value is one.
+    z_min = np.min(z)
+    z -= z_min
+    z_max = np.max(z)
+    z /= z_max
+else:
+    # Calculate density per area.
+    # 1. Get the slab width.
+    # Remove all non-numeric characters from `args.slab`.
+    slab_range = re.sub("[^0-9|.|-]", "", args.slab)
+    # Get start and stop of the slab.
+    slab_range = slab_range.split("-")
+    if len(slab_range) != 2:
+        raise ValueError("Invalid --slab: '{}'".format(args.slab))
+    slab_range = np.array([float(slab) for slab in slab_range])
+    slab_range /= 10  # Angstrom -> nm.
+    slab_start, slab_stop = np.min(slab_range), np.max(slab_range)
+    slab_width = slab_stop - slab_start
+    if slab_width <= 0:
+        raise ValueError("Invalid slab width: {}".format(slab_width))
+    # 2. Multiply the density by the slab width to convert density per
+    #    volume to density per area.
+    z *= slab_width
+
 
 print("Creating plot(s)...")
 xlabel = r"$x$ / nm"
 ylabel = r"$y$ / nm"
-zlabel = (
-    r"Density $\rho_{"
-    + leap.plot.ATOM_TYPE2DISPLAY_NAME[args.cmp]
-    + r"}(x, y) / \rho_{"
-    + leap.plot.ATOM_TYPE2DISPLAY_NAME[args.cmp]
-    + r"}^{layer}$"
-)
-vmax = None
+if args.normalize:
+    zlabel = r"Density $\rho_{xy}$ / Arb. Unit"
+    vmax = 1
+else:
+    zlabel = r"Density $\rho_{xy}$ / nm$^2$"
+    vmax = None
 xlim = (0, 1)
 ylim = xlim
 
