@@ -167,7 +167,7 @@ infiles_bin_pop = leap.simulation.get_ana_files(
 
 # Get the input files that contain the density along the hexagonal axes.
 file_extension = ".txt.gz"
-file_suffix_pattern = analysis_tot + "*.txt.gz"
+file_suffix_pattern = analysis_tot + "_[0-9]*-[0-9]*.txt.gz"
 infiles = [None for Sim in Sims.sims]
 slab_widths = np.full(Sims.n_sims, np.nan, dtype=np.float64)
 slab_dens = np.full_like(slab_widths, np.nan)
@@ -175,6 +175,11 @@ for sim_ix, path in enumerate(Sims.paths_ana):
     fname_pattern = Sims.fnames_ana_base[sim_ix] + file_suffix_pattern
     fpath_pattern = os.path.join(path, tool, ana_path, fname_pattern)
     files = glob.glob(fpath_pattern)
+    if len(files) == 0:
+        raise ValueError(
+            "Could not find any file matching the pattern"
+            " '{}'".format(fpath_pattern)
+        )
 
     # Get the file that contains the data for the slab/bin that is
     # closest to the negative electrode.
