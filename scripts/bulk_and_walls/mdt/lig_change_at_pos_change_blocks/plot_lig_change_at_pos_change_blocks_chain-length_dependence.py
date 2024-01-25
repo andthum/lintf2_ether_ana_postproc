@@ -440,9 +440,6 @@ for pkt_ix, n_pks_per_sim_pkt in enumerate(n_pks_per_sim):
 print("Creating plot(s)...")
 xlabel = r"Ether Oxygens per Chain $n_{EO}$"
 xlim = (1, 200)
-
-ylabels = ("Distance to Electrode / nm",)
-
 if args.common_ylim:
     if cmp1 == "Li":
         ylims = [
@@ -460,9 +457,75 @@ mdt.fh.backup(outfile)
 with PdfPages(outfile) as pdf:
     ####################################################################
     # Plot ligand exchange information for each free-energy barrier.
+    labels = (
+        "Dissociated",
+        "Associated",
+        "Remained",
+        "No. of Transitions",
+        "Fraction of Succ. Trans.",
+        "Crossover Time",
+    )
+    col_ix_lower = 1
+    for lbl_ix, label in enumerate(labels):
+        if label == "No. of Transitions":
+            col_ix_upper = col_ix_lower + n_data_per_plot
+        elif label == "Fraction of Succ. Trans.":
+            col_ix_upper = col_ix_lower + 2
+        else:
+            col_ix_upper = col_ix_lower + 2 * n_data_per_plot
+
+        figs, axes = [], []
+        for pkt_ix in range(len(pk_pos_types)):
+            figs.append([])
+            axes.append([])
+            for _cix_pkt in clstr_ix_unq[pkt_ix]:
+                fig, ax = plt.subplots(clear=True)
+                figs[pkt_ix].append(fig)
+                axes[pkt_ix].append(ax)
+
+        for col_ix, yd_col in enumerate(
+            ydata[col_ix_lower:col_ix_upper], start=col_ix_lower
+        ):
+            if data_is_sd[col_ix]:
+                # Column contains a standard deviation.
+                continue
+            for pkt_ix, pkp_type in enumerate(pk_pos_types):
+                yd_pkt = yd_col[pkt_ix]
+                for cix_pkt in clstr_ix_unq[pkt_ix]:
+                    valid = clstr_ix[pkt_ix] == cix_pkt
+                    if not np.any(valid):
+                        raise ValueError(
+                            "No valid peaks for peak type '{}' and cluster"
+                            " index {}".format(pkp_type, cix_pkt)
+                        )
+                    clstr_barrier_pos = np.mean(
+                        ydata[pkp_col_ix][pkt_ix][valid]
+                    )
+
+                    ax = axes[pkt_ix][cix_pkt]
+                    ax.errorbar(
+                        xdata[pkt_ix][valid],
+                        yd_pkt[valid],
+                        yerr=ydata[col_ix + 1][pkt_ix][valid],
+                    )
+
+        for pkt_ix, ax_pkt in enumerate(axes):
+            for cix_pkt, ax in enumerate(ax_pkt):
+                ax.set_xscale("log", base=10, subs=np.arange(2, 10))
+                ax.set(xlabel=xlabel, xlim=xlim)
+                equalize_yticks(ax)
+                legend = ax.legend(
+                    title=label, ncol=2, **mdtplt.LEGEND_KWARGS_XSMALL
+                )
+                legend.get_title().set_multialignment("center")
+                pdf.savefig(figs[pkt_ix][cix_pkt])
+                plt.close(figs[pkt_ix][cix_pkt])
+
+        col_ix_lower = col_ix_upper
 
     ####################################################################
     # Plot barrier positions.
+    ylabels = ("Distance to Electrode / nm",)
     legend_title_suffix = (
         r"$F_{"
         + leap.plot.ATOM_TYPE2DISPLAY_NAME[cmp1]
