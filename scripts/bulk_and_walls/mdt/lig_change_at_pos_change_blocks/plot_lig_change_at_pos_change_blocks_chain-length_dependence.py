@@ -440,6 +440,9 @@ for pkt_ix, n_pks_per_sim_pkt in enumerate(n_pks_per_sim):
 print("Creating plot(s)...")
 xlabel = r"Ether Oxygens per Chain $n_{EO}$"
 xlim = (1, 200)
+
+ylabels = ("Distance to Electrode / nm",)
+
 if args.common_ylim:
     if cmp1 == "Li":
         ylims = [
@@ -460,7 +463,6 @@ with PdfPages(outfile) as pdf:
 
     ####################################################################
     # Plot barrier positions.
-    ylabel = "Distance to Electrode / nm"
     legend_title_suffix = (
         r"$F_{"
         + leap.plot.ATOM_TYPE2DISPLAY_NAME[cmp1]
@@ -539,7 +541,10 @@ with PdfPages(outfile) as pdf:
                 raise ValueError("Unknown `pkp_type`: '{}'".format(pkp_type))
             ax_sep.set_xscale("log", base=10, subs=np.arange(2, 10))
             ax_sep.set(
-                xlabel=xlabel, ylabel=ylabel, xlim=xlim, ylim=ylims[col_ix]
+                xlabel=xlabel,
+                ylabel=ylabels[col_ix],
+                xlim=xlim,
+                ylim=ylims[col_ix],
             )
             equalize_yticks(ax_sep)
             legend_sep = ax_sep.legend(
@@ -553,7 +558,10 @@ with PdfPages(outfile) as pdf:
 
         ax_comb.set_xscale("log", base=10, subs=np.arange(2, 10))
         ax_comb.set(
-            xlabel=xlabel, ylabel=ylabel, xlim=xlim, ylim=ylims[col_ix]
+            xlabel=xlabel,
+            ylabel=ylabels[col_ix],
+            xlim=xlim,
+            ylim=ylims[col_ix],
         )
         equalize_yticks(ax_comb)
         legend_comb = ax_comb.legend(
@@ -628,8 +636,8 @@ with PdfPages(outfile) as pdf:
                 label="$<%.2f$" % clstr_bounds[pkt_ix][cix_pkt],
             )
         ax.set(
-            xlabel=ylabel,
-            ylabel=ylabel,
+            xlabel=ylabels[pkp_col_ix],
+            ylabel=ylabels[pkp_col_ix],
             xlim=ylims[pkp_col_ix],
             ylim=ylims[pkp_col_ix],
         )
@@ -662,7 +670,12 @@ with PdfPages(outfile) as pdf:
                 label="$<%.2f$" % clstr_bounds[pkt_ix][cix_pkt],
             )
         ax.set_xscale("log", base=10, subs=np.arange(2, 10))
-        ax.set(xlabel=xlabel, ylabel=ylabel, xlim=xlim, ylim=ylims[pkp_col_ix])
+        ax.set(
+            xlabel=xlabel,
+            ylabel=ylabels[pkp_col_ix],
+            xlim=xlim,
+            ylim=ylims[pkp_col_ix],
+        )
         equalize_yticks(ax)
         legend = ax.legend(
             title=legend_title_clstrng + legend_title_suffix,
