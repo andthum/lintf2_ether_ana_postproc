@@ -349,13 +349,22 @@ for sim_ix, Sim in enumerate(Sims.sims):
         data_ix = 1
         for row in rows:
             for col_ix in col_ndx:
-                if row == 1 and col_ix % 2 != 0:
-                    # No. of valid barrier crossings: Skip columns that
-                    # contain standard deviations.
-                    continue
-                ydata[data_ix][pkt_ix][sim_ix].append(
-                    lig_exchange_data[row][col_ix]
-                )
+                if col_ix % 2 == 0:
+                    # Column contains mean values.
+                    ydata[data_ix][pkt_ix][sim_ix].append(
+                        lig_exchange_data[row][col_ix]
+                    )
+                else:
+                    # Column contains standard deviation.
+                    if row == 1:
+                        # No. of valid barrier crossings has no Std.
+                        continue
+                    # Calculate uncertainty of the mean (i.e. divide Std
+                    # by the square root of the number of samples).
+                    ydata[data_ix][pkt_ix][sim_ix].append(
+                        lig_exchange_data[row][col_ix]
+                        / np.sqrt(lig_exchange_data[1][col_ix - 1])
+                    )
                 data_ix += 1
             if row == 1:
                 # Fraction of valid barrier crossings that were
@@ -440,40 +449,51 @@ for pkt_ix, n_pks_per_sim_pkt in enumerate(n_pks_per_sim):
 print("Creating plot(s)...")
 xlabel = r"Ether Oxygens per Chain $n_{EO}$"
 xlim = (1, 200)
-if args.common_ylim:
-    if cmp1 == "Li":
-        ylims = [
-            (0, 3.6),  # Barrier positions [nm].
-        ]
-    else:
-        raise NotImplementedError(
-            "Common ylim not implemented for compounds other than Li"
-        )
-    ylims += [(None, None) for dat_ix in range(n_data_not_sd - 1)]
-else:
-    ylims = tuple((None, None) for dat_ix in range(n_data_not_sd))
 
 mdt.fh.backup(outfile)
 with PdfPages(outfile) as pdf:
     ####################################################################
     # Plot ligand exchange information for each free-energy barrier.
-    labels = (
-        "Dissociated",
-        "Associated",
-        "Remained",
+    cmp2_display = leap.plot.ATOM_TYPE2DISPLAY_NAME[cmp2]
+    if cmp2 in ("OE", "OBT"):
+        ylabel_suffix = r"$" + cmp2_display + r"$ Atoms"
+    elif cmp2 in ("PEO", "NTf2"):
+        ylabel_suffix = cmp2_display + " Molecules"
+    else:
+        raise ValueError("Unknown `cmp2`: '{}'".format(cmp2))
+    ylabels = ("No. of " + ylabel_suffix,) * 3
+    ylabels += (
         "No. of Transitions",
         "Fraction of Succ. Trans.",
-        "Crossover Time",
+        "Crossover Time / ps",
     )
+    if args.common_ylim:
+        ylims = [(0, 6)] * 3
+        ylims += [(1, None), (0, 1), (0, 100)]
+    else:
+        ylims = [(None, None) for ylabel in ylabels]
+    labels = ("To, Succ.", "To, Unsucc.", "From, Succ.", "From, Unsucc.")
+    linestyles = ("solid", "dashed", "solid", "dashed")
+    markers = [("<", "3", ">", "4"), (">", "4", "<", "3")]
+
+    legend_title_suffix = (
+        r"$F_{"
+        + leap.plot.ATOM_TYPE2DISPLAY_NAME[cmp1]
+        + r"}$ Maximum Position "
+    )
+    legend_title_prefixes = ("Dissociated", "Associated", "Remained")
+
     col_ix_lower = 1
-    for lbl_ix, label in enumerate(labels):
-        if label == "No. of Transitions":
+    for ylb_ix, ylabel in enumerate(ylabels):
+        if ylabel == "No. of Transitions":
             col_ix_upper = col_ix_lower + n_data_per_plot
-        elif label == "Fraction of Succ. Trans.":
+        elif ylabel == "Fraction of Succ. Trans.":
             col_ix_upper = col_ix_lower + 2
         else:
             col_ix_upper = col_ix_lower + 2 * n_data_per_plot
 
+        # Create a figure for each half of the simulation box and for
+        # each cluster.
         figs, axes = [], []
         for pkt_ix in range(len(pk_pos_types)):
             figs.append([])
@@ -483,12 +503,15 @@ with PdfPages(outfile) as pdf:
                 figs[pkt_ix].append(fig)
                 axes[pkt_ix].append(ax)
 
+        # Plot data into the created figures.
+        label_ix = -1
         for col_ix, yd_col in enumerate(
             ydata[col_ix_lower:col_ix_upper], start=col_ix_lower
         ):
             if data_is_sd[col_ix]:
-                # Column contains a standard deviation.
+                # Column contains standard deviations.
                 continue
+            label_ix += 1
             for pkt_ix, pkp_type in enumerate(pk_pos_types):
                 yd_pkt = yd_col[pkt_ix]
                 for cix_pkt in clstr_ix_unq[pkt_ix]:
@@ -498,24 +521,61 @@ with PdfPages(outfile) as pdf:
                             "No valid peaks for peak type '{}' and cluster"
                             " index {}".format(pkp_type, cix_pkt)
                         )
-                    clstr_barrier_pos = np.mean(
-                        ydata[pkp_col_ix][pkt_ix][valid]
-                    )
 
+                    if ylabel in (
+                        "No. of Transitions",
+                        "Fraction of Succ. Trans.",
+                    ):
+                        # These data have no standard deviations.
+                        yerr = None
+                    else:
+                        yerr = ydata[col_ix + 1][pkt_ix][valid]
+                    if ylabel == "Fraction of Succ. Trans." and label_ix != 0:
+                        # Only data for successful transitions, no data
+                        # for unsuccessful transitions.
+                        label_ix = 2
                     ax = axes[pkt_ix][cix_pkt]
                     ax.errorbar(
                         xdata[pkt_ix][valid],
                         yd_pkt[valid],
-                        yerr=ydata[col_ix + 1][pkt_ix][valid],
+                        yerr=yerr,
+                        label=labels[label_ix],
+                        linestyle=linestyles[label_ix],
+                        marker=markers[pkt_ix][label_ix],
+                        alpha=leap.plot.ALPHA,
                     )
 
-        for pkt_ix, ax_pkt in enumerate(axes):
-            for cix_pkt, ax in enumerate(ax_pkt):
+        # Format and save all figures.
+        for pkt_ix, pkp_type in enumerate(pk_pos_types):
+            if pk_pos_types[pkt_ix] == "left":
+                legend_title_base = legend_title(r"+")
+            elif pk_pos_types[pkt_ix] == "right":
+                legend_title_base = legend_title(r"-")
+            else:
+                raise ValueError("Unknown `pkp_type`: '{}'".format(pkp_type))
+            for cix_pkt in clstr_ix_unq[pkt_ix]:
+                valid = clstr_ix[pkt_ix] == cix_pkt
+                clstr_barrier_pos = np.mean(ydata[pkp_col_ix][pkt_ix][valid])
+                lgd_title = (
+                    legend_title_base
+                    + legend_title_suffix
+                    + r"$\sim %.2f$ nm" % clstr_barrier_pos
+                )
+                if cmp2_display in ylabel:
+                    lgd_title = (
+                        legend_title_prefixes[ylb_ix] + "\n" + lgd_title
+                    )
+
+                ax = axes[pkt_ix][cix_pkt]
                 ax.set_xscale("log", base=10, subs=np.arange(2, 10))
-                ax.set(xlabel=xlabel, xlim=xlim)
+                if ylabel == "No. of Transitions":
+                    ax.set_yscale("log", base=10, subs=np.arange(2, 10))
+                ax.set(
+                    xlabel=xlabel, ylabel=ylabel, xlim=xlim, ylim=ylims[ylb_ix]
+                )
                 equalize_yticks(ax)
                 legend = ax.legend(
-                    title=label, ncol=2, **mdtplt.LEGEND_KWARGS_XSMALL
+                    title=lgd_title, ncol=2, **mdtplt.LEGEND_KWARGS_XSMALL
                 )
                 legend.get_title().set_multialignment("center")
                 pdf.savefig(figs[pkt_ix][cix_pkt])
@@ -526,6 +586,11 @@ with PdfPages(outfile) as pdf:
     ####################################################################
     # Plot barrier positions.
     ylabels = ("Distance to Electrode / nm",)
+    if args.common_ylim:
+        ylims = [(0, 3.6)]
+    else:
+        ylims = [(None, None) for ylabel in ylabels]
+
     legend_title_suffix = (
         r"$F_{"
         + leap.plot.ATOM_TYPE2DISPLAY_NAME[cmp1]
@@ -748,3 +813,6 @@ with PdfPages(outfile) as pdf:
         legend.get_title().set_multialignment("center")
         pdf.savefig()
         plt.close()
+
+print("Created {}".format(outfile))
+print("Done")
