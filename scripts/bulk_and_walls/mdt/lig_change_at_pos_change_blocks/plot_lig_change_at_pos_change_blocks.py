@@ -119,19 +119,20 @@ xticklabels = ("Dissociated", "Associated", "Remained")
 
 # Rows and columns to read from the file that contains the ligand
 # exchange information.
-row_n_trans = 1  # Row that contains the no. of valid barrier crossings.
-# Rows that contain ligand exchange information.
-# `rows` must not be a tuple, because it will be used as index array.
-rows = [
+# Rows that contain ligand exchange information.  `rows_exchange` must
+# not be a tuple, because it will be used as index array.
+rows_exchange = [
     4,  # No. dissociated ligands.
     5,  # No. associated ligands.
     6,  # No. remained/stayed/persisted ligands.
 ]
+row_n_trans = 1  # Row that contains the no. of valid barrier crossings.
+row_cross_time = 3  # Row that contains the average crossover time [ps].
 cols = (tuple(range(2, 10)), tuple(range(10, 18)))
-if len(rows) != len(xticklabels):
+if len(rows_exchange) != len(xticklabels):
     raise ValueError(
-        "`len(rows)` ({}) != `len(xticklabels)`"
-        " ({})".format(len(rows), len(xticklabels))
+        "`len(rows_exchange)` ({}) != `len(xticklabels)`"
+        " ({})".format(len(rows_exchange), len(xticklabels))
     )
 if len(cols) != len(cmps2):
     raise ValueError(
@@ -168,11 +169,11 @@ barrier = bins[1]
 box_z = Sim.box[2] / 10  # Angstrom -> nm.
 if barrier <= box_z / 2:
     pkp_type = "left"
-    # Convert absolute barrier position to distance to the electrodes.
+    # Convert absolute barrier position to distance to the electrode.
     barrier -= elctrd_thk
 else:
     pkp_type = "right"
-    # Convert absolute barrier position to distance to the electrodes.
+    # Convert absolute barrier position to distance to the electrode.
     barrier += elctrd_thk
     barrier -= box_z
     barrier *= -1  # Ensure positive distance values.
@@ -189,12 +190,20 @@ else:
     raise ValueError("Unknown `pkp_type`: '{}'".format(pkp_type))
 col_ndx = (to_succ_ix, to_unsc_ix, aw_succ_ix, aw_unsc_ix)
 
+# Number of barrier crossings of each type.
+n_trans = np.zeros(len(col_ndx), dtype=np.uint32)
+# Average crossover time.
+cross_time = np.full(len(col_ndx), np.nan, dtype=np.float64)
+cross_time_sd = np.full_like(cross_time, np.nan)
+
 
 # Create plots.
-xdata = np.arange(len(xticklabels))
-xlim = (-0.2, 2.2)
-
 labels = ("To, Succ.", "To, Unsc.", "From, Succ.", "From, Unsc.")
+if len(labels) != len(col_ndx):
+    raise ValueError(
+        "`len(labels)` ({}) != `len(col_ndx)`"
+        " ({})".format(len(labels), len(col_ndx))
+    )
 colors = ("tab:blue", "tab:cyan", "tab:red", "tab:pink")
 linestyles = ("solid", "dashed", "solid", "dashed")
 if pkp_type == "left":
@@ -230,6 +239,9 @@ if surfq is not None:
 
 mdt.fh.backup(outfile)
 with PdfPages(outfile) as pdf:
+    # Plot number of exchanged ligands.
+    xdata = np.arange(len(xticklabels))
+    xlim = (xdata[0] - 0.4, xdata[-1] + 0.4)
     for cmp_ix, cmp2 in enumerate(cmps2):
         fig, ax = plt.subplots(clear=True)
 
@@ -242,9 +254,16 @@ with PdfPages(outfile) as pdf:
 
         for cix, col_ix in enumerate(col_ndx):
             # Number of valid barrier crossings.
-            n_trans = lig_exchange_data[row_n_trans, col_ix]
-            ydata = lig_exchange_data[rows, col_ix]
-            yerr = lig_exchange_data[rows, col_ix + 1] / np.sqrt(n_trans)
+            n_trans_col = lig_exchange_data[row_n_trans, col_ix]
+            n_trans[cix] = n_trans_col
+            # Average crossover time.
+            cross_time[cix] = lig_exchange_data[row_cross_time, col_ix]
+            cross_time_sd[cix] = lig_exchange_data[row_cross_time, col_ix + 1]
+            cross_time_sd[cix] /= np.sqrt(n_trans_col)
+
+            ydata = lig_exchange_data[rows_exchange, col_ix]
+            yerr = lig_exchange_data[rows_exchange, col_ix + 1]
+            yerr /= np.sqrt(n_trans_col)
             ax.errorbar(
                 xdata,
                 ydata,
@@ -284,6 +303,74 @@ with PdfPages(outfile) as pdf:
         legend.get_title().set_multialignment("center")
         pdf.savefig(fig)
         plt.close(fig)
+
+    # Plot number of transitions.
+    ylabel = "No. of Transitions"
+    xdata = np.arange(len(n_trans))
+    xlim = (xdata[0] - 0.5, xdata[-1] + 0.5)
+    fig, ax = plt.subplots(clear=True)
+    ax.plot(xdata, n_trans, marker="o")
+    ax.set(ylabel=ylabel, xlim=xlim, xticks=xdata, xticklabels=labels)
+    ylim = ax.get_ylim()
+    if ylim[0] < 0:
+        ax.set_ylim(0, ylim[1])
+    ax.tick_params(axis="x", which="major", rotation=15)
+    ax.tick_params(axis="x", which="minor", top=False, bottom=False)
+    equalize_yticks(ax)
+    legend = ax.legend(
+        title=legend_title, ncol=2, **mdtplt.LEGEND_KWARGS_XSMALL
+    )
+    legend.get_title().set_multialignment("center")
+    pdf.savefig(fig)
+    # Log scale y.
+    ax.relim()
+    ax.autoscale()
+    ax.set_yscale("log", base=10, subs=np.arange(2, 10))
+    ax.set_xlim(xlim)
+    pdf.savefig(fig)
+    plt.close(fig)
+
+    # Plot fraction of successful transitions.
+    ylabel = "Fraction of Succ. Trans."
+    frac_succ = n_trans[::2] / (n_trans[::2] + n_trans[1::2])
+    xdata = np.arange(len(frac_succ))
+    xlim = (xdata[0] - 0.2, xdata[-1] + 0.2)
+    ylim = (0, 1)
+    fig, ax = plt.subplots(clear=True)
+    ax.plot(xdata, frac_succ, marker="o")
+    ax.set(
+        ylabel=ylabel,
+        xlim=xlim,
+        ylim=ylim,
+        xticks=xdata,
+        xticklabels=("To", "From"),
+    )
+    ax.tick_params(axis="x", which="minor", top=False, bottom=False)
+    equalize_yticks(ax)
+    legend = ax.legend(
+        title=legend_title, ncol=2, **mdtplt.LEGEND_KWARGS_XSMALL
+    )
+    legend.get_title().set_multialignment("center")
+    pdf.savefig(fig)
+
+    # Plot average crossover time.
+    ylabel = "Crossover Time / ps"
+    xdata = np.arange(len(cross_time))
+    xlim = (xdata[0] - 0.5, xdata[-1] + 0.5)
+    fig, ax = plt.subplots(clear=True)
+    ax.errorbar(xdata, cross_time, yerr=cross_time_sd, marker="o")
+    ax.set(ylabel=ylabel, xlim=xlim, xticks=xdata, xticklabels=labels)
+    ylim = ax.get_ylim()
+    if ylim[0] < 0:
+        ax.set_ylim(0, ylim[1])
+    ax.tick_params(axis="x", which="major", rotation=15)
+    ax.tick_params(axis="x", which="minor", top=False, bottom=False)
+    equalize_yticks(ax)
+    legend = ax.legend(
+        title=legend_title, ncol=2, **mdtplt.LEGEND_KWARGS_XSMALL
+    )
+    legend.get_title().set_multialignment("center")
+    pdf.savefig(fig)
 
 print("Created {}".format(outfile))
 print("Done")
