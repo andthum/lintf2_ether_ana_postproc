@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 
 """
-Plot the number lithium-ion ligands that associate, dissociate or remain
-coordinated during the crossing of a free-energy barrier as function of
-the PEO chain length.
+Plot the number of lithium-ion ligands that dissociate, associate or
+remain coordinated during the crossing of a free-energy barrier as
+function of the PEO chain length.
 
 Free-energy barriers are clustered based on their distance to the
 electrode.
@@ -82,7 +82,7 @@ def equalize_yticks(ax):
 # Input parameters.
 parser = argparse.ArgumentParser(
     description=(
-        "Plot the number lithium-ion ligands that associate, dissociate or"
+        "Plot the number of lithium-ion ligands that dissociate, associate or"
         " remain coordinated during the crossing of a free-energy barrier as"
         " function of the PEO chain length."
     )
@@ -165,9 +165,9 @@ rows = (
     3,  # Average crossover time.
 )
 if cmp2 in ("OE", "OBT"):
-    cols = list(range(2, 10))
+    cols = tuple(range(2, 10))
 elif cmp2 in ("PEO", "NTf2"):
-    cols = list(range(10, 18))
+    cols = tuple(range(10, 18))
 else:
     raise ValueError("Unknown `cmp2`: '{}'".format(cmp2))
 
@@ -238,7 +238,7 @@ trans_types = ("successful", "unsuccessful")
 n_data_per_plot = len(trans_drctn_types) * len(trans_types)
 n_data = 1  # Barrier positions.
 n_data += len(rows) * n_data_per_plot * 2
-n_data -= n_data_per_plot  # No Std for Type 5
+n_data -= n_data_per_plot  # No Std for Type 5.
 n_data += 2  # Plot type 6.
 ydata = [
     [[[] for sim in Sims.sims] for pkp_type in pk_pos_types]
@@ -280,11 +280,11 @@ for sim_ix, Sim in enumerate(Sims.sims):
         )
         infile = os.path.join(directory, infile)
         bins = np.loadtxt(infile)
-        bins /= 10  # Angstrom -> nm.
-        if len(bins) != 3:
+        if bins.shape != (3,):
             raise ValueError(
                 "The bin file must contain exactly three bin edges."
             )
+        bins /= 10  # Angstrom -> nm.
         barrier = bins[1]
         if (
             barrier < np.min(pk_pos) - 2 * tol
@@ -293,11 +293,11 @@ for sim_ix, Sim in enumerate(Sims.sims):
             # The crossing point does not match an actual free-energy
             # barrier, because it is too close to the electrodes.
             continue
-        sort_ix = np.flatnonzero(np.isclose(pk_pos - barrier, 0, atol=1e-4))
+        sort_ix = np.flatnonzero(np.isclose(pk_pos - barrier, 0, atol=tol))
         if len(sort_ix) != 1:
             raise ValueError(
-                "The crossing point ({}) match with exactly one free-energy"
-                " barrier ({})".format(barrier, pk_pos)
+                "The crossing point ({}) must match with exactly one"
+                " free-energy barrier ({})".format(barrier, pk_pos)
             )
         if pk_prom[sort_ix] < prom_min:
             # The prominence of the crossed free-energy barrier is lower
@@ -346,7 +346,7 @@ for sim_ix, Sim in enumerate(Sims.sims):
             aw_succ_ix, aw_succ_sd_ix, aw_unsc_ix, aw_unsc_sd_ix,
         )
         # fmt: on
-        data_ix = 1
+        data_ix = pkp_col_ix + 1
         for row in rows:
             for col_ix in col_ndx:
                 if col_ix % 2 == 0:
@@ -457,8 +457,10 @@ with PdfPages(outfile) as pdf:
     cmp2_display = leap.plot.ATOM_TYPE2DISPLAY_NAME[cmp2]
     if cmp2 in ("OE", "OBT"):
         ylabel_suffix = r"$" + cmp2_display + r"$ Atoms"
-    elif cmp2 in ("PEO", "NTf2"):
-        ylabel_suffix = cmp2_display + " Molecules"
+    elif cmp2 == "PEO":
+        ylabel_suffix = cmp2_display + " Chains"
+    elif cmp2 == "NTf2":
+        ylabel_suffix = cmp2_display + " Anions"
     else:
         raise ValueError("Unknown `cmp2`: '{}'".format(cmp2))
     ylabels = ("No. of " + ylabel_suffix,) * 3
@@ -468,13 +470,17 @@ with PdfPages(outfile) as pdf:
         "Crossover Time / ps",
     )
     if args.common_ylim:
-        ylims = [(0, 6)] * 3
+        if cmp2 == "OE":
+            ylims = [(0, 6.4)] * 3
+        else:
+            ylim = (0, 2.9)
         ylims += [(1, None), (0, 1), (0, 100)]
     else:
         ylims = [(None, None) for ylabel in ylabels]
-    labels = ("To, Succ.", "To, Unsucc.", "From, Succ.", "From, Unsucc.")
+    labels = ("To, Succ.", "To, Unsc.", "From, Succ.", "From, Unsc.")
+    colors = ("tab:blue", "tab:cyan", "tab:red", "tab:pink")
     linestyles = ("solid", "dashed", "solid", "dashed")
-    markers = [("<", "3", ">", "4"), (">", "4", "<", "3")]
+    markers = [("<", 4, ">", 5), (">", 5, "<", 4)]
 
     legend_title_suffix = (
         r"$F_{"
@@ -483,7 +489,7 @@ with PdfPages(outfile) as pdf:
     )
     legend_title_prefixes = ("Dissociated", "Associated", "Remained")
 
-    col_ix_lower = 1
+    col_ix_lower = pkp_col_ix + 1
     for ylb_ix, ylabel in enumerate(ylabels):
         if ylabel == "No. of Transitions":
             col_ix_upper = col_ix_lower + n_data_per_plot
@@ -540,6 +546,7 @@ with PdfPages(outfile) as pdf:
                         yd_pkt[valid],
                         yerr=yerr,
                         label=labels[label_ix],
+                        color=colors[label_ix],
                         linestyle=linestyles[label_ix],
                         marker=markers[pkt_ix][label_ix],
                         alpha=leap.plot.ALPHA,
@@ -573,7 +580,8 @@ with PdfPages(outfile) as pdf:
                 ax.set(
                     xlabel=xlabel, ylabel=ylabel, xlim=xlim, ylim=ylims[ylb_ix]
                 )
-                equalize_yticks(ax)
+                if ylabel != "No. of Transitions":
+                    equalize_yticks(ax)
                 legend = ax.legend(
                     title=lgd_title, ncol=2, **mdtplt.LEGEND_KWARGS_XSMALL
                 )
