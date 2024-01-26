@@ -352,7 +352,7 @@ for sim_ix, Sim in enumerate(Sims.sims):
                 if col_ix % 2 == 0:
                     # Column contains mean values.
                     ydata[data_ix][pkt_ix][sim_ix].append(
-                        lig_exchange_data[row][col_ix]
+                        lig_exchange_data[row, col_ix]
                     )
                 else:
                     # Column contains standard deviation.
@@ -362,35 +362,41 @@ for sim_ix, Sim in enumerate(Sims.sims):
                     # Calculate uncertainty of the mean (i.e. divide Std
                     # by the square root of the number of samples).
                     ydata[data_ix][pkt_ix][sim_ix].append(
-                        lig_exchange_data[row][col_ix]
-                        / np.sqrt(lig_exchange_data[1][col_ix - 1])
+                        lig_exchange_data[row, col_ix]
+                        / np.sqrt(lig_exchange_data[1, col_ix - 1])
                     )
                 data_ix += 1
             if row == 1:
                 # Fraction of valid barrier crossings that were
                 # successful.
-                to_succ_frac = lig_exchange_data[row][to_succ_ix] / (
-                    lig_exchange_data[row][to_succ_ix]
-                    + lig_exchange_data[row][to_unsc_ix]
+                to_succ_frac = lig_exchange_data[row, to_succ_ix] / (
+                    lig_exchange_data[row, to_succ_ix]
+                    + lig_exchange_data[row, to_unsc_ix]
                 )
                 ydata[data_ix][pkt_ix][sim_ix].append(to_succ_frac)
                 data_ix += 1
-                aw_succ_frac = lig_exchange_data[row][aw_succ_ix] / (
-                    lig_exchange_data[row][aw_succ_ix]
-                    + lig_exchange_data[row][aw_unsc_ix]
+                aw_succ_frac = lig_exchange_data[row, aw_succ_ix] / (
+                    lig_exchange_data[row, aw_succ_ix]
+                    + lig_exchange_data[row, aw_unsc_ix]
                 )
                 ydata[data_ix][pkt_ix][sim_ix].append(aw_succ_frac)
                 data_ix += 1
 
 # Convert lists to NumPy arrays and sort data by their distance to the
 # electrode.
+sort_ndx = [[None for sim in Sims.sims] for pkp_type in pk_pos_types]
+for pkt_ix, yd_pkt in enumerate(ydata[pkp_col_ix]):
+    for sim_ix, yd_sim in enumerate(yd_pkt):
+        sort_ndx[pkt_ix][sim_ix] = np.argsort(yd_sim)
+
 n_pks_max = np.zeros(len(pk_pos_types), np.uint32)
 for col_ix, yd_col in enumerate(ydata):
     for pkt_ix, yd_pkt in enumerate(yd_col):
         for sim_ix, yd_sim in enumerate(yd_pkt):
-            sort_ix = np.argsort(ydata[pkp_col_ix][pkt_ix][sim_ix])
+            sort_ix = sort_ndx[pkt_ix][sim_ix]
             ydata[col_ix][pkt_ix][sim_ix] = np.asarray(yd_sim)[sort_ix]
             n_pks_max[pkt_ix] = max(n_pks_max[pkt_ix], len(yd_sim))
+del sort_ndx, sort_ix
 
 
 print("Clustering peak positions...")
@@ -473,7 +479,7 @@ with PdfPages(outfile) as pdf:
         if cmp2 == "OE":
             ylims = [(0, 6.4)] * 3
         else:
-            ylim = (0, 2.9)
+            ylims = [(0, 2.9)] * 3
         ylims += [(1, None), (0, 1), (0, 100)]
     else:
         ylims = [(None, None) for ylabel in ylabels]
