@@ -275,6 +275,8 @@ n_data_not_sd = n_data - np.count_nonzero(data_is_sd)
 
 ana_parent_dir = os.path.join(tool, analysis + analysis_suffix)
 for sim_ix, Sim in enumerate(Sims.sims):
+    box_z = Sim.box[2] / 10  # Angstrom -> nm.
+
     # Read free-energy barriers/maxima.
     fe_file_suffix = "free_energy_maxima_" + cmp1 + ".txt.gz"
     fe_analysis = "density-z"  # Analysis name.
@@ -284,6 +286,8 @@ for sim_ix, Sim in enumerate(Sims.sims):
     )
     # Barrier positions in nm and prominences in kT.
     pk_pos, pk_prom = np.loadtxt(infile, usecols=(1, 3), unpack=True)
+    pk_pos_left = pk_pos[pk_pos <= box_z / 2]
+    pk_pos_right = pk_pos[pk_pos > box_z / 2]
 
     # Read ligand exchange data.
     dir_pattern = analysis + analysis_suffix + "_[0-9]*"
@@ -295,6 +299,7 @@ for sim_ix, Sim in enumerate(Sims.sims):
             " '{}'".format(dir_pattern)
         )
 
+    matched_barriers = 0
     for directory in dirs:
         # File containing the position of the crossed free-energy
         # barrier.
@@ -309,12 +314,27 @@ for sim_ix, Sim in enumerate(Sims.sims):
             )
         bins /= 10  # Angstrom -> nm.
         barrier = bins[1]
+        # Check whether the crossing point lies in the left or right
+        # half of the simulation box.
+        if barrier <= box_z / 2:
+            pkp_type = "left"
+        else:
+            pkp_type = "right"
+
+        # Identify the crossing point with an actual free energy barrier
         if (
-            barrier < np.min(pk_pos) - 2 * tol
-            or barrier > np.max(pk_pos) + 2 * tol
+            barrier < np.min(pk_pos_left) - 1.1 * tol
+            or barrier > np.max(pk_pos_right) + 1.1 * tol
         ):
             # The crossing point does not match an actual free-energy
             # barrier, because it is too close to the electrodes.
+            continue
+        if (
+            barrier > np.max(pk_pos_left) + 1.1 * tol
+            and barrier < np.min(pk_pos_right) - 1.1 * tol
+        ):
+            # The crossing point does not match an actual free-energy
+            # barrier, because lies within the bulk region.
             continue
         sort_ix = np.flatnonzero(np.isclose(pk_pos - barrier, 0, atol=tol))
         if len(sort_ix) != 1:
@@ -326,22 +346,17 @@ for sim_ix, Sim in enumerate(Sims.sims):
             # The prominence of the crossed free-energy barrier is lower
             # than the given threshold.
             continue
+        matched_barriers += 1
 
-        # Check whether the free-energy barrier lies in the left or
-        # right half of the simulation box.
-        box_z = Sim.box[2] / 10  # Angstrom -> nm.
-        if barrier <= box_z / 2:
-            pkp_type = "left"
-            # Convert absolute barrier position to distance to the
-            # electrodes.
+        # Convert absolute barrier position to distance to the electrode
+        if pkp_type == "left":
             barrier -= elctrd_thk
-        else:
-            pkp_type = "right"
-            # Convert absolute barrier position to distance to the
-            # electrodes.
+        elif pkp_type == "right":
             barrier += elctrd_thk
             barrier -= box_z
             barrier *= -1  # Ensure positive distance values.
+        else:
+            raise ValueError("Unknown `pkp_type`: '{}'".format(pkp_type))
         pkt_ix = pk_pos_types.index(pkp_type)
         ydata[pkp_col_ix][pkt_ix][sim_ix].append(barrier)
 
@@ -404,6 +419,11 @@ for sim_ix, Sim in enumerate(Sims.sims):
                 )
                 ydata[data_ix][pkt_ix][sim_ix].append(aw_succ_frac)
                 data_ix += 1
+
+    if matched_barriers == 0:
+        raise ValueError(
+            "None of the crossing points matched an actual free-energy barrier"
+        )
 
 # Convert lists to NumPy arrays and sort data by their distance to the
 # electrode.
