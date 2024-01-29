@@ -298,6 +298,8 @@ ydata = [
     [[[] for sim in Sims.sims] for pkp_type in pk_pos_types]
     for dat_ix in range(n_data)
 ]
+n_events_bulk = np.zeros(Sims.n_sims, dtype=np.uint32)
+n_refcmps_bulk = np.zeros_like(n_events_bulk)
 for sim_ix, Sim in enumerate(Sims.sims):
     # Get file that contains the renewal event information for the
     # corresponding bulk simulation.
@@ -305,8 +307,11 @@ for sim_ix, Sim in enumerate(Sims.sims):
     infile_ri_bulk = leap.simulation.get_ana_file(
         Sim_bulk, ana_path, tool, file_suffix_ri
     )
-    n_events_bulk = len(np.loadtxt(infile_ri_bulk, usecols=cols_ri_bulk))
-    n_refcmps_bulk = Sim_bulk.top_info["res"][cmp1.lower()]["n_res"]
+    n_events_bulk_sim = len(np.loadtxt(infile_ri_bulk, usecols=cols_ri_bulk))
+    n_refcmps_bulk_sim = Sim_bulk.top_info["res"][cmp1.lower()]["n_res"]
+    n_refcmps_walls_tot = Sim.top_info["res"][cmp1.lower()]["n_res"]
+    n_events_bulk[sim_ix] = n_events_bulk_sim
+    n_refcmps_bulk[sim_ix] = n_refcmps_bulk_sim
 
     # Read number of reference compounds in each bin from file.
     bins_low, bins_up, n_refcmps_bins = np.loadtxt(
@@ -362,6 +367,20 @@ for sim_ix, Sim in enumerate(Sims.sims):
                 "The number of valid bins ({}) is not equal to the number of"
                 " free-energy maxima"
                 " ({})".format(len(n_refcmps_layer), len(maxima_pos))
+            )
+
+        # Get number of renewal events in each layer.
+        if np.any(pos <= 0) or np.any(pos >= box_z - 2 * elctrd_thk):
+            raise ValueError(
+                "The position of at least one renewal event lies within the"
+                " electrodes"
+            )
+        layer_edges = np.insert(maxima_pos, 0, 0)
+        n_events_layer = np.histogram(pos, layer_edges, density=False)[0]
+        if len(n_events_layer) != len(maxima_pos):
+            raise ValueError(
+                "`len(n_events_layer)` ({}) != `len(maxima_pos)`"
+                " ({})".format(len(n_events_layer), len(maxima_pos))
             )
 
 
