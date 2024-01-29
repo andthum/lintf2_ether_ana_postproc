@@ -16,6 +16,7 @@ electrode.
 # Standard libraries
 import argparse
 import os
+import warnings
 from copy import deepcopy
 
 # Third-party libraries
@@ -25,6 +26,7 @@ import mdtools.plot as mdtplt  # Load MDTools plot style  # noqa: F401
 import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
 from matplotlib.ticker import FormatStrFormatter, MaxNLocator
+from scipy.cluster.hierarchy import dendrogram
 
 # First-party libraries
 import lintf2_ether_ana_postproc as leap
@@ -57,7 +59,7 @@ def legend_title(surfq_sign):
         + r"$r = %.2f$" % Sims.Li_O_ratios[0]
         + "\n"
         + r"$F_{"
-        + leap.plot.ATOM_TYPE2DISPLAY_NAME[args.cmp]
+        + leap.plot.ATOM_TYPE2DISPLAY_NAME[cmp1]
         + r"}$ Minima"
     )
 
@@ -154,7 +156,7 @@ outfile = (  # Output file name.
     settings
     + "_lintf2_peoN_20-1_gra_"
     + args.surfq
-    + "_sc80_renewal_event_num"  # TODO: renewal_times
+    + "_sc80_renewal_event_num"
     + analysis_suffix
     + "_cluster_pthresh_%.2f" % args.prob_thresh
 )
@@ -275,13 +277,13 @@ if not np.all(np.isin(Sims.O_per_chain, n_eo)):
         " ({})".format(Sims.O_per_chain, n_eo)
     )
 valid_bulk_sim = np.isin(n_eo, Sims.O_per_chain)
-rt_bulk = rt_bulk[valid_bulk_sim]
+n_eo, rt_bulk = n_eo[valid_bulk_sim], rt_bulk[valid_bulk_sim]
 if len(rt_bulk) != Sims.n_sims:
     raise ValueError(
         "The number of bulk renewal times ({}) does not match to the number of"
         " surface simulations ({})".format(len(rt_bulk), Sims.n_sims)
     )
-del n_eo, valid_bulk_sim
+del valid_bulk_sim
 
 Elctrd = leap.simulation.Electrode()
 elctrd_thk = Elctrd.ELCTRD_THK / 10  # A -> nm.
@@ -296,13 +298,12 @@ n_data = 8
 # 5) N_events^layer / N_cmp^layer.
 # 6) (N_events^layer / N_cmp^layer) / (N_events^bulk / N_cmp^bulk).
 # 7) (N_events^bulk / N_cmp^bulk) / (N_events^layer / N_cmp^layer).
-# 8) As 7) * tau_3^bulk.
+# 8) tau_3^layer = 7) * tau_3^bulk.
 ydata = [
     [[[] for sim in Sims.sims] for pkp_type in pk_pos_types]
     for dat_ix in range(n_data)
 ]
-n_events_bulk = np.zeros(Sims.n_sims, dtype=np.uint32)
-n_refcmps_bulk = np.zeros_like(n_events_bulk)
+n_events_per_refcmp_bulk = np.zeros(Sims.n_sims, dtype=np.uint32)
 for sim_ix, Sim in enumerate(Sims.sims):
     # Get file that contains the renewal event information for the
     # corresponding bulk simulation.
@@ -313,8 +314,8 @@ for sim_ix, Sim in enumerate(Sims.sims):
     n_events_bulk_sim = len(np.loadtxt(infile_ri_bulk, usecols=cols_ri_bulk))
     n_refcmps_bulk_sim = Sim_bulk.top_info["res"][cmp1.lower()]["n_res"]
     n_refcmps_walls_tot = Sim.top_info["res"][cmp1.lower()]["n_res"]
-    n_events_bulk[sim_ix] = n_events_bulk_sim
-    n_refcmps_bulk[sim_ix] = n_refcmps_bulk_sim
+    n_events_per_refcmp_bulk_sim = n_events_bulk_sim / n_refcmps_bulk_sim
+    n_events_per_refcmp_bulk[sim_ix] = n_events_per_refcmp_bulk_sim
 
     # Read number of reference compounds in each bin from file.
     bins_low, bins_up, n_refcmps_bins = np.loadtxt(
@@ -387,7 +388,6 @@ for sim_ix, Sim in enumerate(Sims.sims):
             )
 
         # Store data in list.
-        n_events_per_refcmp_bulk = n_events_bulk_sim / n_refcmps_bulk_sim
         n_events_per_refcmp_layer = n_events_layer / n_refcmps_layer
         ydata[pkp_col_ix][pkt_ix][sim_ix] = minima[pkp_col_ix][pkt_ix][sim_ix]
         ydata[1][pkt_ix][sim_ix] = n_refcmps_layer
@@ -395,14 +395,14 @@ for sim_ix, Sim in enumerate(Sims.sims):
         ydata[3][pkt_ix][sim_ix] = n_events_layer
         ydata[4][pkt_ix][sim_ix] = n_events_per_refcmp_layer
         ydata[5][pkt_ix][sim_ix] = (
-            n_events_per_refcmp_layer / n_events_per_refcmp_bulk
+            n_events_per_refcmp_layer / n_events_per_refcmp_bulk_sim
         )
         ydata[6][pkt_ix][sim_ix] = (
-            n_events_per_refcmp_bulk / n_events_per_refcmp_layer
+            n_events_per_refcmp_bulk_sim / n_events_per_refcmp_layer
         )
         ydata[7][pkt_ix][sim_ix] = (
             rt_bulk[sim_ix]
-            * n_events_per_refcmp_bulk
+            * n_events_per_refcmp_bulk_sim
             / n_events_per_refcmp_layer
         )
 
@@ -421,7 +421,406 @@ del minima, prominences
 
 
 print("Clustering peak positions...")
+(
+    ydata,
+    clstr_ix,
+    linkage_matrices,
+    n_clstrs,
+    n_pks_per_sim,
+    clstr_dist_thresh,
+) = leap.clstr.peak_pos(
+    ydata, pkp_col_ix, return_dist_thresh=True, method=clstr_dist_method
+)
+clstr_ix_unq = [np.unique(clstr_ix_pkt) for clstr_ix_pkt in clstr_ix]
+
+# Sort clusters by ascending average peak position and get cluster
+# boundaries.
+clstr_bounds = [None for clstr_ix_pkt in clstr_ix]
+for pkt_ix, clstr_ix_pkt in enumerate(clstr_ix):
+    _clstr_dists, clstr_ix[pkt_ix], bounds = leap.clstr.dists_succ(
+        ydata[pkp_col_ix][pkt_ix],
+        clstr_ix_pkt,
+        method=clstr_dist_method,
+        return_ix=True,
+        return_bounds=True,
+    )
+    clstr_bounds[pkt_ix] = np.append(bounds, bulk_start)
+
+if np.any(n_clstrs < n_pks_max):
+    warnings.warn(
+        "Any `n_clstrs` ({}) < `n_pks_max` ({}).  This means different"
+        " peaks of the same simulation were assigned to the same cluster."
+        "  Try to decrease the threshold distance"
+        " ({})".format(n_clstrs, n_pks_max, clstr_dist_thresh),
+        RuntimeWarning,
+        stacklevel=2,
+    )
+
+xdata = [None for n_pks_per_sim_pkt in n_pks_per_sim]
+for pkt_ix, n_pks_per_sim_pkt in enumerate(n_pks_per_sim):
+    if np.max(n_pks_per_sim_pkt) != n_pks_max[pkt_ix]:
+        raise ValueError(
+            "`np.max(n_pks_per_sim[{}])` ({}) != `n_pks_max[{}]` ({}).  This"
+            " should not have happened".format(
+                pkt_ix, np.max(n_pks_per_sim_pkt), pkt_ix, n_pks_max[pkt_ix]
+            )
+        )
+    xdata[pkt_ix] = [
+        Sims.O_per_chain[sim_ix]
+        for sim_ix, n_pks_sim in enumerate(n_pks_per_sim_pkt)
+        for _ in range(n_pks_sim)
+    ]
+    xdata[pkt_ix] = np.array(xdata[pkt_ix])
 
 
-# print("Created {}".format(outfile))
+print("Creating plot(s)...")
+n_clstrs_plot = np.max(n_clstrs)
+if args.n_clusters is not None:
+    n_clstrs_plot = min(n_clstrs_plot, args.n_clusters)
+if n_clstrs_plot <= 0:
+    raise ValueError("`n_clstrs_plot` ({}) <= 0".format(n_clstrs_plot))
+
+legend_title_suffix = " Positions / nm"
+n_legend_handles_comb = sum(min(n_cl, n_clstrs_plot) for n_cl in n_clstrs)
+n_legend_cols_comb = min(3, 1 + n_legend_handles_comb // (2 + 1))
+legend_locs_sep = tuple("best" for col_ix in range(n_data))
+legend_locs_comb = tuple("best" for col_ix in range(n_data))
+if len(legend_locs_sep) != n_data:
+    raise ValueError(
+        "`len(legend_locs_sep)` ({}) != `n_data`"
+        " ({})".format(len(legend_locs_sep), n_data)
+    )
+if len(legend_locs_comb) != n_data:
+    raise ValueError(
+        "`len(legend_locs_comb)` ({}) != `n_data`"
+        " ({})".format(len(legend_locs_comb), n_data)
+    )
+
+xlabel = r"Ether Oxygens per Chain $n_{EO}$"
+xlim = (1, 200)
+ylabels = (
+    "Distance to Electrode / nm",
+    r"$N_{%s}^{layer}$" % leap.plot.ATOM_TYPE2DISPLAY_NAME[cmp1],
+    (
+        r"$N_{%s}^{layer} / " % leap.plot.ATOM_TYPE2DISPLAY_NAME[cmp1]
+        + r"N_{%s}^{tot}$" % leap.plot.ATOM_TYPE2DISPLAY_NAME[cmp1]
+    ),
+    r"$N_{events}^{layer}$",
+    (
+        r"$N_{events}^{layer} / N_{%s}^{layer}$"
+        % leap.plot.ATOM_TYPE2DISPLAY_NAME[cmp1]
+    ),
+    (
+        r"$(N_{evt}^{lyr} / N_{%s}^{lyr}) / "
+        % leap.plot.ATOM_TYPE2DISPLAY_NAME[cmp1]
+        + r"(N_{evt}^{blk} / N_{%s}^{blk})$"
+        % leap.plot.ATOM_TYPE2DISPLAY_NAME[cmp1]
+    ),
+    (
+        r"$(N_{evt}^{blk} / N_{%s}^{blk}) / "
+        % leap.plot.ATOM_TYPE2DISPLAY_NAME[cmp1]
+        + r"(N_{evt}^{lyr} / N_{%s}^{lyr})$"
+        % leap.plot.ATOM_TYPE2DISPLAY_NAME[cmp1]
+    ),
+    r"$\tau_3^{layer}$ / ns",
+)
+if len(ylabels) != n_data:
+    raise ValueError(
+        "`len(ylabels)` ({}) != `n_data` ({})".format(len(ylabels), n_data)
+    )
+
+logy = (  # Whether to use log scale for the y-axis.
+    False,  # Free-energy minima positions (distance to electrode).
+    False,  # No. of reference compounds per layer (N_cmp^layer).
+    False,  # N_cmp^layer / N_cmp^tot.
+    True,  # No. of renewal events per layer (N_events^layer).
+    True,  # N_events^layer / N_cmp^layer.
+    True,  # (N_events^layer / N_cmp^layer) / (N_events^bulk / N_cmp^bulk).
+    True,  # (N_events^bulk / N_cmp^bulk) / (N_events^layer / N_cmp^layer).
+    True,  # tau_3^layer.
+)
+if len(logy) != n_data:
+    raise ValueError(
+        "`len(logy)` ({}) != `n_data` ({})".format(len(logy), n_data)
+    )
+
+if args.common_ylim:
+    ylims = [
+        (0, 3.6),  # Free-energy minima positions.
+    ]
+    ylims += [(None, None) for col_ix in range(n_data - 1)]
+else:
+    ylims = tuple((None, None) for col_ix in range(n_data))
+if len(ylims) != n_data:
+    raise ValueError(
+        "`len(ylims)` ({}) != `n_data` ({})".format(len(ylims), n_data)
+    )
+
+linestyles_comb = ("solid", "dashed")
+if len(linestyles_comb) != len(pk_pos_types):
+    raise ValueError(
+        "`len(linestyles_comb)` ({}) != `len(pk_pos_types)`"
+        " ({})".format(len(linestyles_comb), len(pk_pos_types))
+    )
+markers = ("<", ">")
+if len(markers) != len(pk_pos_types):
+    raise ValueError(
+        "`len(markers)` ({}) != `len(pk_pos_types)`"
+        " ({})".format(len(markers), len(pk_pos_types))
+    )
+
+cmap = plt.get_cmap()
+c_vals_sep = np.arange(n_clstrs_plot)
+c_norm_sep = n_clstrs_plot - 1
+c_vals_sep_normed = c_vals_sep / c_norm_sep
+colors_sep = cmap(c_vals_sep_normed)
+
+mdt.fh.backup(outfile)
+with PdfPages(outfile) as pdf:
+    for col_ix, yd_col in enumerate(ydata):
+        # Peaks at left and right electrode combined in one plot.
+        fig_comb, ax_comb = plt.subplots(clear=True)
+        if ylabels[col_ix].startswith(r"$N_{events}^{layer} / N_{"):
+            ax_comb.plot(
+                Sims.O_per_chain,
+                n_events_per_refcmp_bulk,
+                linestyle="dotted",
+                marker="o",
+                color="tab:red",
+                label="Bulk",
+            )
+        elif ylabels[col_ix] == r"$\tau_3^{layer}$ / ns":
+            ax_comb.plot(
+                n_eo,
+                rt_bulk,
+                linestyle="dotted",
+                marker="o",
+                color="tab:red",
+                label="Bulk",
+            )
+
+        for pkt_ix, pkp_type in enumerate(pk_pos_types):
+            yd_pkt = yd_col[pkt_ix]
+
+            # Peaks at left and right electrode in separate plots.
+            fig_sep, ax_sep = plt.subplots(clear=True)
+            ax_sep.set_prop_cycle(color=colors_sep)
+            if ylabels[col_ix].startswith(r"$N_{events}^{layer} / N_{"):
+                ax_sep.plot(
+                    Sims.O_per_chain,
+                    n_events_per_refcmp_bulk,
+                    linestyle="dashed",
+                    marker="o",
+                    color="tab:red",
+                    label="Bulk",
+                )
+            elif ylabels[col_ix] == r"$\tau_3^{layer}$ / ns":
+                ax_sep.plot(
+                    n_eo,
+                    rt_bulk,
+                    linestyle="dashed",
+                    marker="o",
+                    color="tab:red",
+                    label="Bulk",
+                )
+
+            c_vals_comb = c_vals_sep + 0.5 * pkt_ix
+            c_norm_comb = c_norm_sep + 0.5 * (len(pk_pos_types) - 1)
+            c_vals_comb_normed = c_vals_comb / c_norm_comb
+            colors_comb = cmap(c_vals_comb_normed)
+            ax_comb.set_prop_cycle(color=colors_comb)
+
+            for cix_pkt in clstr_ix_unq[pkt_ix]:
+                if cix_pkt >= n_clstrs_plot:
+                    break
+
+                valid = clstr_ix[pkt_ix] == cix_pkt
+                if not np.any(valid):
+                    raise ValueError(
+                        "No valid peaks for peak type '{}' and cluster index"
+                        " {}".format(pkp_type, cix_pkt)
+                    )
+
+                if pkp_type == "left":
+                    label_sep = r"$<%.2f$" % clstr_bounds[pkt_ix][cix_pkt]
+                    label_comb = r"$+, " + label_sep[1:]
+                elif pkp_type == "right":
+                    label_sep = r"$<%.2f$" % clstr_bounds[pkt_ix][cix_pkt]
+                    label_comb = r"$-, " + label_sep[1:]
+                else:
+                    raise ValueError(
+                        "Unknown `pkp_type`: '{}'".format(pkp_type)
+                    )
+                ax_sep.plot(
+                    xdata[pkt_ix][valid],
+                    yd_pkt[valid],
+                    linestyle="solid",
+                    marker=markers[pkt_ix],
+                    label=label_sep,
+                )
+                ax_comb.plot(
+                    xdata[pkt_ix][valid],
+                    yd_pkt[valid],
+                    linestyle=linestyles_comb[pkt_ix],
+                    marker=markers[pkt_ix],
+                    label=label_comb,
+                )
+
+            if pkp_type == "left":
+                legend_title_sep = legend_title(r"+")
+            elif pkp_type == "right":
+                legend_title_sep = legend_title(r"-")
+            else:
+                raise ValueError("Unknown `pkp_type`: '{}'".format(pkp_type))
+            ax_sep.set_xscale("log", base=10, subs=np.arange(2, 10))
+            if logy[col_ix]:
+                ax_sep.set_yscale("log", base=10, subs=np.arange(2, 10))
+            ax_sep.set(
+                xlabel=xlabel,
+                ylabel=ylabels[col_ix],
+                xlim=xlim,
+                ylim=ylims[col_ix],
+            )
+            if not logy[col_ix]:
+                equalize_yticks(ax_sep)
+            legend_sep = ax_sep.legend(
+                title=legend_title_sep + legend_title_suffix,
+                ncol=2,
+                loc=legend_locs_sep[col_ix],
+                **mdtplt.LEGEND_KWARGS_XSMALL,
+            )
+            legend_sep.get_title().set_multialignment("center")
+            pdf.savefig(fig_sep)
+            plt.close(fig_sep)
+
+        ax_comb.set_xscale("log", base=10, subs=np.arange(2, 10))
+        if logy[col_ix]:
+            ax_comb.set_yscale("log", base=10, subs=np.arange(2, 10))
+        ax_comb.set(
+            xlabel=xlabel,
+            ylabel=ylabels[col_ix],
+            xlim=xlim,
+            ylim=ylims[col_ix],
+        )
+        if not logy[col_ix]:
+            equalize_yticks(ax_comb)
+        legend_comb = ax_comb.legend(
+            title=legend_title(r"\pm") + legend_title_suffix,
+            ncol=n_legend_cols_comb,
+            loc=legend_locs_comb[col_ix],
+            **mdtplt.LEGEND_KWARGS_XSMALL,
+        )
+        legend_comb.get_title().set_multialignment("center")
+        pdf.savefig(fig_comb)
+        plt.close(fig_comb)
+
+    # Plot clustering results.
+    for pkt_ix, pkp_type in enumerate(pk_pos_types):
+        if pkp_type == "left":
+            legend_title_clstrng = legend_title("+")
+        elif pkp_type == "right":
+            legend_title_clstrng = legend_title("-")
+        else:
+            raise ValueError("Unknown `pkp_type`: '{}'".format(pkp_type))
+        cmap_norm = plt.Normalize(vmin=0, vmax=np.max(n_clstrs) - 1)
+
+        # Dendrogram.
+        fig, ax = plt.subplots(clear=True)
+        dendrogram(
+            linkage_matrices[pkt_ix],
+            ax=ax,
+            distance_sort="ascending",
+            color_threshold=clstr_dist_thresh[pkt_ix],
+        )
+        ax.axhline(
+            clstr_dist_thresh[pkt_ix],
+            color="tab:gray",
+            linestyle="dashed",
+            label=r"Threshold $%.2f$ nm" % clstr_dist_thresh[pkt_ix],
+        )
+        ax.set(
+            xlabel="Peak Number",
+            ylabel="Peak Distance / nm",
+            ylim=(0, ylims[pkp_col_ix][-1]),
+        )
+        legend = ax.legend(
+            title=legend_title_clstrng,
+            loc="best",
+            **mdtplt.LEGEND_KWARGS_XSMALL,
+        )
+        legend.get_title().set_multialignment("center")
+        pdf.savefig()
+        plt.close()
+
+        # Scatter plot: Peak Positions vs. Peak Positions.
+        fig, ax = plt.subplots(clear=True)
+        for cix_pkt in clstr_ix_unq[pkt_ix]:
+            if cix_pkt >= n_clstrs_plot:
+                break
+            valid = clstr_ix[pkt_ix] == cix_pkt
+            if not np.any(valid):
+                raise ValueError(
+                    "No valid peaks for peak type '{}' and cluster index"
+                    " {}".format(pkp_type, cix_pkt)
+                )
+            ax.scatter(
+                ydata[pkp_col_ix][pkt_ix][valid],
+                ydata[pkp_col_ix][pkt_ix][valid],
+                color=cmap(cmap_norm(cix_pkt)),
+                marker=markers[pkt_ix],
+                label="$<%.2f$" % clstr_bounds[pkt_ix][cix_pkt],
+            )
+        ax.set(
+            xlabel=ylabels[pkp_col_ix],
+            ylabel=ylabels[pkp_col_ix],
+            xlim=ylims[pkp_col_ix],
+            ylim=ylims[pkp_col_ix],
+        )
+        legend = ax.legend(
+            title=legend_title_clstrng + legend_title_suffix,
+            ncol=2,
+            loc="upper left",
+            **mdtplt.LEGEND_KWARGS_XSMALL,
+        )
+        legend.get_title().set_multialignment("center")
+        pdf.savefig()
+        plt.close()
+
+        # Scatter plot: Peak Positions vs. `xdata`.
+        fig, ax = plt.subplots(clear=True)
+        for cix_pkt in clstr_ix_unq[pkt_ix]:
+            if cix_pkt >= n_clstrs_plot:
+                break
+            valid = clstr_ix[pkt_ix] == cix_pkt
+            if not np.any(valid):
+                raise ValueError(
+                    "No valid peaks for peak type '{}' and cluster index"
+                    " {}".format(pkp_type, cix_pkt)
+                )
+            ax.scatter(
+                xdata[pkt_ix][valid],
+                ydata[pkp_col_ix][pkt_ix][valid],
+                color=cmap(cmap_norm(cix_pkt)),
+                marker=markers[pkt_ix],
+                label="$<%.2f$" % clstr_bounds[pkt_ix][cix_pkt],
+            )
+        ax.set_xscale("log", base=10, subs=np.arange(2, 10))
+        ax.set(
+            xlabel=xlabel,
+            ylabel=ylabels[pkp_col_ix],
+            xlim=xlim,
+            ylim=ylims[pkp_col_ix],
+        )
+        equalize_yticks(ax)
+        legend = ax.legend(
+            title=legend_title_clstrng + legend_title_suffix,
+            ncol=2,
+            loc=legend_locs_sep[pkp_col_ix],
+            **mdtplt.LEGEND_KWARGS_XSMALL,
+        )
+        legend.get_title().set_multialignment("center")
+        pdf.savefig()
+        plt.close()
+
+print("Created {}".format(outfile))
 print("Done")
