@@ -162,10 +162,6 @@ if args.common_ylim:
 else:
     outfile += ".pdf"
 
-# The method to use for calculating the distance between clusters.  See
-# `scipy.cluster.hierarchy.linkage`.
-clstr_dist_method = "single"
-
 # Columns to read from the files that contain the free-energy extrema.
 pkp_col = 1  # Column that contains the peak positions in nm.
 cols_fe = (pkp_col,)  # Peak positions [nm].
@@ -195,6 +191,14 @@ cols_rt_bulk = (
     29,  # Renewal time from rate method in [ns].
 )
 
+# The method to use for calculating the distance between clusters.  See
+# `scipy.cluster.hierarchy.linkage`.
+clstr_dist_method = "single"
+
+# Number of decimal places to use for the assignment of bin edges to
+# free-energy maxima.
+decimals = 3
+
 
 print("Creating Simulation instance(s)...")
 sys_pat = "lintf2_[gp]*[0-9]*_20-1_gra_" + args.surfq + "_sc80"
@@ -218,7 +222,6 @@ if np.any(n_minima_max != n_maxima_max):
         " ({})".format(n_minima_max, n_maxima_max)
     )
 
-
 # Get files that contain the average number of compounds in each bin.
 analysis_bin_pop = "discrete-z"
 file_suffix_bin_pop = analysis_bin_pop + "_Li_bin_population.txt.gz"
@@ -226,14 +229,12 @@ infiles_bin_pop = leap.simulation.get_ana_files(
     Sims, analysis_bin_pop, tool, file_suffix_bin_pop
 )
 
-
 # Get files that contain the renewal event information for the surface
 # simulations.
 file_suffix_ri = analysis + analysis_suffix + ".txt.gz"
 infiles_ri_walls = leap.simulation.get_ana_files(
     Sims, ana_path, tool, file_suffix_ri
 )
-
 
 # Read bulk renewal times.
 SimPaths = leap.simulation.SimPaths()
@@ -279,7 +280,24 @@ if len(rt_bulk) != Sims.n_sims:
     )
 del n_eo, valid_bulk_sim
 
-
+Elctrd = leap.simulation.Electrode()
+elctrd_thk = Elctrd.ELCTRD_THK / 10  # A -> nm.
+bulk_start = Elctrd.BULK_START / 10  # A -> nm.
+pk_pos_types = ("left", "right")
+n_data = 8
+# Data:
+# 1) Free-energy minima positions (distance to electrode).
+# 2) No. of reference compounds per layer (N_cmp^layer).
+# 3) N_cmp^layer / N_cmp^tot.
+# 4) No. of renewal events per layer (N_events^layer).
+# 5) N_events^layer / N_cmp^layer.
+# 6) (N_events^layer / N_cmp^layer) / (N_events^bulk / N_cmp^bulk).
+# 7) (N_events^bulk / N_cmp^bulk) / (N_events^layer / N_cmp^layer).
+# 8) As 7) * tau_3^bulk.
+ydata = [
+    [[[] for sim in Sims.sims] for pkp_type in pk_pos_types]
+    for dat_ix in range(n_data)
+]
 for sim_ix, Sim in enumerate(Sims.sims):
     # Get file that contains the renewal event information for the
     # corresponding bulk simulation.
@@ -301,9 +319,50 @@ for sim_ix, Sim in enumerate(Sims.sims):
     pos_t0, displ = np.loadtxt(
         infiles_ri_walls[sim_ix], usecols=cols_ri_walls, unpack=True
     )
-    pos = pos_t0 + displ  # z position of refcmps at the renewal event.
-    pos /= 10  # Angstrom -> nm.
+    pos_tau = pos_t0 + displ  # z position of refcmps at the renewal event.
+    pos_tau /= 10  # Angstrom -> nm.
     del pos_t0, displ
+
+    box_z = Sim.box[2] / 10  # Angstrom -> nm.
+    for pkt_ix, pkp_type in enumerate(pk_pos_types):
+        # Convert absolute positions to distance to the electrode.
+        if pkp_type == "left":
+            bins = bins_up - elctrd_thk
+            n_refcmps_bins_pkt = n_refcmps_bins
+            pos = pos_tau - elctrd_thk
+        elif pkp_type == "right":
+            bins = bins_low + elctrd_thk
+            bins -= box_z
+            bins *= -1  # Ensure positive distance values.
+            bins, n_refcmps_bins_pkt = bins[::-1], n_refcmps_bins[::-1]
+            pos = pos_tau + elctrd_thk
+            pos -= box_z
+            pos *= -1  # Ensure positive distance values.
+        else:
+            raise ValueError("Unknown `pkp_type`: '{}'".format(pkp_type))
+
+        # Assign bin edges to free-energy maxima.
+        # -> Get number of reference compounds in each layer.
+        maxima_pos = maxima[pkp_col_ix][pkt_ix][sim_ix]
+        if not np.all(maxima_pos[:-1] <= maxima_pos[1:]):
+            raise ValueError(
+                "The positions of the free-energy maxima are not sorted"
+            )
+        if not np.all(bins[:-1] <= bins[1:]):
+            raise ValueError("The bin edges are not sorted")
+        maxima_pos = np.round(maxima_pos, decimals=decimals, out=maxima_pos)
+        bins = np.round(bins, decimals=decimals, out=bins)
+        valid_bins = np.isin(bins, maxima_pos)
+        first_valid = np.argmax(valid_bins) - 1
+        if first_valid >= 0 and n_refcmps_bins_pkt[first_valid] >= 1e-9:
+            raise ValueError("A populated bin was marked as invalid.")
+        n_refcmps_layer = n_refcmps_bins_pkt[valid_bins]
+        if len(n_refcmps_layer) != len(maxima_pos):
+            raise ValueError(
+                "The number of valid bins ({}) is not equal to the number of"
+                " free-energy maxima"
+                " ({})".format(len(n_refcmps_layer), len(maxima_pos))
+            )
 
 
 print("Discarding free-energy minima whose prominence is too low...")
