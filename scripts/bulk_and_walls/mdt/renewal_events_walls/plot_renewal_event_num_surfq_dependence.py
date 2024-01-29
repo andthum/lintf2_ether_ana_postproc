@@ -538,8 +538,14 @@ if len(logy) != n_data:
 if args.common_ylim:
     ylims = [
         (0, 3.6),  # Free-energy minima positions.
+        (-2, 34),  # N_cmp^layer.
+        (-0.01, 0.27),  # N_cmp^layer / N_cmp^tot.
+        (6e-1, 7e4),  # (8e-1, 6e4),  # N_events^layer.
+        (5e-2, 4e3),  # (1e-1, 2e3),  # N_events^layer / N_cmp^layer.
+        (2e-2, 2e1),  # (3e-2, 1e1),  # layer / bulk.
+        (7e-2, 4e1),  # (1e-1, 3e1),  # bulk / layer.
+        (3e-1, 9e3),  # (4e-1, 6e3),  # tau_3^layer.
     ]
-    ylims += [(None, None) for col_ix in range(n_data - 1)]
 else:
     ylims = tuple((None, None) for col_ix in range(n_data))
 if len(ylims) != n_data:
