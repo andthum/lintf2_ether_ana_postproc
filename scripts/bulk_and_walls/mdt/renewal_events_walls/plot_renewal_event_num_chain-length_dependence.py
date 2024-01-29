@@ -383,6 +383,26 @@ for sim_ix, Sim in enumerate(Sims.sims):
                 " ({})".format(len(n_events_layer), len(maxima_pos))
             )
 
+        # Store data in list.
+        n_events_per_refcmp_bulk = n_events_bulk_sim / n_refcmps_bulk_sim
+        n_events_per_refcmp_layer = n_events_layer / n_refcmps_layer
+        ydata[pkp_col_ix][pkt_ix][sim_ix] = minima[pkp_col_ix][pkt_ix][sim_ix]
+        ydata[1][pkt_ix][sim_ix] = n_refcmps_layer
+        ydata[2][pkt_ix][sim_ix] = n_refcmps_layer / n_refcmps_walls_tot
+        ydata[3][pkt_ix][sim_ix] = n_events_layer
+        ydata[4][pkt_ix][sim_ix] = n_events_per_refcmp_layer
+        ydata[5][pkt_ix][sim_ix] = (
+            n_events_per_refcmp_layer / n_events_per_refcmp_bulk
+        )
+        ydata[6][pkt_ix][sim_ix] = (
+            n_events_per_refcmp_bulk / n_events_per_refcmp_layer
+        )
+        ydata[7][pkt_ix][sim_ix] = (
+            rt_bulk[sim_ix]
+            * n_events_per_refcmp_bulk
+            / n_events_per_refcmp_layer
+        )
+
 
 print("Discarding free-energy minima whose prominence is too low...")
 prom_min = leap.misc.e_kin(args.prob_thresh)
