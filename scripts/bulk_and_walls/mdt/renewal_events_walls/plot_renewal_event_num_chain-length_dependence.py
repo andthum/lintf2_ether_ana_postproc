@@ -16,6 +16,7 @@ electrode.
 # Standard libraries
 import argparse
 import os
+from copy import deepcopy
 
 # Third-party libraries
 import matplotlib.pyplot as plt
@@ -164,8 +165,10 @@ else:
 
 # Columns to read from the files that contain the free-energy extrema.
 pkp_col = 1  # Column that contains the peak positions in nm.
-cols_fe = (pkp_col,)  # Peak positions [nm].
+pkm_col = 3  # Column that contains the peak prominences in kT.
+cols_fe = (pkp_col, pkm_col)  # Peak positions [nm].
 pkp_col_ix = cols_fe.index(pkp_col)
+pkm_col_ix = cols_fe.index(pkm_col)
 
 # Columns to read from the files that contain the bin population.
 cols_pop = (
@@ -406,15 +409,15 @@ for sim_ix, Sim in enumerate(Sims.sims):
 
 print("Discarding free-energy minima whose prominence is too low...")
 prom_min = leap.misc.e_kin(args.prob_thresh)
-# prominences = deepcopy(minima[pkm_col_ix])
-# n_pks_max = [0 for prom_pkt in prominences]
-# for col_ix, yd_col in enumerate(ydata):
-#     for pkt_ix, yd_pkt in enumerate(yd_col):
-#         for sim_ix, yd_sim in enumerate(yd_pkt):
-#             valid = prominences[pkt_ix][sim_ix] >= prom_min
-#             ydata[col_ix][pkt_ix][sim_ix] = yd_sim[valid]
-#             n_pks_max[pkt_ix] = max(n_pks_max[pkt_ix], np.count_nonzero(valid))
-# del minima, prominences
+prominences = deepcopy(minima[pkm_col_ix])
+n_pks_max = [0 for prom_pkt in prominences]
+for col_ix, yd_col in enumerate(ydata):
+    for pkt_ix, yd_pkt in enumerate(yd_col):
+        for sim_ix, yd_sim in enumerate(yd_pkt):
+            valid = prominences[pkt_ix][sim_ix] >= prom_min
+            ydata[col_ix][pkt_ix][sim_ix] = yd_sim[valid]
+            n_pks_max[pkt_ix] = max(n_pks_max[pkt_ix], np.count_nonzero(valid))
+del minima, prominences
 
 
 print("Clustering peak positions...")
