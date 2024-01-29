@@ -23,6 +23,7 @@ import mdtools as mdt
 import mdtools.plot as mdtplt  # Load MDTools plot style  # noqa: F401
 import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
+from matplotlib.ticker import FormatStrFormatter, MaxNLocator
 
 # First-party libraries
 import lintf2_ether_ana_postproc as leap
@@ -152,7 +153,7 @@ outfile = (  # Output file name.
     settings
     + "_lintf2_peoN_20-1_gra_"
     + args.surfq
-    + "_sc80_renewal_event_num"
+    + "_sc80_renewal_event_num"  # TODO: renewal_times
     + analysis_suffix
     + "_cluster_pthresh_%.2f" % args.prob_thresh
 )
@@ -175,6 +176,23 @@ cols_pop = (
     0,  # Lower bin edges in [A].
     1,  # Upper bin edges in [A].
     5,  # Average number of compounds in each bin.
+)
+
+# Columns to read from the files that contain the renewal event
+# information for the surface simulations.
+cols_ri_walls = (
+    6,  # z position of the reference compound at t0 in [A].
+    12,  # z displacement of reference compound during tau_3 in [A].
+)
+
+# Columns to read from the files that contain the renewal event
+# information for the bulk simulations.
+cols_ri_bulk = (0,)  # Index of reference compound.
+
+# Columns to read from the file that contains the bulk renewal times.
+cols_rt_bulk = (
+    0,  # Number of ether oxygens per PEO chain.
+    29,  # Renewal time from rate method in [ns].
 )
 
 
@@ -200,6 +218,7 @@ if np.any(n_minima_max != n_maxima_max):
         " ({})".format(n_minima_max, n_maxima_max)
     )
 
+
 # Get files that contain the average number of compounds in each bin.
 analysis_bin_pop = "discrete-z"
 file_suffix_bin_pop = analysis_bin_pop + "_Li_bin_population.txt.gz"
@@ -207,13 +226,84 @@ infiles_bin_pop = leap.simulation.get_ana_files(
     Sims, analysis_bin_pop, tool, file_suffix_bin_pop
 )
 
-# Get files that contain the renewal event information.
-file_suffix = analysis + analysis_suffix + ".txt.gz"
-infiles = leap.simulation.get_ana_files(Sims, ana_path, tool, file_suffix)
 
-for pkt_ix, maxima_pos_pkt in enumerate(maxima[pkp_col_ix]):
-    for sim_ix, maxima_pos_sim in enumerate(maxima_pos_pkt):
-        continue
+# Get files that contain the renewal event information for the surface
+# simulations.
+file_suffix_ri = analysis + analysis_suffix + ".txt.gz"
+infiles_ri_walls = leap.simulation.get_ana_files(
+    Sims, ana_path, tool, file_suffix_ri
+)
+
+
+# Read bulk renewal times.
+SimPaths = leap.simulation.SimPaths()
+fpath_rt_bulk = SimPaths.PATHS["bulk"]
+fname_rt_bulk = (
+    settings
+    + "_lintf2_peoN_20-1_sc80_renewal_times_"
+    + args.cmp
+    + "_continuous.txt.gz"
+)
+for file in (
+    "plots",
+    tool,
+    analysis,
+    "chain-length_dependence",
+    fname_rt_bulk,
+):
+    fpath_rt_bulk = os.path.join(fpath_rt_bulk, file)
+n_eo, rt_bulk = np.loadtxt(fpath_rt_bulk, usecols=cols_rt_bulk, unpack=True)
+n_eo = n_eo.astype(np.uint32)
+if not np.all(n_eo[:-1] <= n_eo[1:]):
+    raise ValueError(
+        "The bulk simulations are not sorted by the number of ether oxygens"
+        " per PEO chain"
+    )
+if not np.all(Sims.O_per_chain[:-1] <= Sims.O_per_chain[1:]):
+    raise ValueError(
+        "The surface simulations are not sorted by the number of ether oxygens"
+        " per PEO chain"
+    )
+if not np.all(np.isin(Sims.O_per_chain, n_eo)):
+    raise ValueError(
+        "The numbers of ether oxygens per PEO chain in the surface simulations"
+        " ({}) do not match to those in the bulk simulations"
+        " ({})".format(Sims.O_per_chain, n_eo)
+    )
+valid_bulk_sim = np.isin(n_eo, Sims.O_per_chain)
+rt_bulk = rt_bulk[valid_bulk_sim]
+if len(rt_bulk) != Sims.n_sims:
+    raise ValueError(
+        "The number of bulk renewal times ({}) does not match to the number of"
+        " surface simulations ({})".format(len(rt_bulk), Sims.n_sims)
+    )
+del n_eo, valid_bulk_sim
+
+
+for sim_ix, Sim in enumerate(Sims.sims):
+    # Get file that contains the renewal event information for the
+    # corresponding bulk simulation.
+    Sim_bulk = Sim._get_BulkSim()
+    infile_ri_bulk = leap.simulation.get_ana_file(
+        Sim_bulk, ana_path, tool, file_suffix_ri
+    )
+    n_events_bulk = len(np.loadtxt(infile_ri_bulk, usecols=cols_ri_bulk))
+    n_refcmps_bulk = Sim_bulk.top_info["res"][cmp1.lower()]["n_res"]
+
+    # Read number of reference compounds in each bin from file.
+    bins_low, bins_up, n_refcmps_bins = np.loadtxt(
+        infiles_bin_pop[sim_ix], usecols=cols_pop, unpack=True
+    )
+    bins_low /= 10  # Angstrom -> nm.
+    bins_up /= 10  # Angstrom -> nm.
+
+    # Read renewal event information for the surface simulation.
+    pos_t0, displ = np.loadtxt(
+        infiles_ri_walls[sim_ix], usecols=cols_ri_walls, unpack=True
+    )
+    pos = pos_t0 + displ  # z position of refcmps at the renewal event.
+    pos /= 10  # Angstrom -> nm.
+    del pos_t0, displ
 
 
 print("Discarding free-energy minima whose prominence is too low...")
