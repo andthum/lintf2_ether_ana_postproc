@@ -365,14 +365,15 @@ with PdfPages(outfile) as pdf:
     # Plot mean displacement vs scaled time.
     ylabel = r"$\langle \Delta "
     if args.msd_component == "xy":
-        ylabel += r"\mathbf{r}_{%s}" % args.msd_component
+        ylabel += r"%s \rangle" % args.msd_component[0]
+        ylabel += r"+ \langle \Delta %s" % args.msd_component[1]
     elif args.msd_component == "z":
         ylabel += r"%s" % args.msd_component
     else:
         raise ValueError(
             "Unknown --msd-component: '{}'".format(args.msd_component)
         )
-    ylabel += r" (\Delta t) \rangle$ / nm"
+    ylabel += r" \rangle$ / nm"
     fig, ax = plt.subplots(clear=True)
     ax.axhline(y=0, color="black")
     md_min, md_max = 0, 0
@@ -413,7 +414,7 @@ with PdfPages(outfile) as pdf:
         raise ValueError(
             "Unknown --msd-component: '{}'".format(args.msd_component)
         )
-    ylabel += r" (\Delta t)]$ / nm$^2$"
+    ylabel += r"]$ / nm$^2$"
     fig, ax = plt.subplots(clear=True)
     for ix, (bin_ix, msd) in enumerate(
         zip((bulk_bin, last_bin), (msd_bulk, msd_wall))
