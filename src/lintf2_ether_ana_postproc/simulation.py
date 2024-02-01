@@ -3071,6 +3071,103 @@ def read_free_energy_extrema(Sims, cmp, peak_type, cols, prom_min=None):
     return data, n_pks_max
 
 
+def read_displvar_single(
+    Sim, cmp, dim, time_conv=1e-3, length_conv=0.1, displvar=True
+):
+    """
+    Read the displacement variance per bin from file for a single
+    simulation.
+
+    Parameters
+    ----------
+    Sim : lintf2_ether_ana_postproc.simulation.Simulation
+        The :class:`~lintf2_ether_ana_postproc.simulation.Simulation`
+        for which to read the displacement variance from file.
+    cmp : {"Li", "NTf2", "ether", "NBT", "OBT", "OE"}
+        The compound to consider.
+    dim : {"x", "y", "z"}
+        The dimension of the displacement to read from file.
+    time_conv : scalar, optional
+        Factor for converting the time scale.  The time scale of the
+        input files is usually ps.
+    length_conv : scalar, optional
+        Factor for converting the length scale.  The length scale of the
+        input files is usually Angstrom.
+    displvar : bool, optional
+        If ``True``, subtract the squared mean displacement from the
+        mean squared displacement to calculate the displacement
+        variance.
+
+    Returns
+    -------
+    times : numpy.ndarray
+        1-dimensional array containing the lag times.
+    bins : numpy.ndarray
+        1-dimensional array containing the bin edges.
+    md_data : numpy.ndarray
+        2-dimensional array containing the mean displacements for each
+        lag time and bin.
+    msd_data : numpy.ndarray
+        2-dimensional array containing the mean squared displacements
+        (if `displvar` is ``False``) or the displacement variance (if
+        `displvar` is ``True``) for lag time and bin.
+    """
+    if cmp not in ("Li", "NTf2", "ether", "NBT", "OBT", "OE"):
+        raise ValueError("Unknown `cmp`: {}".format(cmp))
+    if dim not in ("x", "y", "z"):
+        raise ValueError("Unknown `cmp`: {}".format(dim))
+
+    analysis = "msd_layer"  # Analysis name.
+    analysis_suffix = "_" + cmp  # Analysis name specification.
+    ana_path = os.path.join(analysis, analysis + analysis_suffix)
+    tool = "mdt"  # Analysis software.
+
+    # Read mean squared displacement from file.
+    file_suffix_msd = cmp + "_msd" + dim + "_layer.txt.gz"
+    infile_msd = leap.simulation.get_ana_file(
+        Sim, ana_path, tool, file_suffix_msd
+    )
+    msd_data = np.loadtxt(infile_msd)
+    bins = msd_data[0]
+    times = msd_data[1:, 0]
+    msd_data = msd_data[1:, 1:]
+
+    # Read mean displacement from file.
+    file_suffix_md = cmp + "_md" + dim + "_layer.txt.gz"
+    infile_md = leap.simulation.get_ana_file(
+        Sim, ana_path, tool, file_suffix_md
+    )
+    md_data = np.loadtxt(infile_md)
+    bins_md = md_data[0]
+    times_md = md_data[1:, 0]
+    md_data = md_data[1:, 1:]
+
+    if bins_md.shape != bins.shape:
+        raise ValueError(
+            "The input files do not contain the same number of bins"
+        )
+    if not np.allclose(bins_md, bins, atol=0):
+        raise ValueError("The bin edges are not the same in all input files")
+    if times_md.shape != times.shape:
+        raise ValueError(
+            "The input files do not contain the same number of lag times"
+        )
+    if not np.allclose(times_md, times, atol=0):
+        raise ValueError("The lag times are not the same in all input files")
+    del bins_md, times_md
+
+    bins *= length_conv
+    times *= time_conv
+    msd_data *= length_conv**2
+    md_data *= length_conv
+
+    if displvar:
+        # Calculate displacement variance.
+        msd_data -= md_data**2
+
+    return times, bins, md_data, msd_data
+
+
 def read_time_state_matrix(
     fname,
     fname_var=None,
