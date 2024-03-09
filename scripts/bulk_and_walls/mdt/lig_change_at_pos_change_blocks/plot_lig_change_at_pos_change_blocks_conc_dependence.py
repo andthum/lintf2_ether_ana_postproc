@@ -523,7 +523,7 @@ with PdfPages(outfile) as pdf:
             ylims = [(0, 6.4)] * 3
         else:
             ylims = [(0, 2.9)] * 3
-        ylims += [(1, None), (0, 1), (0, 100)]
+        ylims += [(1, 5e3), (0, 1), (0, 100)]
     else:
         ylims = [(None, None) for ylabel in ylabels]
     labels = ("To, Succ.", "To, Unsc.", "From, Succ.", "From, Unsc.")
