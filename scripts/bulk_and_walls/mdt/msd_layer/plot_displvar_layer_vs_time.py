@@ -135,12 +135,13 @@ times, bins, md_data, msd_data = leap.simulation.read_displvar_single(
 times = times[1:]
 md_data = md_data[1:]
 msd_data = msd_data[1:]
+msd_0_min = np.nanmin(msd_data[0])
 
 
 print("Fitting straight line...")
 bin_nums = np.arange(1, len(bins))
 bin_ix = len(bin_nums) // 2 - 1
-fit_start, fit_stop = int(np.sqrt(len(times))), int(0.99 * len(times))
+fit_start, fit_stop = int(np.sqrt(len(times))), int(0.98 * len(times))
 popt, perr = fit_msd_slope1(
     times, msd_data[:, bin_ix], start=fit_start, stop=fit_stop
 )
@@ -222,11 +223,9 @@ with PdfPages(outfile) as pdf:
     for bix, bin_num in enumerate(bin_nums):
         if np.all(np.isnan(msd_data[:, bix])):
             continue
-        # Discard last data points, because they are quite noisy and
-        # tend to distort the automatic y axis scaling.
         ax.plot(
-            times[:fit_stop],
-            msd_data[:, bix][:fit_stop],
+            times,
+            msd_data[:, bix],
             label=r"$%d$" % bin_num,
             alpha=leap.plot.ALPHA,
             rasterized=True,
@@ -241,6 +240,9 @@ with PdfPages(outfile) as pdf:
     ax.set_xscale("log", base=10, subs=np.arange(2, 10))
     ax.set_yscale("log", base=10, subs=np.arange(2, 10))
     ax.set(xlabel=xlabel, ylabel=ylabel, xlim=xlim)
+    ylim = ax.get_ylim()
+    if ylim[0] < msd_0_min / 2:
+        ax.set_ylim(msd_0_min / 2, ylim[1])
     legend = ax.legend(
         title=legend_title,
         loc="upper left",
