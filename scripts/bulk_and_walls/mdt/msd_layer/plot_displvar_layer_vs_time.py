@@ -2,8 +2,9 @@
 
 
 """
-Plot the mean displacement and the displacement variance as function of
-the diffusion time for various bins for a single simulation.
+Plot the mean displacement, the mean squared displacement and the
+displacement variance as function of the diffusion time for various bins
+for a single simulation.
 """
 
 
@@ -128,14 +129,18 @@ Sim = leap.simulation.get_sim(args.system, set_pat, top_path)
 
 
 print("Reading data...")
-times, bins, md_data, msd_data = leap.simulation.read_displvar_single(
-    Sim, args.cmp, args.msd_component
+times, bins, md_data, msd_data_true = leap.simulation.read_displvar_single(
+    Sim, args.cmp, args.msd_component, displvar=False
 )
+# Calculate displacement variance.
+msd_data = msd_data_true - md_data**2
 # Discard fist lag time of zero, because plots use log scale.
 times = times[1:]
 md_data = md_data[1:]
 msd_data = msd_data[1:]
+msd_data_true = msd_data_true[1:]  # True MSD, not displacement variance
 msd_0_min = np.nanmin(msd_data[0])
+msd_0_min_true = np.nanmin(msd_data_true[0])
 
 
 print("Fitting straight line...")
@@ -144,6 +149,9 @@ bin_ix = len(bin_nums) // 2 - 1
 fit_start, fit_stop = int(np.sqrt(len(times))), int(0.98 * len(times))
 popt, perr = fit_msd_slope1(
     times, msd_data[:, bin_ix], start=fit_start, stop=fit_stop
+)
+popt_true, perr_true = fit_msd_slope1(
+    times, msd_data_true[:, bin_ix], start=fit_start, stop=fit_stop
 )
 
 
@@ -210,6 +218,46 @@ with PdfPages(outfile) as pdf:
         title=legend_title,
         loc=legend_loc,
         ncol=1 + n_bins_valid // 4,
+        **mdtplt.LEGEND_KWARGS_XSMALL,
+    )
+    legend.get_title().set_multialignment("center")
+    pdf.savefig()
+    plt.close()
+
+    # Plot true MSD vs time.
+    ylabel = (
+        r"$\langle \Delta %s^2 (\Delta t) \rangle$ / nm$^2$"
+        % args.msd_component
+    )
+    fig, ax = plt.subplots(clear=True)
+    ax.set_prop_cycle(color=colors)
+    for bix, bin_num in enumerate(bin_nums):
+        if np.all(np.isnan(msd_data_true[:, bix])):
+            continue
+        ax.plot(
+            times,
+            msd_data_true[:, bix],
+            label=r"$%d$" % bin_num,
+            alpha=leap.plot.ALPHA,
+            rasterized=True,
+        )
+    ax.plot(
+        times[fit_start:fit_stop],
+        leap.misc.power_law(times[fit_start:fit_stop], m=1, c=popt_true[0]),
+        label=r"$\propto \Delta t$",
+        color="black",
+        linestyle="dashed",
+    )
+    ax.set_xscale("log", base=10, subs=np.arange(2, 10))
+    ax.set_yscale("log", base=10, subs=np.arange(2, 10))
+    ax.set(xlabel=xlabel, ylabel=ylabel, xlim=xlim)
+    ylim = ax.get_ylim()
+    if ylim[0] < msd_0_min_true / 2:
+        ax.set_ylim(msd_0_min_true / 2, ylim[1])
+    legend = ax.legend(
+        title=legend_title,
+        loc="upper left",
+        ncol=1 + n_bins_valid // 5,
         **mdtplt.LEGEND_KWARGS_XSMALL,
     )
     legend.get_title().set_multialignment("center")
