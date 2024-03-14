@@ -235,8 +235,8 @@ with PdfPages(outfile) as pdf:
         if np.all(np.isnan(msd_data_true[:, bix])):
             continue
         ax.plot(
-            times,
-            msd_data_true[:, bix],
+            times[:fit_stop],
+            msd_data_true[:, bix][:fit_stop],
             label=r"$%d$" % bin_num,
             alpha=leap.plot.ALPHA,
             rasterized=True,
@@ -272,8 +272,8 @@ with PdfPages(outfile) as pdf:
         if np.all(np.isnan(msd_data[:, bix])):
             continue
         ax.plot(
-            times,
-            msd_data[:, bix],
+            times[:fit_stop],
+            msd_data[:, bix][:fit_stop],
             label=r"$%d$" % bin_num,
             alpha=leap.plot.ALPHA,
             rasterized=True,
