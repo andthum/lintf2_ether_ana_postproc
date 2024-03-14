@@ -61,7 +61,7 @@ def legend_title(surfq_sign):
     else:
         legend_title = leap.plot.ATOM_TYPE2DISPLAY_NAME[args.cmp] + ", "
     legend_title += (
-        r"$\Delta t = %.1f$ ns" % args.time
+        r"$\Delta t = %.2f$ ns" % args.time
         + "\n"
         + r"$\sigma_s = "
         + surfq_sign

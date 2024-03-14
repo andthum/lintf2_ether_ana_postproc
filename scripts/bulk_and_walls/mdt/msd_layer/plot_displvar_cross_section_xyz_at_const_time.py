@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 
 """
-Plot the x-, y- and z-component of the mean displacement and the
-displacement variance as function of the initial particle position at a
-constant diffusion time for a single simulation.
+Plot the x-, y- and z-component of the mean displacement, the mean
+squared displacement and the displacement variance as function of the
+initial particle position at a constant diffusion time for a single
+simulation.
 """
 
 
@@ -101,13 +102,19 @@ args.time /= 1e3  # ps -> ns.
 dimensions = ("x", "y", "z")
 md_at_const_time = [None for dim in dimensions]
 msd_at_const_time = [None for dim in dimensions]
+# True MSD, not displacement variance
+msd_at_const_time_true = [None for dim in dimensions]
 for dim_ix, dim in enumerate(dimensions):
     (
         times_dim,
         bins_dim,
         md_data,
-        msd_data,
-    ) = leap.simulation.read_displvar_single(Sim, args.cmp, dim)
+        msd_data_true,
+    ) = leap.simulation.read_displvar_single(
+        Sim, args.cmp, dim, displvar=False
+    )
+    # Calculate displacement variance.
+    msd_data = msd_data_true - md_data**2
     if dim_ix == 0:
         times, bins = times_dim, bins_dim
     else:
@@ -130,8 +137,9 @@ for dim_ix, dim in enumerate(dimensions):
     time, tix = mdt.nph.find_nearest(times, args.time, return_index=True)
     md_at_const_time[dim_ix] = md_data[tix]
     msd_at_const_time[dim_ix] = msd_data[tix]
+    msd_at_const_time_true[dim_ix] = msd_data_true[tix]
 bin_mids = bins[1:] - np.diff(bins) / 2
-del times, times_dim, bins_dim, md_data, msd_data
+del times, times_dim, bins_dim, md_data, msd_data, msd_data_true
 
 
 print("Creating plot(s)...")
@@ -148,7 +156,7 @@ if args.cmp in ("NBT", "OBT", "OE"):
     )
 else:
     legend_title = leap.plot.ATOM_TYPE2DISPLAY_NAME[args.cmp] + ", "
-legend_title += r"$\Delta t = %.1f$ ns" % time + "\n"
+legend_title += r"$\Delta t = %.2f$ ns" % time + "\n"
 if surfq is not None:
     legend_title += r"$\sigma_s = \pm %.2f$ $e$/nm$^2$" % surfq + "\n"
 legend_title += (
@@ -203,6 +211,42 @@ with PdfPages(outfile) as pdf:
     legend = ax.legend(
         title=legend_title,
         loc=legend_loc,
+        ncol=n_legend_cols,
+        **mdtplt.LEGEND_KWARGS_XSMALL,
+    )
+    legend.get_title().set_multialignment("center")
+    pdf.savefig()
+    plt.close()
+
+    # Plot true MSD vs initial position.
+    ylabel = r"$\langle \Delta\mathbf{r}^2 \rangle$ / nm$^2$"
+    fig, axs = plt.subplots(
+        clear=True,
+        nrows=2,
+        sharex=True,
+        gridspec_kw={"height_ratios": height_ratios},
+    )
+    fig.set_figheight(fig.get_figheight() * sum(height_ratios))
+    ax_profile, ax = axs
+    leap.plot.profile(ax_profile, Sim=Sim, free_en=True)
+    if surfq is not None:
+        leap.plot.elctrds(
+            ax, offset_left=elctrd_thk, offset_right=box_z - elctrd_thk
+        )
+    for dim_ix, dim in enumerate(dimensions):
+        ax.plot(
+            bin_mids,
+            msd_at_const_time_true[dim_ix],
+            label="$" + dim + "$",
+            marker=markers[dim_ix],
+        )
+    leap.plot.bins(ax, bins=bins)
+    ax.set_yscale("log", base=10, subs=np.arange(2, 10))
+    ax.set(xlabel=xlabel, ylabel=ylabel, xlim=xlim)
+    ax.xaxis.set_major_locator(MaxNLocator(integer=True))
+    legend = ax.legend(
+        title=legend_title,
+        loc="lower center",
         ncol=n_legend_cols,
         **mdtplt.LEGEND_KWARGS_XSMALL,
     )

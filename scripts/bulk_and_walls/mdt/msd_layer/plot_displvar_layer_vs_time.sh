@@ -11,8 +11,9 @@ cmp=Li
 information() {
     echo "Loop over all surface-simulation directories and run the"
     echo "Python script plot_displvar_layer_vs_time.py to plot the mean"
-    echo "displacement and the displacement variance as function of the"
-    echo "diffusion time for various bins."
+    echo "displacement, the mean squared displacement and the"
+    echo "displacement variance as function of the diffusion time for"
+    echo "various bins."
 }
 
 usage() {

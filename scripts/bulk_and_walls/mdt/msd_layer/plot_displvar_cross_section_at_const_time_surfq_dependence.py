@@ -413,7 +413,7 @@ if args.cmp in ("NBT", "OBT", "OE"):
 else:
     legend_title = leap.plot.ATOM_TYPE2DISPLAY_NAME[args.cmp] + ", "
 legend_title += (
-    r"$\Delta t = %.1f$ ns" % args.time
+    r"$\Delta t = %.2f$ ns" % args.time
     + "\n"
     + r"$n_{EO} = %d$, " % Sims.O_per_chain[0]
     + r"$r = %.2f$" % Sims.Li_O_ratios[0]
