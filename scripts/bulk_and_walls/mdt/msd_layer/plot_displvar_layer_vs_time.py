@@ -208,7 +208,7 @@ with PdfPages(outfile) as pdf:
     legend = ax.legend(
         title=legend_title,
         loc=legend_loc,
-        ncol=1 + len(bin_nums) // 4,
+        ncol=1 + n_bins_valid // 4,
         **mdtplt.LEGEND_KWARGS_XSMALL,
     )
     legend.get_title().set_multialignment("center")
@@ -244,7 +244,7 @@ with PdfPages(outfile) as pdf:
     legend = ax.legend(
         title=legend_title,
         loc="upper left",
-        ncol=1 + len(bin_nums) // 6,
+        ncol=1 + n_bins_valid // 5,
         **mdtplt.LEGEND_KWARGS_XSMALL,
     )
     legend.get_title().set_multialignment("center")
