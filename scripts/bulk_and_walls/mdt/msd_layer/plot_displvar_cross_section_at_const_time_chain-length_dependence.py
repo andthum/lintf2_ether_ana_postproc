@@ -498,11 +498,22 @@ if len(logy) != n_data:
     )
 
 if args.common_ylim:
-    ylims = [
-        (0, 3.6),  # Free-energy minima positions.
-        (None, None),  # Mean displacements.
-        (None, None),  # Displacement variances.
-    ]
+    ylims = [(0, 3.6)]  # Free-energy minima positions.
+    if args.cmp == "Li" and np.isclose(args.time, 0.1, rtol=0):
+        ylims += [(-0.325, 0.325)]  # Mean displacements.
+        if args.msd_component == "xy":
+            ylims += [(2e-2, 2e0)]  # Displacement variances.
+        elif args.msd_component == "z":
+            ylims += [(4e-4, 5e-1)]  # Displacement variances.
+        else:
+            raise ValueError(
+                "Unknown --msd-component: '{}'".format(args.msd_component)
+            )
+    else:
+        ylims += [
+            (None, None),  # Mean displacements.
+            (None, None),  # Displacement variances.
+        ]
 else:
     ylims = tuple((None, None) for col_ix in range(n_data))
 if len(ylims) != n_data:
