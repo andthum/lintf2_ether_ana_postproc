@@ -12,9 +12,10 @@ flags=()
 information() {
     echo "Loop over all surface-simulation directories and run the"
     echo "Python script plot_displvar_cross_section_xyz_at_const_time.py"
-    echo "to plot the x-, y- and z-component of the mean displacement"
-    echo "and the displacement variance as function of the initial"
-    echo "particle position at a constant diffusion time."
+    echo "to plot the x-, y- and z-component of the mean displacement,"
+    echo "the mean squared displacement and the displacement variance"
+    echo "as function of the initial particle position at a constant"
+    echo "diffusion time."
 }
 
 usage() {
