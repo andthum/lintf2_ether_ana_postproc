@@ -148,7 +148,7 @@ if args.cmp in ("NBT", "OBT", "OE"):
     )
 else:
     legend_title = leap.plot.ATOM_TYPE2DISPLAY_NAME[args.cmp] + ", "
-legend_title += r"$\Delta t = %.1f$ ns" % time + "\n"
+legend_title += r"$\Delta t = %.2f$ ns" % time + "\n"
 if surfq is not None:
     legend_title += r"$\sigma_s = \pm %.2f$ $e$/nm$^2$" % surfq + "\n"
 legend_title += (
