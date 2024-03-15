@@ -505,7 +505,7 @@ if args.common_ylim:
         elif args.msd_component == "z":
             ylims += [
                 (-0.8, 0.8),  # Mean displacements.
-                (1e-2, 2e0),  # Displacement variances.
+                (1e-3, 2e0),  # Displacement variances.
             ]
         else:
             raise ValueError(
