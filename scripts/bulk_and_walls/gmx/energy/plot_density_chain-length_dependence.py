@@ -99,7 +99,7 @@ Becht_1967_353K_ydata = np.asarray([Becht_1967_353K, 1 / Becht_1967_353K])
 # Zhang et al., J. Phys. Chem. B, 2014, 118, 19, 5144–5153.
 # Values taken from Table S1 in SI.
 # r = Li/EO ~ 1/20 = 0.05
-# Actual r values:  0.0625,  0.0417,  0.0625,  0.0500
+# Actual r values:  0.0625,  0.0556,  0.0625,  0.0500
 # 1/r = EO/Li:     16.00  , 18.00  , 16.00  , 20.00
 n_eo = np.asarray([2, 3, 4, 5])
 Zhang_2014_303K = np.asarray([1.0510, 1.1049, 1.1610, 1.1550])
