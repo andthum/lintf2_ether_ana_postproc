@@ -3,7 +3,8 @@
 
 """
 Plot the time-averaged total volume of the system divided by the total
-number of PEO chains as function of the salt concentration.
+number of salt formula units as function of the inverse salt
+concentration.
 """
 
 
@@ -16,24 +17,10 @@ import mdtools as mdt
 import mdtools.plot as mdtplt  # Load MDTools plot style  # noqa: F401
 import numpy as np
 from matplotlib.backends.backend_pdf import PdfPages
-from matplotlib.ticker import MultipleLocator
 from scipy.optimize import curve_fit
 
 # First-party libraries
 import lintf2_ether_ana_postproc as leap
-
-
-def equalize_xticks(ax):
-    """
-    Equalize x-ticks so that plots can be better stacked together.
-
-    Parameters
-    ----------
-    ax : matplotlib.axes.Axes
-        The :class:`~matplotlib.axes.Axes` for which to equalize the x
-        ticks.
-    """
-    ax.xaxis.set_major_locator(MultipleLocator(0.1))
 
 
 def fit_line(xdata, ydata, ydata_sd, start=0, stop=-1):
@@ -64,7 +51,8 @@ def fit_line(xdata, ydata, ydata_sd, start=0, stop=-1):
 parser = argparse.ArgumentParser(
     description=(
         "Plot the time-averaged total volume of the system divided by the"
-        " total number of PEO chains as function of the salt concentration."
+        " total number of salt formula units as function of the inverse salt"
+        " concentration."
     ),
 )
 parser.add_argument(
@@ -83,12 +71,12 @@ settings_lst = ["eq_npt%d_pr_nh" % temp for temp in temps]
 # System name.
 system = "lintf2_" + args.sol + "_r_sc80"
 # Output filename.
-outfile = "eq_npT_pr_nh_" + system + "_volume_per_chain.pdf"
+outfile = "eq_npT_pr_nh_" + system + "_volume_per_salt.pdf"
 
 # Columns to read from the input files.
 cols = (
     0,  # Lithium-to-ether-oxygen ratio.
-    1,  # Number of PEO chains.
+    2,  # Number of LiTFSI salt formula units.
     13,  # Volume [nm^3].
     14,  # Standard deviation of the volume [nm^3].
 )
@@ -103,12 +91,18 @@ xdata = [None for infile in infiles]
 ydata = [None for infile in infiles]
 ydata_sd = [None for infiles in infiles]
 for set_ix, infile in enumerate(infiles):
-    xdata[set_ix], n_chains, ydata[set_ix], ydata_sd[set_ix] = np.loadtxt(
+    xdata[set_ix], n_salt, ydata[set_ix], ydata_sd[set_ix] = np.loadtxt(
         infile, usecols=cols, unpack=True
     )
-    # Divide volume by number of PEO chain.
-    ydata[set_ix] /= n_chains
-    ydata_sd[set_ix] /= n_chains
+    # Inverse salt concentration.
+    xdata[set_ix] = 1 / xdata[set_ix]
+    # Divide volume by number of salt formula units.
+    ydata[set_ix] /= n_salt
+    ydata_sd[set_ix] /= n_salt
+    # Sort data in ascending x order.
+    xdata[set_ix] = xdata[set_ix][::-1]
+    ydata[set_ix] = ydata[set_ix][::-1]
+    ydata_sd[set_ix] = ydata_sd[set_ix][::-1]
     if set_ix == 0:
         ydata_min = np.min(ydata[set_ix])
         ydata_max = np.max(ydata[set_ix])
@@ -140,9 +134,9 @@ for set_ix in range(n_infiles):
 
 
 print("Creating plot(s)...")
-xlabel = r"Li-to-EO Ratio $r$"
-xlim_lin = (0, 0.4 + 0.0125)
-xlim_log = (1e-2, 5e-1)
+xlabel = r"EO-to-Li Ratio $1/r$"
+xlim_lin = (0, 85)
+xlim_log = (2e0, 9e1)
 if args.sol == "g1":
     legend_title = r"$n_{EO} = 2$"
 elif args.sol == "g4":
@@ -202,8 +196,7 @@ with PdfPages(outfile) as pdf:
                 linespacing=5,
                 fontsize="x-small",
             )
-    ax.set(xlabel=xlabel, ylabel=r"$V / N_{Chain}$ / nm$^3$", xlim=xlim_lin)
-    equalize_xticks(ax)
+    ax.set(xlabel=xlabel, ylabel=r"$V / N_{Salt}$ / nm$^3$", xlim=xlim_lin)
     legend = ax.legend(title=legend_title)
     legend.get_title().set_multialignment("center")
     pdf.savefig()
@@ -219,7 +212,6 @@ with PdfPages(outfile) as pdf:
     ax.set_xscale("linear")
     ax.set_yscale("log", base=10, subs=np.arange(2, 10))
     ax.set_xlim(xlim_lin)
-    equalize_xticks(ax)
     pdf.savefig()
     # Log scale xy.
     ax.relim()

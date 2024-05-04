@@ -87,7 +87,7 @@ outfile = "eq_npT_pr_nh_" + system + "_ekin_per_chain.pdf"
 
 # Columns to read from the input files.
 cols = (
-    0,  # Number of ether oxygens per PEO chain.
+    0,  # Lithium-to-ether-oxygen ratio.
     1,  # Number of PEO chains.
     5,  # Kinetic energy [kJ].
     6,  # Standard deviation of the kinetic energy [kJ].
