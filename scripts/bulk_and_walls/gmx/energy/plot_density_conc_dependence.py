@@ -59,7 +59,7 @@ outfile = "eq_npT_pr_nh_" + system + "_density.pdf"
 
 # Columns to read from the input files.
 cols = (
-    0,  # Number of ether oxygens per PEO chain.
+    0,  # Lithium-to-ether-oxygen ratio.
     15,  # Density [kg/nm^3].
     16,  # Standard deviation of the density [kg/nm^3].
 )
