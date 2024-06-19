@@ -303,7 +303,7 @@ ydata = [
     [[[] for sim in Sims.sims] for pkp_type in pk_pos_types]
     for dat_ix in range(n_data)
 ]
-n_events_per_refcmp_bulk = np.zeros(Sims.n_sims, dtype=np.uint32)
+n_events_per_refcmp_bulk = np.zeros(Sims.n_sims, dtype=np.float64)
 for sim_ix, Sim in enumerate(Sims.sims):
     # Get file that contains the renewal event information for the
     # corresponding bulk simulation.
