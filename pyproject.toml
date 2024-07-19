@@ -62,6 +62,7 @@ classifiers = [
 ]
 requires-python = ">=3.7, <3.10"
 dependencies = [
+    "gsd >=1.0, <3.0",
     "matplotlib >=3.3, <4.0",
     "MDAnalysis >=2.0, <2.1",
     "mdtools @ git+https://github.com/andthum/mdtools@main",
