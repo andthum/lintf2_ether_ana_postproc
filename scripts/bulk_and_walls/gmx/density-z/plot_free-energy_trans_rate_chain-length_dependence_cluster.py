@@ -283,7 +283,7 @@ for pkt_ix, _minima_pkp_pkt in enumerate(minima[pkp_col_ix]):
         rates_l2r = np.exp(-beta * bars_l2r_sim)
         rates_r2l = np.exp(-beta * bars_r2l_sim)
         rates_mean = np.exp(-beta * bars_l2r_sim[1:])
-        rates_mean += np.exp(-bars_r2l_sim[:-1])
+        rates_mean += np.exp(-beta * bars_r2l_sim[:-1])
         rates_mean /= 2
         rates_mean = np.insert(rates_mean, 0, np.exp(-beta * bars_l2r_sim[0]))
 
