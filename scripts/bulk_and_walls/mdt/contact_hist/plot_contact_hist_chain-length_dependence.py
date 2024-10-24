@@ -71,20 +71,24 @@ cols = (  # Columns to read from the input file(s).
     # 0,  # Number of contacts N.
     1,  # Ratio of Li ions that have contact with N different O atoms.
     2,  # Ratio of Li ions that have contact with N different PEO/TFSI molecules.  # noqa: E501
+    5,  # Ratio of Li-PEO/TFSI complexes with N-dentate coordination.
 )
 n_cols = len(cols)
 if args.cmp == "Li-OE":
-    col_labels = (r"$Li - O_{PEO}$", r"$Li - PEO$")
-    xlim_hist = [(0, 8), (0, 6)]
+    col_labels = (r"$Li - O_{PEO}$", r"$Li - PEO$", r"$Li - PEO$")
+    xlim_hist = [(0, 8), (0, 6), (0, 8)]
     ylim_cn = (0, 6.5)
+    ylim_denticity = ylim_cn
 elif args.cmp == "Li-OBT":
-    col_labels = (r"$Li - O_{TFSI}$", r"$Li - TFSI$")
-    xlim_hist = [(0, 8), (0, 6)]
+    col_labels = (r"$Li - O_{TFSI}$", r"$Li - TFSI$", r"$Li - TFSI$")
+    xlim_hist = [(0, 8), (0, 6), (0, 8)]
     ylim_cn = (0, 0.42)
+    ylim_denticity = (0.9, 1.3)
 elif args.cmp == "Li-O":
-    col_labels = (r"$Li - O_{tot}$", r"$Li - PEO/TFSI$")
-    xlim_hist = [(0, 8), (0, 6)]
+    col_labels = (r"$Li - O_{tot}$", r"$Li - PEO/TFSI$", r"$Li - PEO/TFSI$")
+    xlim_hist = [(0, 8), (0, 6), (0, 8)]
     ylim_cn = (0, 6.5)
+    ylim_denticity = ylim_cn
 else:
     raise ValueError("Invalid --cmp: {}".format(args.cmp))
 if len(col_labels) != len(cols):
@@ -105,16 +109,19 @@ if args.cmp == "Li-OE":
     n_cnt_max = (
         7,  # Maximum number of different O atoms.
         3,  # Maximum number of different PEO molecules.
+        7,  # Maximum denticity of a Li-PEO complex.
     )
 elif args.cmp == "Li-OBT":
     n_cnt_max = (
         2,  # Maximum number of different O atoms.
         2,  # Maximum number of different TFSI molecules.
+        2,  # Maximum denticity of a Li-TFSI complex.
     )
 elif args.cmp == "Li-O":
     n_cnt_max = (
         7,  # Maximum number of different O atoms.
         4,  # Maximum number of different molecules.
+        7,  # Maximum denticity of a Li-PEO or Li-TFSI complex.
     )
 else:
     raise ValueError("Unknown --cmp {}".format(args.cmp))
@@ -154,6 +161,7 @@ legend_title = r"$r = %.2f$" % Sims.Li_O_ratios[0]
 mdt.fh.backup(outfile)
 with PdfPages(outfile) as pdf:
     # Plot coordination number histograms.
+    xlabels = ("Coordination Number", "Coordination Number", "Denticity")
     cmap = plt.get_cmap()
     c_vals = np.arange(n_infiles)
     c_norm = max(n_infiles - 1, 1)
@@ -197,7 +205,7 @@ with PdfPages(outfile) as pdf:
                 alpha=leap.plot.ALPHA,
             )
         ax.set(
-            xlabel="Coordination Number",
+            xlabel=xlabels[col_ix],
             ylabel="Probability",
             xlim=xlim_hist[col_ix],
             ylim=ylim_prob,
@@ -217,6 +225,12 @@ with PdfPages(outfile) as pdf:
 
     # Plot the probability that a lithium ion has N contacts as function
     # of the chain length.
+    if not np.allclose(np.sum(prob_n_cnt, axis=1), 1, atol=5e-3):
+        print(np.sum(prob_n_cnt, axis=1))
+        raise ValueError(
+            "The sum of all coordination probabilities is not unity"
+        )
+    legend_title_suffixes = (" Coord. No.", " Coord. No.", " Denticity")
     markers = ("o", "|", "x", "^", "s", "p", "h", "*", "8", "v")
     if len(markers) < max(n_cnt_max):
         raise ValueError(
@@ -243,10 +257,10 @@ with PdfPages(outfile) as pdf:
             )
         ax.set_xscale("log", base=10, subs=np.arange(2, 10))
         ax.set(xlabel=xlabel, ylabel="Probability", xlim=xlim, ylim=ylim_prob)
-        if args.cmp == "Li-OE" and col_ix == 0:
+        if args.cmp == "Li-OE" and col_ix in (0, 2):
             legend_loc = "best"
             n_legend_cols = 4
-        if args.cmp == "Li-O" and col_ix == 0:
+        elif args.cmp == "Li-O" and col_ix in (0, 2):
             legend_loc = "center right"
             n_legend_cols = 4
         else:
@@ -254,7 +268,12 @@ with PdfPages(outfile) as pdf:
             n_legend_cols = 3
         legend = ax.legend(
             loc=legend_loc,
-            title=legend_title + "\n" + col_labels[col_ix] + " Coord. No.",
+            title=(
+                legend_title
+                + "\n"
+                + col_labels[col_ix]
+                + legend_title_suffixes[col_ix]
+            ),
             ncol=n_legend_cols,
             **mdtplt.LEGEND_KWARGS_XSMALL,
         )
@@ -265,7 +284,7 @@ with PdfPages(outfile) as pdf:
     # Plot average coordination numbers.
     markers = ("^", "v")
     fig, ax = plt.subplots(clear=True)
-    for col_ix in range(n_cols):
+    for col_ix in [cols.index(1), cols.index(2)]:
         # Uncertainty of the mean value.
         if args.cmp.startswith("Li-"):
             yerr = np.sqrt(
@@ -287,6 +306,39 @@ with PdfPages(outfile) as pdf:
     ax.set_xscale("log", base=10, subs=np.arange(2, 10))
     ax.set(
         xlabel=xlabel, ylabel="Coordination Number", xlim=xlim, ylim=ylim_cn
+    )
+    equalize_yticks(ax)
+    ax.legend(title=legend_title)
+    pdf.savefig()
+    plt.close()
+
+    # Plot average denticities.
+    fig, ax = plt.subplots(clear=True)
+    for col_ix in [cols.index(5)]:
+        # Uncertainty of the mean value.
+        if args.cmp.startswith("Li-"):
+            yerr = np.sqrt(
+                (cn_mom2[col_ix] - cn_mom1[col_ix] ** 2)
+                / Sims.res_nums["cation"]
+            )
+        else:
+            raise NotImplementedError(
+                "Uncertainty of the average denticity not implemented for"
+                " compounds that don't start with 'Li-'"
+            )
+        ax.errorbar(
+            Sims.O_per_chain,
+            cn_mom1[col_ix],
+            yerr=yerr,
+            label=col_labels[col_ix],
+            marker="o",
+        )
+    ax.set_xscale("log", base=10, subs=np.arange(2, 10))
+    ax.set(
+        xlabel=xlabel,
+        ylabel="Average Denticity",
+        xlim=xlim,
+        ylim=ylim_denticity,
     )
     equalize_yticks(ax)
     ax.legend(title=legend_title)
