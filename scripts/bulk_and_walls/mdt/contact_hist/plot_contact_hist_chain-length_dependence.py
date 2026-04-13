@@ -91,15 +91,15 @@ elif args.cmp == "Li-O":
     ylim_denticity = ylim_cn
 else:
     raise ValueError("Invalid --cmp: {}".format(args.cmp))
-if len(col_labels) != len(cols):
+if len(col_labels) != n_cols:
     raise ValueError(
-        "`len(col_labels)` ({}) != `len(cols)`"
-        " ({})".format(len(col_labels), len(cols))
+        "`len(col_labels)` ({}) != `n_cols`"
+        " ({})".format(len(col_labels), n_cols)
     )
-if len(xlim_hist) != len(cols):
+if len(xlim_hist) != n_cols:
     raise ValueError(
-        "`len(xlim_hist)` ({}) != `len(cols)`"
-        " ({})".format(len(xlim_hist), len(cols))
+        "`len(xlim_hist)` ({}) != `n_cols`"
+        " ({})".format(len(xlim_hist), n_cols)
     )
 
 # Maximum number of contacts to consider when plotting the fraction of
@@ -140,7 +140,7 @@ Sims = leap.simulation.get_sims(
 
 
 print("Reading data and creating plot(s)...")
-file_suffix = analysis + "_" + args.cmp + ".txt.gz"
+file_suffix = analysis + analysis_suffix + ".txt.gz"
 infiles = leap.simulation.get_ana_files(Sims, analysis, tool, file_suffix)
 n_infiles = len(infiles)
 
