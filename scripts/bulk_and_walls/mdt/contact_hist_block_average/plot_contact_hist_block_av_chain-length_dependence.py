@@ -3,12 +3,14 @@
 
 """
 Plot the contact histograms and average coordination numbers for two
-given compounds as function of the PEO chain length.
+given compounds as function of the PEO chain length.  Estimate the
+standard error of the mean values from block averages.
 """
 
 
 # Standard libraries
 import argparse
+import os
 
 # Third-party libraries
 import matplotlib.pyplot as plt
@@ -47,7 +49,8 @@ def equalize_yticks(ax):
 parser = argparse.ArgumentParser(
     description=(
         "Plot the contact histograms and average coordination numbers for two"
-        " given compounds as function of the PEO chain length."
+        " given compounds as function of the PEO chain length.  Estimate the"
+        " standard error of the mean values from block averages."
     )
 )
 parser.add_argument(
@@ -62,10 +65,20 @@ args = parser.parse_args()
 settings = "pr_nvt423_nh"  # Simulation settings.
 analysis = "contact_hist"  # Analysis name.
 analysis_suffix = "_" + args.cmp  # Analysis name specification.
+analysis_dir = analysis + "_block_average"
+ana_path = os.path.join(analysis_dir, analysis + analysis_suffix)
 tool = "mdt"  # Analysis software.
 outfile = (  # Output file name.
-    settings + "_lintf2_peoN_20-1_sc80_" + analysis + analysis_suffix + ".pdf"
+    settings
+    + "_lintf2_peoN_20-1_sc80_"
+    + analysis_dir
+    + analysis_suffix
+    + ".pdf"
 )
+
+# Blocks used for block averaging
+blocks = list(range(0, 1100, 100))
+n_blocks = len(blocks) - 1
 
 cols = (  # Columns to read from the input file(s).
     # 0,  # Number of contacts N.
@@ -139,20 +152,60 @@ Sims = leap.simulation.get_sims(
 )
 
 
-print("Reading data and creating plot(s)...")
-file_suffix = analysis + analysis_suffix + ".txt.gz"
-infiles = leap.simulation.get_ana_files(Sims, analysis, tool, file_suffix)
-n_infiles = len(infiles)
-
-# 1st and 2nd moments of the coordination number histograms.
-cn_mom1 = np.full((n_cols, n_infiles), np.nan, dtype=np.float64)
-cn_mom2 = np.full((n_cols, n_infiles), np.nan, dtype=np.float64)
-
+print("Calculating coordination numbers...")
+# Average coordination number of a lithium ion.
+cn = np.zeros((n_blocks, n_cols, Sims.n_sims), dtype=np.float64)
 # Probability that a lithium ion has N contacts.
 prob_n_cnt = np.zeros(
-    (n_cols, max(n_cnt_max) + 1, n_infiles), dtype=np.float32
+    (n_blocks, n_cols, max(n_cnt_max) + 2, Sims.n_sims), dtype=np.float64
 )
 
+for sim_ix, Sim in enumerate(Sims.sims):
+    for block_ix, block_start in enumerate(blocks[:-1]):
+        block_end = blocks[block_ix + 1]
+        file_suffix = (
+            analysis
+            + analysis_suffix
+            + "_"
+            + str(block_start)
+            + "-"
+            + str(block_end)
+            + "ns.txt.gz"
+        )
+        infile = leap.simulation.get_ana_file(Sim, ana_path, tool, file_suffix)
+        # Read input file.
+        data = np.loadtxt(infile, usecols=(0,) + cols)
+        # Skip last row that contains the sum of each column.
+        data = data[:-1]
+        # Number of contacts.
+        n_contacts = data.T[0]
+        n_contacts = np.round(n_contacts, out=n_contacts).astype(np.uint16)
+        # Probability that a lithium ion has N contacts.
+        probabilities = data.T[1:]
+        for col_ix in range(n_cols):
+            # Calculate average coordination numbers.
+            cn[block_ix][col_ix][sim_ix] = np.sum(
+                n_contacts * probabilities[col_ix]
+            )
+            # Probability that a lithium ion has N contacts.
+            for n_cnt, prob in zip(n_contacts, probabilities[col_ix]):
+                if n_cnt >= len(prob_n_cnt[block_ix][col_ix]):
+                    break
+                prob_n_cnt[block_ix][col_ix][n_cnt][sim_ix] = prob
+
+
+print("Calculating block averages...")
+cn_av, cn_se = mdt.statistics.block_average(cn, axis=0, ddof=1)
+prob_n_cnt_av, prob_n_cnt_se = mdt.statistics.block_average(
+    prob_n_cnt, axis=0, ddof=1
+)
+del cn, prob_n_cnt
+if not np.allclose(np.sum(prob_n_cnt_av, axis=1), 1, atol=5e-3):
+    print(np.sum(prob_n_cnt_av, axis=1))
+    raise ValueError("The sum of all coordination probabilities is not unity")
+
+
+print("Creating plot(s)...")
 xlim = (1, 200)
 ylim_prob = (0, 1)
 xlabel = r"Ether Oxygens per Chain $n_{EO}$"
@@ -163,29 +216,14 @@ with PdfPages(outfile) as pdf:
     # Plot coordination number histograms.
     xlabels = ("Coordination Number", "Coordination Number", "Denticity")
     cmap = plt.get_cmap()
-    c_vals = np.arange(n_infiles)
-    c_norm = max(n_infiles - 1, 1)
+    c_vals = np.arange(Sims.n_sims)
+    c_norm = max(Sims.n_sims - 1, 1)
     c_vals_normed = c_vals / c_norm
     colors = cmap(c_vals_normed)
-    for col_ix, col in enumerate(cols):
+    for col_ix, probabilities in enumerate(prob_n_cnt_av):
         fig, ax = plt.subplots(clear=True)
         ax.set_prop_cycle(color=colors)
         for sim_ix, Sim in enumerate(Sims.sims):
-            # Read input files.
-            data = np.loadtxt(infiles[sim_ix], usecols=(0, col))
-            # Skip last row that contains the sum of each column.
-            data = data[:-1]
-            n_contacts, probabilities = data.T
-            n_contacts = np.round(n_contacts, out=n_contacts).astype(np.uint16)
-            # Calculate average coordination numbers.
-            cn_mom1[col_ix][sim_ix] = np.sum(n_contacts * probabilities)
-            cn_mom2[col_ix][sim_ix] = np.sum(n_contacts**2 * probabilities)
-            # Probability that a lithium ion has N contacts.
-            for n_cnt, prob in zip(n_contacts, probabilities):
-                if n_cnt > n_cnt_max[col_ix]:
-                    break
-                prob_n_cnt[col_ix][n_cnt][sim_ix] = prob
-
             if Sim.O_per_chain == 2:
                 color = "tab:red"
                 ax.plot([], [])  # Increment color cycle.
@@ -197,9 +235,19 @@ with PdfPages(outfile) as pdf:
                 ax.plot([], [])  # Increment color cycle.
             else:
                 color = None
-            ax.plot(
-                n_contacts,
-                probabilities,
+            # ax.plot(
+            #     np.arange(
+            #         probabilities[:, sim_ix].size, dtype=np.uint8
+            #     ),
+            #     probabilities[:, sim_ix],
+            #     label=r"$%d$" % Sim.O_per_chain,
+            #     color=color,
+            #     alpha=leap.plot.ALPHA,
+            # )
+            ax.errorbar(
+                np.arange(probabilities[:, sim_ix].size, dtype=np.uint8),
+                probabilities[:, sim_ix],
+                yerr=prob_n_cnt_se[col_ix, :, sim_ix],
                 label=r"$%d$" % Sim.O_per_chain,
                 color=color,
                 alpha=leap.plot.ALPHA,
@@ -216,7 +264,7 @@ with PdfPages(outfile) as pdf:
             title=(
                 col_labels[col_ix] + "\n" + legend_title + "\n" + r"$n_{EO}$"
             ),
-            ncol=1 + n_infiles // (6 + 1),
+            ncol=1 + Sims.n_sims // (6 + 1),
             **mdtplt.LEGEND_KWARGS_XSMALL,
         )
         legend.get_title().set_multialignment("center")
@@ -225,11 +273,6 @@ with PdfPages(outfile) as pdf:
 
     # Plot the probability that a lithium ion has N contacts as function
     # of the chain length.
-    if not np.allclose(np.sum(prob_n_cnt, axis=1), 1, atol=5e-3):
-        print(np.sum(prob_n_cnt, axis=1))
-        raise ValueError(
-            "The sum of all coordination probabilities is not unity"
-        )
     legend_title_suffixes = (" Coord. No.", " Coord. No.", " Denticity")
     markers = ("o", "|", "x", "^", "s", "p", "h", "*", "8", "v")
     if len(markers) < max(n_cnt_max):
@@ -237,7 +280,7 @@ with PdfPages(outfile) as pdf:
             "`len(markers)` ({}) < `max(n_cnt_max)`"
             " ({})".format(len(markers), max(n_cnt_max))
         )
-    for col_ix, probabilities in enumerate(prob_n_cnt):
+    for col_ix, probabilities in enumerate(prob_n_cnt_av):
         cmap = plt.get_cmap()
         c_vals = np.arange(n_cnt_max[col_ix] + 1)
         c_norm = max(n_cnt_max[col_ix], 1)
@@ -248,9 +291,17 @@ with PdfPages(outfile) as pdf:
         for n_cnt, prob in enumerate(probabilities):
             if n_cnt > n_cnt_max[col_ix]:
                 break
-            ax.plot(
+            # ax.plot(
+            #     Sims.O_per_chain,
+            #     prob,
+            #     label=r"$%d$" % n_cnt,
+            #     marker=markers[n_cnt],
+            #     alpha=leap.plot.ALPHA,
+            # )
+            ax.errorbar(
                 Sims.O_per_chain,
                 prob,
+                yerr=prob_n_cnt_se[col_ix, n_cnt],
                 label=r"$%d$" % n_cnt,
                 marker=markers[n_cnt],
                 alpha=leap.plot.ALPHA,
@@ -285,21 +336,10 @@ with PdfPages(outfile) as pdf:
     markers = ("^", "v")
     fig, ax = plt.subplots(clear=True)
     for col_ix in [cols.index(1), cols.index(2)]:
-        # Uncertainty of the mean value.
-        if args.cmp.startswith("Li-"):
-            yerr = np.sqrt(
-                (cn_mom2[col_ix] - cn_mom1[col_ix] ** 2)
-                / Sims.res_nums["cation"]
-            )
-        else:
-            raise NotImplementedError(
-                "Uncertainty of the average coordination number not"
-                " implemented for compounds that don't start with 'Li-'"
-            )
         ax.errorbar(
             Sims.O_per_chain,
-            cn_mom1[col_ix],
-            yerr=yerr,
+            cn_av[col_ix],
+            yerr=cn_se[col_ix],
             label=col_labels[col_ix],
             marker=markers[col_ix],
         )
@@ -315,21 +355,10 @@ with PdfPages(outfile) as pdf:
     # Plot average denticities.
     fig, ax = plt.subplots(clear=True)
     for col_ix in [cols.index(5)]:
-        # Uncertainty of the mean value.
-        if args.cmp.startswith("Li-"):
-            yerr = np.sqrt(
-                (cn_mom2[col_ix] - cn_mom1[col_ix] ** 2)
-                / Sims.res_nums["cation"]
-            )
-        else:
-            raise NotImplementedError(
-                "Uncertainty of the average denticity not implemented for"
-                " compounds that don't start with 'Li-'"
-            )
         ax.errorbar(
             Sims.O_per_chain,
-            cn_mom1[col_ix],
-            yerr=yerr,
+            cn_av[col_ix],
+            yerr=cn_se[col_ix],
             label=col_labels[col_ix],
             marker="o",
         )
@@ -340,6 +369,86 @@ with PdfPages(outfile) as pdf:
         xlim=xlim,
         ylim=ylim_denticity,
     )
+    equalize_yticks(ax)
+    ax.legend(title=legend_title)
+    pdf.savefig()
+    plt.close()
+
+    # Plot the standard error of the probability that a lithium ion has
+    # N contacts as function of the chain length.
+    legend_title_suffixes = (" Coord. No.", " Coord. No.", " Denticity")
+    markers = ("o", "|", "x", "^", "s", "p", "h", "*", "8", "v")
+    if len(markers) < max(n_cnt_max):
+        raise ValueError(
+            "`len(markers)` ({}) < `max(n_cnt_max)`"
+            " ({})".format(len(markers), max(n_cnt_max))
+        )
+    for col_ix, prob_errors in enumerate(prob_n_cnt_se):
+        cmap = plt.get_cmap()
+        c_vals = np.arange(n_cnt_max[col_ix] + 1)
+        c_norm = max(n_cnt_max[col_ix], 1)
+        c_vals_normed = c_vals / c_norm
+        colors = cmap(c_vals_normed)
+        fig, ax = plt.subplots(clear=True)
+        ax.set_prop_cycle(color=colors)
+        for n_cnt, prob_error in enumerate(prob_errors):
+            if n_cnt > n_cnt_max[col_ix]:
+                break
+            ax.plot(
+                Sims.O_per_chain,
+                prob_error,
+                label=r"$%d$" % n_cnt,
+                marker=markers[n_cnt],
+                alpha=leap.plot.ALPHA,
+            )
+        ax.set_xscale("log", base=10, subs=np.arange(2, 10))
+        ax.set_yscale("log", base=10, subs=np.arange(2, 10))
+        ax.set(xlabel=xlabel, ylabel="Std. Err. of Prob.", xlim=xlim)
+        legend = ax.legend(
+            loc="best",
+            title=(
+                legend_title
+                + "\n"
+                + col_labels[col_ix]
+                + legend_title_suffixes[col_ix]
+            ),
+            ncol=n_legend_cols,
+            **mdtplt.LEGEND_KWARGS_XSMALL,
+        )
+        legend.get_title().set_multialignment("center")
+        pdf.savefig()
+        plt.close()
+
+    # Plot the standard error of the average coordination numbers.
+    markers = ("^", "v")
+    fig, ax = plt.subplots(clear=True)
+    for col_ix in [cols.index(1), cols.index(2)]:
+        ax.plot(
+            Sims.O_per_chain,
+            cn_se[col_ix],
+            label=col_labels[col_ix],
+            marker=markers[col_ix],
+        )
+    ax.set_xscale("log", base=10, subs=np.arange(2, 10))
+    ax.set_yscale("log", base=10, subs=np.arange(2, 10))
+    ax.set(xlabel=xlabel, ylabel="Std. Err. of CN", xlim=xlim)
+    equalize_yticks(ax)
+    ax.legend(title=legend_title)
+    pdf.savefig()
+    plt.close()
+
+    # Plot the standard error of the average denticities.
+    fig, ax = plt.subplots(clear=True)
+    for col_ix in [cols.index(5)]:
+        ax.plot(
+            Sims.O_per_chain,
+            cn_se[col_ix],
+            label=col_labels[col_ix],
+            marker="o",
+        )
+    ax.set_xscale("log", base=10, subs=np.arange(2, 10))
+    ax.set_yscale("log", base=10, subs=np.arange(2, 10))
+    ax.set(xlabel=xlabel, ylabel="Std. Err. of Denticity", xlim=xlim)
     equalize_yticks(ax)
     ax.legend(title=legend_title)
     pdf.savefig()
