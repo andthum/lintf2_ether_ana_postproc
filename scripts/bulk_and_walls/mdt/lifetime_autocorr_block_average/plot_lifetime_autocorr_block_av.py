@@ -62,7 +62,13 @@ analysis_dir = analysis + "_block_average"
 ana_path = os.path.join(analysis_dir, analysis + analysis_suffix)
 tool = "mdt"  # Analysis software.
 outfile_base = (  # Output file name.
-    args.settings + "_" + args.system + "_" + analysis_dir + analysis_suffix
+    args.settings
+    + "_"
+    + args.system
+    + "_"
+    + analysis_dir
+    + "_integration_stop"
+    + analysis_suffix
 )
 outfile_txt = outfile_base + ".txt.gz"
 outfile_pdf = outfile_base + ".pdf"
@@ -124,7 +130,7 @@ for block_ix, block_start in enumerate(blocks[:-1]):
         # Only calculate the ACF until its global minimum, a potential
         # increase of the ACF after the minimum is likely a finite size
         # artifact and should therefore be discarded.
-        stop = np.nanargmin(acf) + 1
+        stop = np.flatnonzero(acf <= int_thresh)[0]
         lifetimes[block_ix] = leap.lifetimes.raw_moment_integrate(
             sf=acf[:stop], x=times_sim[:stop]
         )
@@ -141,7 +147,7 @@ if np.any(acf_total <= int_thresh):
     # Only calculate the ACF until its global minimum, a potential
     # increase of the ACF after the minimum is likely a finite size
     # artifact and should therefore be discarded.
-    stop = np.nanargmin(acf_total) + 1
+    stop = np.flatnonzero(acf_total <= int_thresh)[0]
     lifetime_total = leap.lifetimes.raw_moment_integrate(
         sf=acf_total, x=times_total
     )
@@ -171,7 +177,7 @@ if np.any(acf_av <= int_thresh):
     # Only calculate the ACF until its global minimum, a potential
     # increase of the ACF after the minimum is likely a finite size
     # artifact and should therefore be discarded.
-    stop = np.nanargmin(acf_av) + 1
+    stop = np.flatnonzero(acf_av <= int_thresh)[0]
     lifetime_acf_av = leap.lifetimes.raw_moment_integrate(sf=acf_av, x=times)
 else:
     lifetime_acf_av = np.nan

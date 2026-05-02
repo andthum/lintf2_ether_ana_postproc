@@ -44,7 +44,12 @@ analysis = "lifetime_autocorr"  # Analysis name.
 analysis_suffix = "_" + args.cmp  # Analysis name specification.
 tool = "mdt"  # Analysis software.
 outfile = (  # Output file name.
-    settings + "_lintf2_peoN_20-1_sc80_" + analysis + analysis_suffix + ".pdf"
+    settings
+    + "_lintf2_peoN_20-1_sc80_"
+    + analysis
+    + "_integration_stop"
+    + analysis_suffix
+    + ".pdf"
 )
 
 cols = (  # Columns to read from the input file(s).
@@ -113,7 +118,7 @@ with PdfPages(outfile) as pdf:
             # Only calculate the ACF until its global minimum, a
             # potential increase of the ACF after the minimum is likely
             # a finite size artifact and should therefore be discarded.
-            stop = np.nanargmin(acf) + 1
+            stop = np.flatnonzero(acf <= int_thresh)[0]
             lifetimes[sim_ix] = leap.lifetimes.raw_moment_integrate(
                 sf=acf[:stop], x=times[:stop]
             )

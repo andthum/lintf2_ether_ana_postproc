@@ -57,11 +57,11 @@ path_to_acf = "../../lifetime_autocorr/conc_dependence/"
 infile_acf = (
     path_to_acf
     + prefix
-    + "lifetime_autocorr_combined_Li-OE_Li-OBT_Li-ether_Li-NTf2.txt.gz"
+    + "lifetime_autocorr_integration_stop_combined_Li-OE_Li-OBT_Li-ether_Li-NTf2.txt.gz"  # noqa: E501
 )
 infile_renew_peo = prefix + "renewal_times_Li-ether_continuous.txt.gz"
 infile_renew_tfsi = prefix + "renewal_times_Li-NTf2_continuous.txt.gz"
-outfile = prefix + "lifetime_autocorr_and_renewal_times.pdf"
+outfile = prefix + "lifetime_autocorr_integration_stop_and_renewal_times.pdf"
 
 
 print("Reading data...")

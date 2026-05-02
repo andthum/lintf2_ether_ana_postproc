@@ -56,7 +56,10 @@ settings = "pr_nvt423_nh"  # Simulation settings.
 prefix = settings + "_lintf2_" + args.sol + "_r_sc80_"
 infile_renew_peo = prefix + "renewal_times_Li-ether_continuous.txt.gz"
 # infile_renew_tfsi = prefix + "renewal_times_Li-NTf2_continuous.txt.gz"
-outfile = prefix + "lifetime_autocorr_block_average_and_renewal_times.pdf"
+outfile = (
+    prefix
+    + "lifetime_autocorr_block_average_integration_stop_and_renewal_times.pdf"
+)
 
 cmps = ("Li-OE", "Li-OBT", "Li-ether", "Li-NTf2")
 analysis = "lifetime_autocorr"  # Analysis name.
@@ -82,7 +85,9 @@ acf_data = np.full((3, len(cmps), Sims.n_sims), np.nan, dtype=np.float32)
 for cmp_ix, cmp in enumerate(cmps):
     analysis_suffix = "_" + cmp  # Analysis name specification.
     ana_path = os.path.join(analysis_dir, analysis + analysis_suffix)
-    file_suffix = analysis_dir + analysis_suffix + ".txt.gz"
+    file_suffix = (
+        analysis_dir + "_integration_stop" + analysis_suffix + ".txt.gz"
+    )
     infiles = leap.simulation.get_ana_files(Sims, ana_path, tool, file_suffix)
     for sim_ix, infile in enumerate(infiles):
         lifetimes = np.loadtxt(infile, usecols=(3,))

@@ -69,6 +69,7 @@ outfile = (  # Output file name.
     + args.sol
     + "_r_sc80_"
     + analysis
+    + "_integration_stop"
     + analysis_suffix
     + ".pdf"
 )
@@ -137,7 +138,7 @@ with PdfPages(outfile) as pdf:
             # Only calculate the ACF until its global minimum, a
             # potential increase of the ACF after the minimum is likely
             # a finite size artifact and should therefore be discarded.
-            stop = np.nanargmin(acf) + 1
+            stop = np.flatnonzero(acf <= int_thresh)[0]
             lifetimes[sim_ix] = leap.lifetimes.raw_moment_integrate(
                 sf=acf[:stop], x=times[:stop]
             )

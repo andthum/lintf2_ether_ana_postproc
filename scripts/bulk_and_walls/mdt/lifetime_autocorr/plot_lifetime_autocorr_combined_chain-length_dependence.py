@@ -52,7 +52,7 @@ outfile_base = (  # Output file name.
     settings
     + "_lintf2_peoN_20-1_sc80_"
     + analysis
-    + "_combined_"
+    + "_integration_stop_combined_"
     + "_".join(args.cmps)
 )
 outfile_txt = outfile_base + ".txt.gz"
@@ -138,7 +138,7 @@ with PdfPages(outfile_pdf) as pdf:
                 # potential increase of the ACF after the minimum is
                 # likely a finite size artifact and should therefore be
                 # discarded.
-                stop = np.nanargmin(acf) + 1
+                stop = np.flatnonzero(acf <= int_thresh)[0]
                 lifetimes[cmp_ix][
                     sim_ix
                 ] = leap.lifetimes.raw_moment_integrate(
